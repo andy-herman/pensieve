@@ -57,7 +57,7 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 3. **`success_criteria` is a list of strings.** Each criterion is one bullet, full sentence. If the document does not have explicit criteria for a goal, return an empty list.
 4. **`keywords_for_alignment` matters a lot.** Downstream LLMs use these to align tasks. Include:
    - All acronyms that appear in the goal (DORA, NIS2, JET, RFI, BoE, PRA, FCA, MMSP, AKS, etc.)
-   - Partner / team names (Azure Product Trust, M365, ERCM, CELA, Legal, Compliance)
+   - Partner / team names (e.g. cloud product trust, security, risk management, legal, compliance)
    - Program names (Argus, Pensieve, Synapse, etc.)
    - Distinctive verbs / artifacts (playbook, self-assessment, dependency mapping, dashboard)
    - Avoid generic words like "team", "work", "project" — they match too much.
@@ -86,13 +86,13 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
     {
       "short_name": "DORA Compliance",
       "name": "DORA Compliance Leadership",
-      "summary": "Lead the DORA program through the deep-dive examination phase. Partner with Azure and M365 product trust teams to deliver accurate JET responses on time. Co-develop a regulatory readiness playbook.",
+      "summary": "Lead the DORA program through the deep-dive examination phase. Partner with cloud product trust teams to deliver accurate JET responses on time. Co-develop a regulatory readiness playbook.",
       "success_criteria": [
         "All deep dive JET responses delivered on schedule with no compliance gaps",
-        "Co-authored playbook with Azure Product Trust"
+        "Co-authored playbook with cloud product trust"
       ],
       "impact_statement": "Validated playbook accelerates NIS2 and UK CTP readiness. Becomes the operational foundation for regulator response at scale.",
-      "keywords_for_alignment": ["DORA", "JET", "RFI", "deep dive", "Joint Examination Team", "Azure Product Trust", "M365", "playbook", "ERCM", "EU regulator"]
+      "keywords_for_alignment": ["DORA", "JET", "RFI", "deep dive", "Joint Examination Team", "cloud product trust", "playbook", "risk management", "EU regulator"]
     },
     {
       "short_name": "Internal Goals",
@@ -104,7 +104,7 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
     }
   ],
   "behaviors": {
-    "trust_intentionally": "Approachable, direct, action-oriented with partners across Azure, M365, ERCM, CELA.",
+    "trust_intentionally": "Approachable, direct, action-oriented with partners across product, engineering, risk, and legal.",
     "solve_at_scale": "Build solutions that serve more than the immediate problem. Bias toward durable technical solutions."
   },
   "extraction_notes": "Extracted 2 goals from the document. Both had clear success criteria sections. Behaviors section was present and copied with light paraphrasing."

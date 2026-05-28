@@ -49,12 +49,12 @@ You will receive a JSON input with the Reverie definition, the user's checkbox a
     "memories": [
       { "id": "mem_a1b2", "title": "Draft DORA Article 6 risk taxonomy" },
       { "id": "mem_c3d4", "title": "Cross-walk NIS2 controls to DORA Article 6" },
-      { "id": "mem_g7h8", "title": "Review Mike's RFI section 3 draft" }
+      { "id": "mem_g7h8", "title": "Review peer's RFI section 3 draft" }
     ]
   },
   "user_response": {
     "checked_memory_ids": ["mem_a1b2", "mem_c3d4"],
-    "free_text": "Finished the Article 6 taxonomy first cut, sent it to the EU Reg lead. Got partway through the NIS2 cross-walk, ran into the access control mapping ambiguity again. Did not get to Mike's draft. Also noticed the data residency section needs a new diagram, added that as a thought."
+    "free_text": "Finished the Article 6 taxonomy first cut, sent it to the EU Reg lead. Got partway through the NIS2 cross-walk, ran into the access control mapping ambiguity again. Did not get to the peer's draft. Also noticed the data residency section needs a new diagram, added that as a thought."
   }
 }
 ```
@@ -86,7 +86,7 @@ You will receive a JSON input with the Reverie definition, the user's checkbox a
       "evidence_quote": "noticed the data residency section needs a new diagram"
     }
   ],
-  "notes": "User did not advance mem_g7h8 (Mike's draft); leave it on the kanban for next Reverie. Access control mapping ambiguity flagged twice now: consider surfacing as an open question."
+  "notes": "User did not advance mem_g7h8 (peer's draft); leave it on the kanban for next Reverie. Access control mapping ambiguity flagged twice now: consider surfacing as an open question."
 }
 ```
 

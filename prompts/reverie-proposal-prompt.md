@@ -62,7 +62,7 @@ You will receive a JSON input with the selected memories, the user's strand defa
     },
     {
       "id": "mem_e5f6",
-      "title": "Prep 1:1 talking points for Mike",
+      "title": "Prep 1:1 talking points for manager",
       "why": "Skipped last week",
       "strand": "1on1-prep",
       "status": "open",
@@ -104,8 +104,8 @@ You will receive a JSON input with the selected memories, the user's strand defa
       "suggested_minutes": 30,
       "suggested_window_hint": "today or tomorrow, late afternoon ok",
       "urgency_reason": "Skipped last week; recurrence damage compounds; light effort",
-      "event_subject": "Pensieve Reverie: 1on1 prep for Mike",
-      "event_body_markdown": "## Memories in this Reverie\n\n- Prep 1:1 talking points for Mike: skipped last week\n\n[Open in Pensieve](http://localhost:8440/reverie/<reverie_id>)",
+      "event_subject": "Pensieve Reverie: 1on1 prep for manager",
+      "event_body_markdown": "## Memories in this Reverie\n\n- Prep 1:1 talking points for manager: skipped last week\n\n[Open in Pensieve](http://localhost:8440/reverie/<reverie_id>)",
       "confidence": 0.71
     }
   ],

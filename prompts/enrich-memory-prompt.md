@@ -246,7 +246,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ## Failure modes you should explicitly handle
 
 - **Empty notes**: lean on title + list_name + recent_context. Do not fabricate. Lower `confidence_impact` accordingly.
-- **Title is a fragment** (e.g. "Steph email"): set `notes_for_user` explaining what context is missing.
+- **Title is a fragment** (e.g. "manager email"): set `notes_for_user` explaining what context is missing.
 - **Multi-strand candidate**: pick the best fit, set `confidence_strand` lower (0.5-0.7), and put the alternative in `notes_for_user`.
 - **Multi-goal candidate**: include up to 2 goals (3+ is rare and reserved for program-wide work).
 - **Task references an unknown program**: leave `connect_goal_ids: []` and explain in `connect_alignment_note`.

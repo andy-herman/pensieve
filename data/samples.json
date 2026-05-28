@@ -63,9 +63,9 @@
     },
     {
       "id": "leadership-update",
-      "display_name": "Leadership Updates (Friday Steph cadence)",
+      "display_name": "Leadership Updates (weekly manager cadence)",
       "kind": "writing",
-      "description": "Weekly structured update to Steph every Friday, timed to inform her Monday sync with Molly + Oliver. Mentioned explicitly in Connect setback reflection.",
+      "description": "Weekly structured update to your manager, timed to inform the leadership sync that follows. Sample of a recurring writing strand that maps to multiple Connect goals.",
       "default_reverie_minutes": 45,
       "connect_goal_ids": ["goal-2-uk-ctp", "goal-1-dora-deep-dive", "goal-3-nis2-foundation", "goal-4-ai-transformation"]
     },
@@ -108,7 +108,7 @@
       "Reply to JET RFI 0094: ICT third-party register",
       "UK CTP Domain 6: Operational Resilience Testing write-up",
       "Argus narrative engine: handle empty-evidence case",
-      "Friday update to Steph: AI program status"
+      "Friday update to manager: AI program status"
     ]
   },
   "tasks": [
@@ -129,7 +129,7 @@
     {
       "id": "todo_sample_03",
       "list_name": "Work \u2192 Today",
-      "title": "1:1 prep with Mike",
+      "title": "1:1 prep with manager",
       "notes": "",
       "created_at": "2026-05-28T08:02:00-07:00"
     },
@@ -151,7 +151,7 @@
       "id": "todo_sample_06",
       "list_name": "Ops",
       "title": "Approve Argus production VM invoice (Azure subscription)",
-      "notes": "Standard monthly Azure spend. Goes to Steph for cost-center confirmation if over $400.",
+      "notes": "Standard monthly Azure spend. Routes to manager for cost-center confirmation when above the approval threshold.",
       "created_at": "2026-05-28T08:18:00-07:00"
     },
     {
@@ -165,7 +165,7 @@
       "id": "todo_sample_08",
       "list_name": "Argus",
       "title": "Fix Argus regulator-detail crash on missing acronym field",
-      "notes": "Hunter from CELA hit this on the BaFin persona page. NPE in render \u2014 should fall back to short_name. Repro file in repo.",
+      "notes": "A reviewer from Legal hit this on the BaFin persona page. NPE in render \u2014 should fall back to short_name. Repro file in repo.",
       "created_at": "2026-05-27T22:08:00-07:00"
     },
     {
@@ -178,8 +178,8 @@
     {
       "id": "todo_sample_10",
       "list_name": "Team \u2192 Direct Reports",
-      "title": "Review Sara's H2 growth plan draft",
-      "notes": "Sara sent her self-authored growth plan covering 3 stretch goals + 1 cross-team rotation interest. Need feedback before Friday 1:1.",
+      "title": "Review direct report's H2 growth plan draft",
+      "notes": "Direct report sent their self-authored growth plan covering 3 stretch goals + 1 cross-team rotation interest. Need feedback before Friday 1:1.",
       "created_at": "2026-05-28T07:50:00-07:00"
     }
   ]

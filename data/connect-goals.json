@@ -1,11 +1,9 @@
 {
   "_meta": {
-    "source": "Andy's Connect May 2026 (status: in review)",
-    "reflection_period": "2025-10-26 .. 2026-05-16",
-    "vault_canonical": "C:/Andy Herman/Luna Master/AI Agents - Copilot/Memory/Connect Goals/Current.md",
-    "vault_pdf": "C:/Andy Herman/Luna Master/AI Agents - Copilot/Memory/Connect Goals/2026-05_Connect_AndyHerman.pdf",
+    "source": "Pensieve sample goals (anonymized fixture for tests + first-run demo)",
     "last_synced": "2026-05-28",
-    "house_mapping_rationale": "Gryffindor=Goal1 (frontline regulator courage); Hufflepuff=Goal2 (sustained year-over-year dedication); Slytherin=Goal3 (strategic long-game foundation); Ravenclaw=Goal4 (innovation + intellect)"
+    "house_mapping_rationale": "Gryffindor=Goal1 (frontline regulator courage); Hufflepuff=Goal2 (sustained year-over-year dedication); Slytherin=Goal3 (strategic long-game foundation); Ravenclaw=Goal4 (innovation + intellect)",
+    "note": "Replace via the Set Goals modal in the dashboard (upload your own Connect PDF) or by editing this file directly. Schema: see pensieve/enrichment/connect_goals.py."
   },
   "goals": [
     {
@@ -17,14 +15,14 @@
       "house_glyph": "\u26A1",
       "color_primary": "#7a2018",
       "color_accent": "#c9a655",
-      "summary": "Lead CISO GRC role on DORA Core Team through deep dive examination phase. Partner with Azure + M365 Product Trust to deliver accurate JET responses on schedule. Co-develop regulatory readiness playbook.",
+      "summary": "Lead the compliance program team on DORA through the deep dive examination phase. Partner with cloud product trust teams to deliver accurate JET responses on schedule. Co-develop regulatory readiness playbook.",
       "success_criteria": [
         "All deep dive JET responses delivered on schedule with no compliance gaps",
-        "Co-author documented regulatory readiness playbook with Azure Product Trust",
+        "Co-author documented regulatory readiness playbook with cloud product trust",
         "Structured, timely leadership updates on progress, risks, blockers"
       ],
-      "impact_statement": "Validated cross-org playbook accelerates NIS2 and UK CTP readiness. Integrated with Argus, becomes the operational foundation for how CISO GRC responds to regulators at scale.",
-      "keywords_for_alignment": ["DORA", "JET", "RFI", "deep dive", "Joint Examination Team", "regulator response", "ERCM", "ERM", "Azure Product Trust", "playbook", "RACI", "evidence acceptance", "EU regulator"]
+      "impact_statement": "Validated cross-org playbook accelerates NIS2 and UK CTP readiness. Integrated with Argus, becomes the operational foundation for how the compliance team responds to regulators at scale.",
+      "keywords_for_alignment": ["DORA", "JET", "RFI", "deep dive", "Joint Examination Team", "regulator response", "risk management", "cloud product trust", "playbook", "RACI", "evidence acceptance", "EU regulator"]
     },
     {
       "id": "goal-2-uk-ctp",
@@ -40,9 +38,9 @@
         "Validated Year 1 Self-Assessment submitted to regulators on time post-designation",
         "Initial dependency mapping complete within 12 months of designation",
         "Year 2 readiness roadmap: scenario testing, incident mgmt playbook, partner engagement model",
-        "Maintain weekly leadership update cadence (Friday \u2192 Steph \u2192 Monday Molly/Oliver sync)"
+        "Maintain weekly leadership update cadence (e.g. Friday update to manager that feeds their Monday leadership sync)"
       ],
-      "impact_statement": "Year 1 submission establishes Microsoft regulatory credibility with BoE, PRA, FCA. Year 2 roadmap positions CISO GRC to lead scenario testing as strategic program, not reactive exercise.",
+      "impact_statement": "Year 1 submission establishes regulatory credibility with BoE, PRA, FCA. Year 2 roadmap positions the team to lead scenario testing as a strategic program, not a reactive exercise.",
       "keywords_for_alignment": ["UK CTP", "CTP", "designation", "self-assessment", "self assessment", "BoE", "PRA", "FCA", "Bank of England", "scenario testing", "dependency mapping", "domain write-up", "ICT third party", "year 1", "year 2", "Year 1", "Year 2"]
     },
     {
@@ -75,7 +73,7 @@
       "summary": "Design + operationalize structured AI transformation program for CISO GRC. Layered architecture across four capability areas (day-to-day automation, productivity multipliers, onboarding/knowledge, executive dashboards). Scale Argus from MVP to wider-used regulatory compliance platform.",
       "success_criteria": [
         "Program launched with documented governance: idea intake, triage, piloting, adoption",
-        "Argus demos with Azure + M365 product leadership completed; next-phase investment secured",
+        "Argus demos with cloud product leadership completed; next-phase investment secured",
         "At least one production capability across each of the four focus areas",
         "Argus dashboarding deployed for leadership near real-time program visibility"
       ],
@@ -84,7 +82,7 @@
     }
   ],
   "behaviors": {
-    "trust_intentionally": "Approachable, direct, action-oriented with partners across Azure, M365, ERCM, CELA. Invest in relationships. Focus energy on shared outcomes over org friction.",
+    "trust_intentionally": "Approachable, direct, action-oriented with partners across product, engineering, risk management, and legal. Invest in relationships. Focus energy on shared outcomes over org friction.",
     "solve_at_scale": "Build solutions that serve more than the immediate problem. Push for consolidated tooling (ADO, Power BI) over siloed workflows. Bias toward durable technical solutions."
   }
 }
