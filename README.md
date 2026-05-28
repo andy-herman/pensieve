@@ -124,41 +124,110 @@ A small sync layer so your Chroma store is consistent across machines without lo
 
 ## Architecture
 
-```
-Microsoft To-Do (Outlook tasks)        <-- source of truth for TASKS
-        |
-        |  read-only via local Outlook COM (pywin32)
-        v
-pensieve.sources.outlook_com           --> can also use sample_file source
-        |
-        v
-pensieve.enrichment                    --> Azure OpenAI (gpt-5.x deployment)
-  (loads prompts/enrich-memory-prompt.md
-   and data/connect-goals.json)
-        |
-        v
-pensieve.store.chroma                  <-- source of truth for ENRICHMENTS
-  data/chroma/ (embedded, persistent)
-  one document per task, ID = source task ID
-        |
-        v
-pensieve.api.server                    --> FastAPI on localhost:8765
-  GET  /api/healthz
-  GET  /api/memories
-  GET  /api/memories/{id}
-  PATCH /api/memories/{id}/column
-  GET  /api/search?q=...
-  GET  /api/goals
-  GET  /                               --> serves the static dashboard
-        |
-        v
-frontend-proto/                        --> HP-themed kanban dashboard
-  index.html + pensieve.js + pensieve.css
-  Two views, three themes, drag-drop,
-  semantic search, goals editor
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#2c4670',
+  'primaryTextColor':'#f3e7c4',
+  'primaryBorderColor':'#c9a655',
+  'lineColor':'#c9a655',
+  'fontFamily':'Cinzel, Georgia, serif'
+}}}%%
+flowchart TD
+
+    %% ---------- Source of truth for TASKS ----------
+    subgraph SRC["📥 Source of truth for TASKS"]
+        direction TB
+        TODO["Microsoft To-Do<br/>(your real lists)"]
+        OUTLOOK["Outlook desktop<br/>(MAPI / pywin32 COM)"]
+        TODO -->|"sync"| OUTLOOK
+    end
+
+    %% ---------- Pensieve core (Python package) ----------
+    subgraph CORE["🪄 Pensieve core - Python package"]
+        direction TB
+        CLI["pensieve.cli<br/>(Typer)"]
+        SRCS["pensieve.sources<br/>outlook_com / sample_file<br/><b>READ-ONLY</b>"]
+        SYNC["pensieve.sync<br/>orchestrator + overlay"]
+        ENRICH["pensieve.enrichment<br/>prompt + LLM client"]
+        STATE["pensieve.sync_state<br/>thread-safe job tracker"]
+        API["pensieve.api.server<br/>FastAPI · localhost:8765"]
+        STORE["pensieve.store.chroma<br/>ChromaDB local vector store<br/>(source of truth for ENRICHMENTS)"]
+    end
+
+    %% ---------- AI ----------
+    subgraph AI["✨ AI"]
+        AOAI["Azure OpenAI<br/>gpt-5.x deployment<br/>AAD bearer (DefaultAzureCredential)"]
+    end
+
+    %% ---------- Local config ----------
+    subgraph CONF["📜 Local config + prompts"]
+        GOALS["data/connect-goals.json<br/>(4 Connect goals · Houses)"]
+        SAMPLES["data/samples.json<br/>(strand catalog)"]
+        PROMPT["prompts/<br/>enrich-memory-prompt.md"]
+    end
+
+    %% ---------- UI ----------
+    subgraph UI["🦉 HP-themed dashboard"]
+        direction TB
+        DASH["frontend-proto/<br/>index.html · pensieve.js · pensieve.css<br/>Lifecycle + Houses views · drag-drop · semantic search"]
+        HEDWIG["Hedwig button<br/>Pull from To-Do"]
+        REGEN["✨ Regenerate with AI<br/>(per card)"]
+    end
+
+    %% ---------- Flows ----------
+    OUTLOOK -.->|"COM read"| SRCS
+    CLI -->|"pensieve sync"| SYNC
+    HEDWIG -->|"POST /api/sync"| API
+    REGEN -->|"POST /api/memories/{id}/regenerate"| API
+    API -->|"background thread"| SYNC
+    SYNC --> SRCS
+    SYNC --> ENRICH
+    SRCS -->|"RawTask stream"| SYNC
+    ENRICH --> AOAI
+    AOAI -.->|"enriched fields:<br/>why · impact · strand · connect alignment"| ENRICH
+    ENRICH --> SYNC
+    SYNC -->|"overlay_regeneration<br/>preserves user column +<br/>private notes"| STORE
+    API <-->|"read · patch · regenerate"| STORE
+    API -->|"static files"| DASH
+    DASH <-->|"REST · JSON"| API
+    API -->|"job state"| STATE
+    STATE -->|"poll status"| DASH
+
+    %% ---------- Config wiring ----------
+    GOALS -.-> ENRICH
+    SAMPLES -.-> SYNC
+    PROMPT -.-> ENRICH
+    GOALS -.-> DASH
+
+    %% ---------- House colors ----------
+    classDef gryffindor fill:#7a2018,stroke:#c9a655,color:#f3e7c4
+    classDef hufflepuff fill:#b08a26,stroke:#2a1d10,color:#2a1d10
+    classDef slytherin  fill:#2e5a3a,stroke:#a8a8a8,color:#f3e7c4
+    classDef ravenclaw  fill:#2c4670,stroke:#c9a655,color:#f3e7c4
+    classDef gold       fill:#1b1410,stroke:#c9a655,color:#c9a655
+
+    class TODO,OUTLOOK gryffindor
+    class SRCS,SYNC,STATE,STORE,API,CLI,ENRICH ravenclaw
+    class AOAI slytherin
+    class DASH,HEDWIG,REGEN hufflepuff
+    class GOALS,SAMPLES,PROMPT gold
 ```
 
-Two write paths exist into Chroma: the sync command (enriched task upsert) and the dashboard column-change PATCH. The dashboard never writes to Outlook.
+**Key invariants**
+
+- **Outlook / Microsoft To-Do is read-only.** Pensieve never calls `.Save()`. Enrichments live in ChromaDB, never on the task itself.
+- **Two write paths into ChromaDB:** the `sync` orchestrator (full or per-task) and the dashboard's PATCH endpoint. The dashboard never writes to Outlook.
+- **`overlay_regeneration` preserves user intent.** On re-enrich (refresh, edit-in-To-Do, or per-card regenerate), the user's lifecycle column and private notes survive — only the AI-generated fields are overwritten.
+- **Single-writer ChromaDB.** The sync job tracker (`pensieve.sync_state`) refuses to start a second sync while one is running.
+- **HP house colors** map 1:1 to the four Connect goals editable in the dashboard.
+
+### Prompt used to generate this diagram
+
+If you want to regenerate the diagram as Pensieve evolves, this is the prompt to feed to an LLM:
+
+> Generate a Mermaid `flowchart TD` architecture diagram for a Windows-only Python+JS project called **Pensieve**. It is a Harry Potter–themed personal kanban + AI enrichment layer over **Microsoft To-Do** (read via local **Outlook COM / pywin32**). Tasks are pulled (READ-ONLY) into a Python orchestrator (`pensieve.sync`), enriched by **Azure OpenAI (gpt-5.x via AAD bearer)** using a prompt + a `connect-goals.json` (4 Connect goals mapped to Hogwarts Houses), and persisted in a local **ChromaDB** vector store. A **FastAPI** server on `localhost:8765` exposes REST endpoints (`/api/memories`, `/api/sync`, `/api/memories/{id}/regenerate`, `/api/lists`) and serves a static HP-themed HTML/JS/CSS dashboard with two views (Lifecycle + Houses), a 🦉 **"Pull from To-Do"** button that kicks off a background sync, and a per-card ✨ **"Regenerate with AI"** button. A thread-safe `sync_state` tracker prevents concurrent syncs. Re-enrichment uses an `overlay_regeneration` helper that preserves the user's manual column placement and private notes. Group nodes into subgraphs: *Source of truth for TASKS*, *Pensieve core*, *AI*, *Local config + prompts*, *HP-themed dashboard*. Use solid arrows for runtime data flow, dashed arrows for config/auth. Apply HP house color `classDef`s (Gryffindor red/gold, Hufflepuff yellow/black, Slytherin green/silver, Ravenclaw blue/bronze) and an Azure-OpenAI Slytherin tint. Initialize Mermaid with theme `base` and the gold/navy variable overrides shown in the existing diagram. Keep the diagram readable on GitHub (no exotic syntax — `flowchart` + `subgraph` + `classDef` only).
+
+
 
 ## Quickstart
 
