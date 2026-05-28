@@ -464,17 +464,38 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
 }
 
 async function persistColumnChange(memoryId, column) {
-  if (!STATE.apiConnected) return;
+  // Always attempt the PATCH. Gating this on `apiConnected` caused silent data
+  // loss when the dashboard first loaded against a down server (apiConnected
+  // stuck on false), the user later dragged cards, and then Pull-from-To-Do
+  // succeeded and triggered loadMemoriesFromApi which overwrote the un-saved
+  // local drags with Chroma's columns.
   try {
     // memoryId in dashboard is "mem_<source_id>"; API expects bare source id.
     const apiId = memoryId.replace(/^mem_/, "");
-    await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/column`, {
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/column`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ column }),
     });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status}: ${text.slice(0, 120)}`);
+    }
+    // If we got here, the API is up. Flip the flag so the next render of UI
+    // affordances that gate on apiConnected (e.g. semantic search) starts
+    // working without forcing a page reload.
+    if (!STATE.apiConnected) {
+      STATE.apiConnected = true;
+      const footerSource = $("#api-source-label");
+      if (footerSource && STATE.apiSourceLabel === "offline (seed data)") {
+        STATE.apiSourceLabel = "live (reconnected)";
+        footerSource.textContent = STATE.apiSourceLabel;
+      }
+    }
   } catch (e) {
-    toast(`Could not save column change: ${e.message}`);
+    // Loud toast so the user knows the drag did NOT persist and the next
+    // Pull-from-To-Do or Refresh will revert this card.
+    toast(`Move not saved (${e.message}) - card will revert on next refresh`);
   }
 }
 
