@@ -148,7 +148,7 @@ Pensieve's architecture is presented in three layered diagrams — a high-level 
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#2c4670','primaryTextColor':'#f3e7c4','primaryBorderColor':'#c9a655','lineColor':'#c9a655','fontFamily':'Cinzel, Georgia, serif'}}}%%
 flowchart LR
     subgraph YOU["🧙 You"]
-        ANDY["Andy at the keyboard"]
+        ANDY["You at the keyboard"]
         TODO["Microsoft To-Do<br/>(your real lists)"]
     end
     subgraph PENS["🪄 Pensieve (local, Windows)"]
@@ -189,30 +189,40 @@ flowchart TD
     POST["POST /api/sync"]
     TRACKER["sync_state tracker<br/>(thread-safe, single-job)"]
     THREAD["background thread<br/>pythoncom.CoInitialize()"]
-    SRC["pensieve.sources.outlook_com<br/>walks all task folders"]
-    ORCH["pensieve.sync orchestrator<br/>diffs by last_modification_time"]
+    SRC["pensieve.sources.outlook_com<br/>walks all task folders<br/>(records covered_lists)"]
+    ORCH["pensieve.sync orchestrator<br/>diffs by mtime + content drift"]
+    AUTOCLOSE["completed in source<br/>→ auto-route to Closed<br/>(no LLM tokens spent)"]
     ENRICH["pensieve.enrichment<br/>+ Azure OpenAI chat"]
     OVERLAY["overlay_regeneration<br/>preserves column +<br/>private notes"]
-    CHROMA[("ChromaDB upsert")]
+    SWEEP["orphan sweep<br/>(remove memories whose<br/>source task vanished;<br/>scoped to source + covered_lists)"]
+    CHROMA[("ChromaDB<br/>upsert / delete")]
     POLL["GET /api/sync/status<br/>(polled by dashboard)"]
     REDRAW["board re-renders<br/>with new memories"]
 
     HEDWIG --> POST --> TRACKER --> THREAD
     THREAD --> SRC --> ORCH
-    ORCH -->|"new / modified / forced"| ENRICH
+    ORCH -->|"completed in source"| AUTOCLOSE --> CHROMA
+    ORCH -->|"new / modified / drift"| ENRICH
     ORCH -->|"unchanged"| CHROMA
     ENRICH --> OVERLAY --> CHROMA
+    SRC --> SWEEP --> CHROMA
     TRACKER --> POLL --> REDRAW
 
     classDef hufflepuff fill:#b08a26,stroke:#2a1d10,color:#2a1d10
     classDef ravenclaw  fill:#2c4670,stroke:#c9a655,color:#f3e7c4
     classDef slytherin  fill:#2e5a3a,stroke:#a8a8a8,color:#f3e7c4
     class HEDWIG,REDRAW,POLL hufflepuff
-    class POST,TRACKER,THREAD,SRC,ORCH,OVERLAY,CHROMA ravenclaw
+    class POST,TRACKER,THREAD,SRC,ORCH,AUTOCLOSE,OVERLAY,SWEEP,CHROMA ravenclaw
     class ENRICH slytherin
 ```
 
-**Key invariants on this path:** Outlook is read-only (no `.Save()` anywhere). The tracker refuses a second sync while one is running (Chroma is a single-writer store). `overlay_regeneration` is what makes the workflow "edit title in To-Do → click 🦉" safe — your lifecycle column and private notes survive the re-enrichment.
+**Key invariants on this path:**
+
+- **Outlook is read-only.** No `.Save()` anywhere; a unit test asserts forbidden mutation method names don't exist on any source class.
+- **One sync at a time.** The tracker refuses a second sync while one is running — ChromaDB is a single-writer store and concurrent writers would corrupt the index.
+- **Three diff branches, not two.** A task that's been *completed* in To-Do skips the LLM entirely and auto-routes to **Closed** (saves tokens; closure is signal-free). Tasks that are *new, modified, or have content drift* (title/notes changed even without an `mtime` bump) go through enrichment. *Unchanged* tasks pass straight through to an idempotent upsert.
+- **`overlay_regeneration` is what makes the workflow "edit title in To-Do → click 🦉" safe.** Your lifecycle column placement and private notes survive the re-enrichment.
+- **Orphan sweep is scoped, not global.** A narrow sync (e.g. only the "Agentic AI work" list) can only delete memories from lists *that sync was actually responsible for observing*. This is mandatory — a naive "delete anything not in the live pull" would erase every memory from every other list.
 
 ### 3 / Regenerate flow — ✨ Regenerate with AI (per card)
 
@@ -256,14 +266,14 @@ To regenerate as Pensieve evolves, feed any LLM one of these targeted prompts (e
 <details>
 <summary><b>Context diagram prompt</b></summary>
 
-> Generate a Mermaid `flowchart LR` **context diagram** for **Pensieve**: a Harry Potter–themed personal kanban + AI enrichment layer over Microsoft To-Do, read via local Outlook COM (pywin32). Show three subgraphs: "🧙 You" (Andy + Microsoft To-Do), "🪄 Pensieve (local, Windows)" (Outlook desktop + COM, Pensieve core, local ChromaDB, HP-themed dashboard on localhost:8765), and a single "✨ Azure OpenAI gpt-5.x" node outside both. Solid arrows for runtime flow, dashed arrows for read-only / async / config flow. The dashboard never writes to To-Do (no arrow that direction). Apply HP house `classDef`s: Gryffindor red/gold for user/source-of-truth, Ravenclaw blue/bronze for Pensieve core + storage, Hufflepuff yellow/black for the dashboard, Slytherin green/silver for Azure OpenAI. Use Mermaid theme `base` with the gold/navy variable overrides.
+> Generate a Mermaid `flowchart LR` **context diagram** for **Pensieve**: a Harry Potter–themed personal kanban + AI enrichment layer over Microsoft To-Do, read via local Outlook COM (pywin32). Show three subgraphs: "🧙 You" (the user + Microsoft To-Do), "🪄 Pensieve (local, Windows)" (Outlook desktop + COM, Pensieve core, local ChromaDB, HP-themed dashboard on localhost:8765), and a single "✨ Azure OpenAI gpt-5.x" node outside both. Solid arrows for runtime flow, dashed arrows for read-only / async / config flow. The dashboard never writes to To-Do (no arrow that direction). Apply HP house `classDef`s: Gryffindor red/gold for user/source-of-truth, Ravenclaw blue/bronze for Pensieve core + storage, Hufflepuff yellow/black for the dashboard, Slytherin green/silver for Azure OpenAI. Use Mermaid theme `base` with the gold/navy variable overrides.
 
 </details>
 
 <details>
 <summary><b>Sync flow prompt</b></summary>
 
-> Generate a Mermaid `flowchart TD` **sync-flow diagram** for **Pensieve**'s 🦉 "Pull from To-Do" button. Trace: button click → `POST /api/sync` → thread-safe `sync_state` tracker → background thread (calls `pythoncom.CoInitialize()`) → `pensieve.sources.outlook_com` walks all task folders → `pensieve.sync` orchestrator diffs by `last_modification_time` (branches into new/modified/forced vs. unchanged) → enrichment via Azure OpenAI for changed tasks → `overlay_regeneration` (preserves user column + private notes) → ChromaDB upsert. Separately show the polling loop: dashboard polls `GET /api/sync/status` → re-renders the board. Hufflepuff colors for UI nodes, Ravenclaw for backend, Slytherin for the LLM.
+> Generate a Mermaid `flowchart TD` **sync-flow diagram** for **Pensieve**'s 🦉 "Pull from To-Do" button. Trace: button click → `POST /api/sync` → thread-safe `sync_state` tracker → background thread (calls `pythoncom.CoInitialize()`) → `pensieve.sources.outlook_com` walks all task folders and records which lists were covered → `pensieve.sync` orchestrator diffs by both `last_modification_time` and **content drift** (title/notes changes that didn't bump mtime). Branch into THREE paths: (1) tasks **completed** in source → auto-route to the **Closed** column with no LLM call, (2) **new / modified / drift** → Azure OpenAI enrichment → `overlay_regeneration` (preserves user column + private notes), (3) **unchanged** → idempotent upsert. Also show a separate **orphan sweep** branch off the source: memories whose source task vanished get deleted from Chroma, *scoped to `source + covered_lists` only* (so a narrow sync can never erase memories from lists it didn't pull). All three branches and the sweep terminate at ChromaDB upsert/delete. Separately show the polling loop: dashboard polls `GET /api/sync/status` → re-renders the board. Hufflepuff colors for UI nodes, Ravenclaw for backend, Slytherin for the LLM.
 
 </details>
 
@@ -423,6 +433,7 @@ pensieve/
 |
 |-- pyproject.toml             Package metadata + dependencies
 |-- .env.example               Documented config template
+|-- AGENTS.md                  Instructions for AI assistants working in this repo
 |-- SPEC.md                    Long-form design spec
 |-- PHASES.md                  Phased roadmap with ship gates
 |-- OPEN-QUESTIONS.md          Live open questions and how they were answered

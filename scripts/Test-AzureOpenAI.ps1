@@ -2,7 +2,7 @@
 #
 # *** LEGACY (Phase 0) — superseded by `pensieve init` / `pensieve sync` on 2026-05-28. ***
 # Kept for historical reference only; not maintained.
-# See README.md and pensieve/cli.py for the current path.
+# See README.md, AGENTS.md, and pensieve/cli.py for the current path.
 #
 # Phase 0 sanity check #1: prove the Azure OpenAI call path works for
 # Pensieve. Loads .env, calls the deployment with a trivial memory-

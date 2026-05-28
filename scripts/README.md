@@ -22,7 +22,7 @@ pensieve status        # inspect the store
 pensieve serve         # launch dashboard at http://localhost:8765
 ```
 
-See `README.md` at the repo root for the current
+See `README.md` and `AGENTS.md` at the repo root for the current
 architecture.
 
 ## What's in here
