@@ -423,7 +423,6 @@ pensieve/
 |
 |-- pyproject.toml             Package metadata + dependencies
 |-- .env.example               Documented config template
-|-- AGENTS.md                  Instructions for AI assistants working in this repo
 |-- SPEC.md                    Long-form design spec
 |-- PHASES.md                  Phased roadmap with ship gates
 |-- OPEN-QUESTIONS.md          Live open questions and how they were answered

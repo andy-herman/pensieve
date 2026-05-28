@@ -5,7 +5,7 @@
 # Inbox Copilot. Both share the "no external LLMs" hard constraint and the
 # Phase-0-while-Graph-blocked pattern.
 #
-# HARD CONSTRAINT (from AGENTS.md, do not remove):
+# HARD CONSTRAINT (architectural invariant — see SPEC.md §9, do not remove):
 #   No external LLMs. Every classification or generation MUST hit Azure
 #   OpenAI (Cortex hub gpt-5.4-2, keyless DefaultAzureCredential) or
 #   Microsoft 365 Copilot via MCP. Never an external endpoint.

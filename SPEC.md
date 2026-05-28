@@ -69,7 +69,7 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 |---|---|---|
 | **Memory** | An enriched task record: original To-Do title + notes + LLM-extracted *why* / *impact* / *strand* / *Connect-goal alignment* / *closure context* | ChromaDB `memories` collection; (Phase 2) To-Do task `body` field mirrors `why` + `strand` |
 | **Strand** | A project / workstream a memory belongs to. Examples: `dora-rfi`, `inbox-copilot-build`, `1on1-prep`, `ic5-promo-evidence` | `data/samples.json` strand catalog; flattened into each Memory record; LLM-suggested with `needs_human_strand_review` flag for low-confidence cases |
-| **Connect Goal** | One of Andy's semi-annual Connect commitments (House-aligned: Argus / DORA / Mentoring / AI-program). Memories carry `connect_goal_ids` (multi-select) + `connect_alignment_note` so the dashboard can group, filter, and at promo-time generate evidence per Connect goal. | `data/connect-goals.json` (canonical mirror of vault `Memory\Connect Goals\Current.md`); flattened into Memory metadata |
+| **Connect Goal** | One of the user's semi-annual Connect commitments (House-aligned: 4 canonical Houses + 4 extension Houses for users with more goals). Memories carry `connect_goal_ids` (multi-select) + `connect_alignment_note` so the dashboard can group, filter, and at promo-time generate evidence per Connect goal. | `data/connect-goals.json` (populated via the dashboard's Connect PDF importer or edited by hand); flattened into Memory metadata |
 | **Dive** | A query against memories — time window + strand + status + semantic search | Ephemeral (UI state); semantic search uses Chroma `query()` over the document embedding |
 | **Reverie** | A calendar-blocked focus session scheduled to work on one or more memories (typically grouped by strand). Pensieve proposes; user confirms; on write, a tentative Outlook event is created with strand metadata in the body. Round-trip: when the Reverie fires, Pensieve prompts user for which memories were actually advanced. | Phase 2.5 — separate ChromaDB collection (`reveries`) + corresponding Outlook calendar event id |
 | **Reflection** | A synthesis of memories over a review period (week / month / H1 / H2) — narrative form, framed for the audience. Phase 3 reflections are Connect-Goal-aware: one section per Connect commitment. | Phase 3 — separate ChromaDB collection (`reflections`); exported as markdown for Synapse |
@@ -227,7 +227,6 @@ Pensieve deliberately re-uses architecture decisions from sibling projects:
 | Vanilla JS + HTML/CSS dashboard (HP-themed) | Custom for Pensieve; small enough to stay framework-free |
 | Tauri v2 desktop packaging (post-MVP polish) | Synapse + Argus |
 | No-external-LLM constraint | Inbox Copilot |
-| Vault-aligned session lifecycle | Global Copilot Instructions |
 | Agency `agency.toml` per project + baseline `remote_config` | Agency Copilot rollout 2026-05-28 |
 | Outlook COM as the SFI-safe productivity-data source | New choice for Pensieve — first project to hit the SFI Graph block |
 

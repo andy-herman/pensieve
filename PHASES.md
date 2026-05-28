@@ -72,7 +72,7 @@ Original Phase 1 plan: live Graph (`Tasks.ReadWrite`) read + writeback to Notes.
   - Semantic-search input runs `/api/search?q=`
   - Click any card → full edit modal: title, strand, column, review flag, why, impact, Connect-Goal multi-select chips, alignment note, private note → Save PATCHes API and updates board
   - Footer shows connection status + source label
-- **`data/connect-goals.json`** — canonical Connect-Goal catalog (mirrors vault `Memory\Connect Goals\Current.md`); enrichment prompt feeds these to the LLM as context
+- **`data/connect-goals.json`** — canonical Connect-Goal catalog (populated by the dashboard's PDF importer or edited by hand); enrichment prompt feeds these to the LLM as context
 - **`tests/`** — 15 pytests covering sources read-only contract, store CRUD + idempotency + semantic search, enrichment prompt build
 - **End-to-end verified:** 10/10 samples enriched successfully (54,935 tokens, 1 flagged for review), idempotent re-sync correctly skips unchanged tasks, dashboard live at `http://localhost:8765/`, in-card edits round-trip through Chroma
 

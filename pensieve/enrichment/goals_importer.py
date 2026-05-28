@@ -20,10 +20,10 @@ from typing import Any, Optional
 from pensieve.enrichment.llm_client import AzureOpenAIChatClient
 from pensieve.enrichment.prompt import load_system_prompt
 
-# 8-entry palette. First four are the canonical HP houses used in Andy's vault
-# (and matching the existing dashboard CSS); the next four are extensions for
-# users with more than 4 goals. Each entry must have a unique `house` slug so
-# the dashboard CSS can target it.
+# 8-entry palette. First four are the canonical HP houses used by the
+# dashboard CSS; the next four are extensions for users with more than
+# 4 goals. Each entry must have a unique `house` slug so the dashboard
+# CSS can target it.
 HOUSE_PALETTE: list[dict[str, str]] = [
     {
         "house": "gryffindor",

@@ -183,7 +183,7 @@ const SEED_MEMORIES = [
     title: "H1 self-reflection: stack rank top 6 moments",
     suggested_strand: "ic5-promo-evidence",
     needs_human_strand_review: false,
-    why: "Pulling from session notes, decisions log, and Living Our Culture callouts to stack-rank the strongest contributions since October 2025 for promo case and Connect refresh.",
+    why: "Pulling from notes, prior reviews, and peer feedback to stack-rank the strongest contributions since October 2025 for promo case and Connect refresh.",
     impact: "Creates a sharper evidence base for the Connect narrative and promo case.",
     strand_kind: "writing",
     confidence_strand: 0.98, confidence_impact: 0.88,
