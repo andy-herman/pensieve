@@ -162,7 +162,7 @@ def status() -> None:
     t = Table(title="By column", show_header=True)
     t.add_column("column")
     t.add_column("count", justify="right")
-    for col in ("memory", "dive", "reverie", "reflection", "vial"):
+    for col in ("memory", "dive", "review", "closed"):
         t.add_row(col, str(by_col.get(col, 0)))
     console.print(t)
     t2 = Table(title="By strand", show_header=True)

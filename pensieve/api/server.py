@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
     @app.patch("/api/memories/{memory_id}/column")
     def patch_column(memory_id: str, body: dict[str, str]) -> dict[str, Any]:
         col = (body or {}).get("column", "").strip()
-        if col not in ("memory", "dive", "reverie", "reflection", "vial"):
+        if col not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {col}")
         ok = store.update_column(memory_id, col)
         if not ok:
@@ -93,7 +93,7 @@ def create_app() -> FastAPI:
             mem.connect_goal_ids = [str(g) for g in body["connect_goal_ids"] if g]
         if "needs_human_strand_review" in body:
             mem.needs_human_strand_review = bool(body["needs_human_strand_review"])
-        if mem.column not in ("memory", "dive", "reverie", "reflection", "vial"):
+        if mem.column not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {mem.column}")
         store.upsert_memory(mem)
         return {"ok": True, "memory": mem.to_dashboard_dict()}
@@ -109,7 +109,100 @@ def create_app() -> FastAPI:
 
     @app.get("/api/goals")
     def goals() -> dict[str, Any]:
-        return {"goals": load_connect_goals()}
+        import json as _json
+        meta: dict[str, Any] = {}
+        path = settings.connect_goals_path
+        if path.exists():
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    raw = _json.load(f)
+                if isinstance(raw, dict):
+                    meta = raw.get("_meta") or {}
+            except Exception:
+                meta = {}
+        return {"goals": load_connect_goals(), "_meta": meta}
+
+    @app.post("/api/goals/import")
+    async def import_goals(file: "UploadFile" = File(...)) -> dict[str, Any]:  # noqa: F821, B008
+        """Parse an uploaded Connect PDF and return a proposed goals payload.
+
+        Does NOT persist. The frontend shows the proposal for review, then
+        the user clicks Save -> POST /api/goals to commit.
+        """
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="File must be a .pdf")
+        pdf_bytes = await file.read()
+        if not pdf_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
+        if len(pdf_bytes) > 5 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413, detail="PDF must be smaller than 5 MB"
+            )
+
+        from pensieve.enrichment.goals_importer import import_pdf_to_goals
+
+        try:
+            payload = import_pdf_to_goals(
+                pdf_bytes, source_label=f"Imported from {file.filename}"
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"PDF import failed: {e}") from e
+
+        return {"ok": True, "proposal": payload}
+
+    @app.post("/api/goals")
+    def save_goals(body: dict[str, Any]) -> dict[str, Any]:
+        """Persist a goals payload to data/connect-goals.json.
+
+        Body shape (from the editor or from /api/goals/import's response):
+          { "_meta": {...optional...}, "goals": [ {id, number, short_name, ...}, ... ] }
+
+        Validates that each goal has at least id + short_name. Overwrites the
+        file. Invalidates the in-process cache so the next enrichment sees the
+        new goals immediately.
+        """
+        import json as _json
+
+        from pensieve.enrichment import connect_goals as _cg_mod
+
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Body must be a JSON object")
+        goals_in = body.get("goals")
+        if not isinstance(goals_in, list):
+            raise HTTPException(status_code=400, detail="Body.goals must be a list")
+        seen_ids: set[str] = set()
+        for i, g in enumerate(goals_in):
+            if not isinstance(g, dict):
+                raise HTTPException(status_code=400, detail=f"goals[{i}] must be an object")
+            gid = (g.get("id") or "").strip()
+            short = (g.get("short_name") or "").strip()
+            if not gid or not short:
+                raise HTTPException(
+                    status_code=400, detail=f"goals[{i}] requires id and short_name"
+                )
+            if gid in seen_ids:
+                raise HTTPException(status_code=400, detail=f"Duplicate goal id: {gid}")
+            seen_ids.add(gid)
+
+        payload: dict[str, Any] = {
+            "_meta": body.get("_meta") or {},
+            "goals": goals_in,
+        }
+        if "behaviors" in body:
+            payload["behaviors"] = body["behaviors"]
+
+        path = settings.connect_goals_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            _json.dump(payload, f, ensure_ascii=False, indent=2)
+
+        # Drop cached views so the next read picks up the new file.
+        _cg_mod.load_connect_goals.cache_clear()  # type: ignore[attr-defined]
+        _cg_mod.goals_index.cache_clear()  # type: ignore[attr-defined]
+
+        return {"ok": True, "saved": len(goals_in), "path": str(path)}
 
     @app.get("/api/sync/status")
     def sync_status() -> dict[str, Any]:

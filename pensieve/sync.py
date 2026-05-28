@@ -41,6 +41,8 @@ def _audit_write(entry: dict) -> None:
 
 
 def _build_memory(task: RawTask, result) -> Memory:
+    # New tasks that arrive already-completed land directly in the Closed column.
+    initial_column = "closed" if task.completed else "memory"
     return Memory(
         id=task.id,
         source=task.source,
@@ -59,6 +61,7 @@ def _build_memory(task: RawTask, result) -> Memory:
         connect_alignment_confidence=result.connect_alignment_confidence,
         connect_alignment_note=result.connect_alignment_note,
         notes_for_user=result.notes_for_user,
+        column=initial_column,
         source_created_at=task.created_at,
         source_last_modified=task.last_modification_time,
         completed=task.completed,
@@ -78,6 +81,10 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     PRESERVES user-only fields: column (lifecycle placement) and notes_for_user
     (private note). This is what makes 'edit title in To-Do then refresh' safe:
     your dragged column and private notes survive re-enrichment.
+
+    EXCEPTION: when the source task is completed and the user has not already
+    moved it to a terminal column (vial / closed), auto-promote to "closed"
+    so the kanban reflects the source's completion state.
     """
     existing.title = task.title
     existing.original_notes = task.notes
@@ -100,6 +107,11 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     existing.connect_alignment_confidence = result.connect_alignment_confidence
     existing.connect_alignment_note = result.connect_alignment_note
     # PRESERVED on purpose: existing.column, existing.notes_for_user
+    # ...except: auto-promote to "closed" when the source completes the task.
+    # Closed is the only terminal column now; if the user has it in Review, the
+    # source-complete signal trumps that (Review = needs attention, Closed = done).
+    if task.completed and existing.column != "closed":
+        existing.column = "closed"
     existing.tokens_used = (existing.tokens_used or 0) + (result.tokens_used or 0)
     existing.enriched_at = datetime.now(timezone.utc)
     return existing
@@ -143,8 +155,10 @@ def run_sync(
         f"Chroma has {len(known_ids)} memories already."
     )
 
-    # Decide which tasks need re-enrichment
+    # Decide which tasks need re-enrichment (or just a column-only nudge for
+    # completion drift, which doesn't require an LLM call).
     to_enrich: list[tuple[RawTask, str]] = []  # (task, change_reason)
+    column_only_updates: list[RawTask] = []
     for t in tasks:
         if force:
             to_enrich.append((t, "force"))
@@ -156,6 +170,15 @@ def run_sync(
         if existing is None:
             to_enrich.append((t, "missing"))
             continue
+        # Title or notes edited in the source → full re-enrich so why/impact/
+        # strand reflect the new wording. (Outlook doesn't always bump
+        # LastModificationTime on every edit, so compare contents directly.)
+        if (t.title or "").strip() != (existing.title or "").strip():
+            to_enrich.append((t, "title-changed"))
+            continue
+        if (t.notes or "").strip() != (existing.original_notes or "").strip():
+            to_enrich.append((t, "notes-changed"))
+            continue
         if t.last_modification_time and existing.source_last_modified:
             try:
                 if t.last_modification_time > existing.source_last_modified:
@@ -163,10 +186,43 @@ def run_sync(
                     continue
             except Exception:
                 pass
+        # Completion drift: source marked it done but our kanban hasn't caught
+        # up. Cheap column-only update, no LLM call.
+        if t.completed and existing.column != "closed":
+            column_only_updates.append(t)
+            continue
         stats.skipped_unchanged += 1
 
+    # Apply column-only updates immediately (no LLM, no concurrency needed).
+    for t in column_only_updates:
+        mem = store.get_memory(t.id)
+        if mem is None:
+            continue
+        mem.completed = True
+        mem.completed_at = t.completed_at or mem.completed_at
+        mem.column = "closed"
+        store.upsert_memory(mem)
+        stats.updated_enriched += 1
+        console.print(
+            f"  [green]CLOSE [/green] (auto-close) {mem.title} "
+            f"[dim](source marked complete; no re-enrich needed)[/dim]"
+        )
+        _audit_write(
+            {
+                "mode": "sync",
+                "task_id": t.id,
+                "source": source.name,
+                "reason": "auto-close",
+                "column": "closed",
+            }
+        )
+
     if not to_enrich:
-        console.print("[green]All tasks already enriched and unchanged.[/green]")
+        console.print(
+            f"[green]All tasks already enriched and unchanged.[/green] "
+            f"[dim]({len(column_only_updates)} auto-closed, "
+            f"{stats.skipped_unchanged} unchanged)[/dim]"
+        )
         return stats
 
     console.print(
@@ -191,7 +247,7 @@ def run_sync(
                 client=client,
                 connect_goals=connect_goals,
             )
-            if reason in ("force", "modified"):
+            if reason in ("force", "modified", "title-changed", "notes-changed"):
                 existing = store.get_memory(task.id)
                 if existing is not None:
                     mem = overlay_regeneration(existing, task, result)

@@ -108,6 +108,17 @@ class ChromaMemoryStore:
         goal_ids = [g for g in goal_ids_csv.split(",") if g]
         cats_csv = (meta.get("categories_csv") or "").strip()
         cats = [c for c in cats_csv.split(",") if c]
+        # One-time migrations for columns that were renamed in 2026-05-28's
+        # lifecycle simplification (memory/dive/review/closed). Any persisted
+        # memory in the old columns rehydrates into its closest successor; the
+        # next upsert writes the migrated column back to Chroma.
+        _COL_MIGRATE = {
+            "reverie": "memory",      # Phase 2.5 concept; deferred
+            "reflection": "closed",   # closure-debrief collapsed into closed
+            "vial": "review",         # vial-as-column became user-driven review
+        }
+        column = meta.get("column", "memory")
+        column = _COL_MIGRATE.get(column, column)
         return Memory(
             id=mid,
             source=meta.get("source", "unknown"),
@@ -127,7 +138,7 @@ class ChromaMemoryStore:
             connect_alignment_note=meta.get("connect_alignment_note", ""),
             notes_for_user=meta.get("notes_for_user", ""),
             categories=cats,
-            column=meta.get("column", "memory"),
+            column=column,
             completed=bool(meta.get("completed", False)),
             enrichment_version=meta.get("enrichment_version", "v2"),
             tokens_used=int(meta.get("tokens_used", 0) or 0),

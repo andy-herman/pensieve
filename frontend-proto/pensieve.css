@@ -379,7 +379,7 @@ html[data-theme="night"] .theme-toggle .theme-night-icon { display: inline; }
   border-color: var(--ink);
 }
 
-/* ----- 5. Board (Lifecycle view = 5 columns; Houses view = 4-5 lanes) ----- */
+/* ----- 5. Board (Lifecycle = 4 columns; Houses = N columns) ----- */
 
 .board {
   position: relative;
@@ -387,15 +387,11 @@ html[data-theme="night"] .theme-toggle .theme-night-icon { display: inline; }
   padding: 24px 28px 48px;
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 html[data-view="houses"] .board {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-@media (max-width: 1400px) {
-  .board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 @media (max-width: 900px) {
@@ -474,17 +470,44 @@ html[data-view="houses"] .column[data-house="gryffindor"] { border-top: 4px soli
 html[data-view="houses"] .column[data-house="hufflepuff"] { border-top: 4px solid #b08a26; }
 html[data-view="houses"] .column[data-house="slytherin"]  { border-top: 4px solid #2e5a3a; }
 html[data-view="houses"] .column[data-house="ravenclaw"]  { border-top: 4px solid #2c4670; }
+html[data-view="houses"] .column[data-house="internal"]   { border-top: 4px solid #5a5a5a; }
+html[data-view="houses"] .column[data-house="muggleborn"] { border-top: 4px solid #8a4b1f; }
+html[data-view="houses"] .column[data-house="centaur"]    { border-top: 4px solid #3c5e2c; }
+html[data-view="houses"] .column[data-house="phoenix"]    { border-top: 4px solid #a83a1f; }
 html[data-view="houses"] .column[data-house="unhoused"]   { border-top: 4px solid var(--ink-faded); border-style: dashed; }
 
 html[data-view="houses"] .column[data-house="gryffindor"] .column-title { color: #7a2018; }
 html[data-view="houses"] .column[data-house="hufflepuff"] .column-title { color: #8a6f1f; }
 html[data-view="houses"] .column[data-house="slytherin"]  .column-title { color: #2e5a3a; }
 html[data-view="houses"] .column[data-house="ravenclaw"]  .column-title { color: #2c4670; }
+html[data-view="houses"] .column[data-house="internal"]   .column-title { color: #5a5a5a; }
+html[data-view="houses"] .column[data-house="muggleborn"] .column-title { color: #8a4b1f; }
+html[data-view="houses"] .column[data-house="centaur"]    .column-title { color: #3c5e2c; }
+html[data-view="houses"] .column[data-house="phoenix"]    .column-title { color: #a83a1f; }
 
 html[data-theme="night"][data-view="houses"] .column[data-house="gryffindor"] .column-title { color: #e07c63; }
 html[data-theme="night"][data-view="houses"] .column[data-house="hufflepuff"] .column-title { color: #f5d77b; }
-html[data-theme="night"][data-view="houses"] .column[data-view="houses"] .column[data-house="slytherin"]  .column-title { color: #7ab06a; }
+html[data-theme="night"][data-view="houses"] .column[data-house="slytherin"]  .column-title { color: #7ab06a; }
 html[data-theme="night"][data-view="houses"] .column[data-house="ravenclaw"]  .column-title { color: #8aabe0; }
+html[data-theme="night"][data-view="houses"] .column[data-house="internal"]   .column-title { color: #b8b8b8; }
+html[data-theme="night"][data-view="houses"] .column[data-house="muggleborn"] .column-title { color: #d8a06a; }
+html[data-theme="night"][data-view="houses"] .column[data-house="centaur"]    .column-title { color: #8fc275; }
+html[data-theme="night"][data-view="houses"] .column[data-house="phoenix"]    .column-title { color: #e07c63; }
+
+/* ---- Lifecycle view: Closed column is subdued ---- */
+html[data-view="lifecycle"] .column[data-column="closed"] {
+  border-top: 4px solid var(--ink-faded);
+  border-style: dashed;
+  opacity: 0.78;
+}
+html[data-view="lifecycle"] .column[data-column="closed"] .column-title { color: var(--ink-faded); }
+html[data-view="lifecycle"] .column[data-column="closed"] .card { opacity: 0.82; }
+
+/* ---- Lifecycle view: Review column gets a candle-gold accent ---- */
+html[data-view="lifecycle"] .column[data-column="review"] {
+  border-top: 4px solid var(--candle);
+}
+html[data-view="lifecycle"] .column[data-column="review"] .column-title { color: var(--candle); }
 
 /* ----- 6. Cards ----- */
 
@@ -750,11 +773,93 @@ html[data-theme="night"][data-view="houses"] .column[data-house="ravenclaw"]  .c
 @media (max-width: 700px) { .goals-editor { grid-template-columns: 1fr; } }
 
 .goal-card {
+  position: relative;
   border: 1px solid var(--parchment-dark);
   border-left: 4px solid var(--goal-color, var(--ink-soft));
   border-radius: 6px;
   padding: 12px 14px;
   background: rgba(255,255,255,0.08);
+}
+
+.goal-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--parchment-dark);
+  background: transparent;
+  color: var(--ink-faded);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  transition: all 120ms ease;
+}
+.goal-delete:hover {
+  color: #a83a1f;
+  border-color: #a83a1f;
+  background: rgba(168,58,31,0.08);
+}
+
+/* ---- PDF import panel inside goals modal ---- */
+.goals-import {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px dashed var(--parchment-dark);
+  border-radius: 6px;
+  background: rgba(201, 166, 85, 0.06);
+}
+
+.goals-import-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--parchment-2);
+  border: 1px solid var(--parchment-dark);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.goals-import-label:hover {
+  background: var(--parchment-1);
+  border-color: var(--candle);
+}
+.goals-import-icon { font-size: 14px; }
+
+.goals-import-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.goals-import-btn.is-parsing {
+  animation: candle-flicker 1.2s ease-in-out infinite alternate;
+}
+@keyframes candle-flicker {
+  from { box-shadow: 0 0 4px rgba(201, 166, 85, 0.4); }
+  to   { box-shadow: 0 0 14px rgba(201, 166, 85, 0.95); }
+}
+
+.goals-import-status {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-faded);
+  font-style: italic;
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 .goal-card-header {

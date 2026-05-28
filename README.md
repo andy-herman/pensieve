@@ -6,6 +6,8 @@ Pensieve is a local, single-user productivity tool that pulls your Microsoft To-
 
 It runs entirely on your machine. Your To-Do data is read-only. Your enrichments live in a local ChromaDB. The dashboard is a static page served from a local FastAPI server.
 
+> 🚀 **New here? See [SETUP.md](SETUP.md) for a 10-minute install + first-sync walkthrough.**
+
 ---
 
 ## Table of contents

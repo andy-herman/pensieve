@@ -76,14 +76,24 @@
     <article class="modal-card goals-modal-card" role="dialog" aria-modal="true" aria-labelledby="goals-title">
       <button class="modal-close" data-close="goals" aria-label="Close">x</button>
       <div class="modal-body">
-        <h2 id="goals-title" class="goals-title">The Four Houses</h2>
-        <p class="goals-subtitle">Your Connect goals shape the Houses lane and how new memories align to your stated priorities. Each goal maps to a Hogwarts house for the dashboard.</p>
+        <h2 id="goals-title" class="goals-title">Your Connect Houses</h2>
+        <p class="goals-subtitle">Each Connect goal becomes a House on the dashboard. Edit them by hand, or upload your Connect PDF and let the AI extract them for you.</p>
+        <div class="goals-import">
+          <label for="goals-pdf-input" class="goals-import-label">
+            <span class="goals-import-icon" aria-hidden="true">&#x1F4C4;</span>
+            <span class="goals-import-text">Upload your Connect PDF</span>
+            <input type="file" id="goals-pdf-input" accept="application/pdf,.pdf" hidden />
+          </label>
+          <button id="goals-import-btn" class="primary-button goals-import-btn" disabled>&#x2728; Parse with AI</button>
+          <span id="goals-import-status" class="goals-import-status" aria-live="polite"></span>
+        </div>
         <div id="goals-editor" class="goals-editor"></div>
         <div class="goals-actions">
-          <button id="goals-reset" class="ghost-button">Reset to vault defaults</button>
+          <button id="goals-add" class="ghost-button">+ Add goal</button>
+          <button id="goals-reset" class="ghost-button">Reset to defaults</button>
           <button id="goals-save" class="primary-button">Save goals</button>
         </div>
-        <p class="goals-footnote">Canonical source: <code>Memory\Connect Goals\Current.md</code> in the Luna Master vault.</p>
+        <p class="goals-footnote">Saved to <code>data/connect-goals.json</code>. Used by the AI to align tasks to your goals on the next sync.</p>
       </div>
     </article>
   </div>

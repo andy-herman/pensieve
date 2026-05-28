@@ -58,11 +58,23 @@ const DEFAULT_GOALS = [
 // ----- 2. Lifecycle columns + strands -----
 
 const LIFECYCLE_COLUMNS = [
-  { id: "memory", title: "Memory", subtitle: "Captured, awaiting depth" },
-  { id: "dive", title: "Dive", subtitle: "Surfaced for active work" },
-  { id: "reverie", title: "Reverie", subtitle: "Focus block scheduled" },
-  { id: "reflection", title: "Reflection", subtitle: "Closed, debriefing" },
-  { id: "vial", title: "Vial", subtitle: "Stored for review-time evidence" },
+  { id: "memory", title: "Memory", subtitle: "Backlog, awaiting depth" },
+  { id: "dive", title: "Dive", subtitle: "Active work" },
+  { id: "review", title: "Review", subtitle: "Needs another look" },
+  { id: "closed", title: "Closed", subtitle: "Done, complete in your source list" },
+];
+
+// Mirror of pensieve/enrichment/goals_importer.py HOUSE_PALETTE so the
+// frontend can auto-assign a house when the user adds a goal manually.
+const HOUSE_PALETTE = [
+  { house: "gryffindor", house_glyph: "\u26a1", color_primary: "#7a2018", color_accent: "#c9a655" },
+  { house: "hufflepuff", house_glyph: "\u2698", color_primary: "#b08a26", color_accent: "#2a1d10" },
+  { house: "slytherin",  house_glyph: "\u269c", color_primary: "#2e5a3a", color_accent: "#a8a8a8" },
+  { house: "ravenclaw",  house_glyph: "\u269b", color_primary: "#2c4670", color_accent: "#c9a655" },
+  { house: "internal",   house_glyph: "\u2697", color_primary: "#5a5a5a", color_accent: "#c9a655" },
+  { house: "muggleborn", house_glyph: "\u270e", color_primary: "#8a4b1f", color_accent: "#e0c690" },
+  { house: "centaur",    house_glyph: "\u2618", color_primary: "#3c5e2c", color_accent: "#c9a655" },
+  { house: "phoenix",    house_glyph: "\u2741", color_primary: "#a83a1f", color_accent: "#f5d77b" },
 ];
 
 const STRANDS = [
@@ -136,7 +148,7 @@ const SEED_MEMORIES = [
     connect_goal_ids: ["goal-4-ai-transformation"],
     connect_alignment_confidence: 0.94,
     connect_alignment_note: "Direct Pensieve build, a productivity multiplier under the AI program.",
-    column: "reverie",
+    column: "dive",
   },
   {
     id: "mem_todo_sample_05",
@@ -192,7 +204,7 @@ const SEED_MEMORIES = [
     connect_goal_ids: ["goal-4-ai-transformation"],
     connect_alignment_confidence: 0.96,
     connect_alignment_note: "Direct Argus product work, clearly advances Goal #4.",
-    column: "reflection",
+    column: "closed",
   },
   {
     id: "mem_todo_sample_09",
@@ -223,7 +235,7 @@ const SEED_MEMORIES = [
     connect_alignment_note: "Direct-report management with no specific Connect goal alignment.",
     column: "memory",
   },
-  // Two extras to populate Reflection + Vial columns
+  // Two extras to populate Review + Closed columns
   {
     id: "mem_seed_11",
     title: "Friday update to Steph: AI program status",
@@ -236,7 +248,7 @@ const SEED_MEMORIES = [
     connect_goal_ids: ["goal-4-ai-transformation", "goal-2-uk-ctp"],
     connect_alignment_confidence: 0.88,
     connect_alignment_note: "Cross-program leadership update; weights to Goal #4 (program theme this week) and Goal #2 (UK CTP cadence anchor).",
-    column: "reflection",
+    column: "review",
   },
   {
     id: "mem_seed_12",
@@ -250,7 +262,7 @@ const SEED_MEMORIES = [
     connect_goal_ids: ["goal-2-uk-ctp"],
     connect_alignment_confidence: 0.99,
     connect_alignment_note: "Direct Year 1 deliverable for Goal #2.",
-    column: "vial",
+    column: "closed",
   },
 ];
 
@@ -270,6 +282,7 @@ const API_BASE = (() => {
 
 const STATE = {
   goals: loadGoals(),
+  goalsMeta: {},
   memories: SEED_MEMORIES.map(m => ({ ...m })),
   view: "lifecycle",      // "lifecycle" | "houses"
   theme: loadTheme(),     // "day" | "night" | "marauder"
@@ -359,6 +372,9 @@ async function loadMemoriesFromApi() {
       const goalsResp = await fetchJson("/api/goals");
       if (Array.isArray(goalsResp.goals) && goalsResp.goals.length > 0) {
         STATE.goals = goalsResp.goals.map(g => ({ ...g }));
+      }
+      if (goalsResp && goalsResp._meta) {
+        STATE.goalsMeta = goalsResp._meta;
       }
     } catch (e) { /* keep local */ }
     return true;
@@ -705,9 +721,8 @@ function updateHedwig() {
 const LIFECYCLE_OPTIONS = [
   { id: "memory", label: "Memory" },
   { id: "dive", label: "Dive" },
-  { id: "reverie", label: "Reverie" },
-  { id: "reflection", label: "Reflection" },
-  { id: "vial", label: "Vial" },
+  { id: "review", label: "Review" },
+  { id: "closed", label: "Closed" },
 ];
 
 function openModal(m) {
@@ -867,40 +882,149 @@ function openGoalsEditor() {
     card.className = "goal-card";
     card.style.setProperty("--goal-color", g.color_primary);
     card.innerHTML = `
+      <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
-        <span class="goal-house-pill" data-house="${g.house}" style="--goal-color:${g.color_primary}">${g.house}</span>
-        <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number}</strong>
+        <span class="goal-house-pill" data-house="${g.house}" style="--goal-color:${g.color_primary}">${escapeHtml(g.house || "house")}</span>
+        <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number || idx + 1}</strong>
       </div>
       <label class="goal-input-label">Short name</label>
-      <input class="goal-input" data-field="short_name" data-idx="${idx}" value="${escapeHtml(g.short_name)}" />
+      <input class="goal-input" data-field="short_name" data-idx="${idx}" value="${escapeHtml(g.short_name || "")}" />
       <label class="goal-input-label">Full name</label>
-      <input class="goal-input" data-field="name" data-idx="${idx}" value="${escapeHtml(g.name)}" />
+      <input class="goal-input" data-field="name" data-idx="${idx}" value="${escapeHtml(g.name || "")}" />
       <label class="goal-input-label">Summary</label>
-      <textarea class="goal-textarea" data-field="summary" data-idx="${idx}">${escapeHtml(g.summary)}</textarea>
+      <textarea class="goal-textarea" data-field="summary" data-idx="${idx}">${escapeHtml(g.summary || "")}</textarea>
     `;
     root.appendChild(card);
+  });
+  // Wire delete buttons (delegated would also work, but inline keeps things local).
+  $$(".goal-delete", root).forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      const idx = parseInt(btn.dataset.idx, 10);
+      deleteGoalAt(idx);
+    });
   });
   $("#goals-modal").hidden = false;
 }
 
-function saveGoalsFromEditor() {
+function collectEditorIntoState() {
   $$(".goal-input, .goal-textarea", $("#goals-editor")).forEach(input => {
     const idx = parseInt(input.dataset.idx, 10);
     const field = input.dataset.field;
     if (STATE.goals[idx]) STATE.goals[idx][field] = input.value.trim();
   });
+}
+
+async function saveGoalsFromEditor() {
+  collectEditorIntoState();
+  // Persist locally first so an API outage never loses the user's edits.
   saveGoals();
+
+  if (STATE.apiConnected) {
+    try {
+      const res = await fetch(`${API_BASE}/api/goals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          _meta: STATE.goalsMeta || {},
+          goals: STATE.goals,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`${res.status}: ${txt.slice(0, 160)}`);
+      }
+      const body = await res.json();
+      toast(`Saved ${body.saved || STATE.goals.length} goals to server`);
+    } catch (e) {
+      toast(`Saved locally (server save failed: ${e.message})`);
+    }
+  } else {
+    toast("Goals saved locally (server offline)");
+  }
+
   $("#goals-modal").hidden = true;
   renderStrandFilter();
   renderBoard();
-  toast("Goals saved");
 }
 
 function resetGoals() {
   STATE.goals = DEFAULT_GOALS.map(g => ({ ...g }));
   saveGoals();
   openGoalsEditor();
-  toast("Goals reset to vault defaults");
+  toast("Goals reset to defaults");
+}
+
+function addGoalToState() {
+  const number = (STATE.goals.length || 0) + 1;
+  const palette = HOUSE_PALETTE[(number - 1) % HOUSE_PALETTE.length];
+  const stamp = Date.now().toString(36);
+  STATE.goals.push({
+    id: `goal-${number}-new-${stamp}`,
+    number,
+    short_name: "",
+    name: "",
+    summary: "",
+    house: palette.house,
+    house_glyph: palette.house_glyph,
+    color_primary: palette.color_primary,
+    color_accent: palette.color_accent,
+    success_criteria: [],
+    impact_statement: "",
+    keywords_for_alignment: [],
+  });
+  openGoalsEditor();
+}
+
+function deleteGoalAt(idx) {
+  collectEditorIntoState();
+  if (idx < 0 || idx >= STATE.goals.length) return;
+  STATE.goals.splice(idx, 1);
+  // Re-number so the editor + saved JSON stay in order. House assignments
+  // are left as-is so existing memories aligned to a goal id keep their color.
+  STATE.goals.forEach((g, i) => { g.number = i + 1; });
+  openGoalsEditor();
+}
+
+async function uploadConnectPdf(file) {
+  const status = $("#goals-import-status");
+  const btn = $("#goals-import-btn");
+  if (!STATE.apiConnected) {
+    if (status) status.textContent = "Need the API server (run `pensieve serve`)";
+    return;
+  }
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    if (status) status.textContent = "PDF too large (max 5 MB)";
+    return;
+  }
+  if (status) status.textContent = "Reading PDF and asking the AI...";
+  if (btn) { btn.disabled = true; btn.classList.add("is-parsing"); }
+
+  try {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    const res = await fetch(`${API_BASE}/api/goals/import`, { method: "POST", body: fd });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`${res.status}: ${txt.slice(0, 200)}`);
+    }
+    const body = await res.json();
+    const proposal = body.proposal || {};
+    const goals = Array.isArray(proposal.goals) ? proposal.goals : [];
+    if (!goals.length) throw new Error("No goals found in PDF");
+    STATE.goals = goals.map(g => ({ ...g }));
+    STATE.goalsMeta = proposal._meta || {};
+    openGoalsEditor();
+    if (status) {
+      const notes = (proposal._meta && proposal._meta.extraction_notes) || "";
+      status.textContent = `Parsed ${goals.length} goals. Review and Save.` + (notes ? ` (${notes})` : "");
+    }
+  } catch (e) {
+    if (status) status.textContent = `Parse failed: ${e.message}`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove("is-parsing"); }
+  }
 }
 
 // ----- 9. Drag + drop + footprints -----
@@ -1146,6 +1270,24 @@ function init() {
   $("#open-goals").addEventListener("click", openGoalsEditor);
   $("#goals-save").addEventListener("click", saveGoalsFromEditor);
   $("#goals-reset").addEventListener("click", resetGoals);
+  const addBtn = $("#goals-add");
+  if (addBtn) addBtn.addEventListener("click", addGoalToState);
+
+  // PDF import
+  const pdfInput = $("#goals-pdf-input");
+  const importBtn = $("#goals-import-btn");
+  const status = $("#goals-import-status");
+  if (pdfInput && importBtn) {
+    pdfInput.addEventListener("change", e => {
+      const file = e.target.files && e.target.files[0];
+      importBtn.disabled = !file;
+      if (status) status.textContent = file ? `Ready: ${file.name}` : "";
+    });
+    importBtn.addEventListener("click", () => {
+      const file = pdfInput.files && pdfInput.files[0];
+      if (file) uploadConnectPdf(file);
+    });
+  }
 
   // Modal close
   $("#card-modal").addEventListener("click", e => {

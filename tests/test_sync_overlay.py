@@ -38,7 +38,7 @@ def _existing_memory() -> Memory:
     )
 
 
-def _refreshed_task() -> RawTask:
+def _refreshed_task(*, completed: bool = False) -> RawTask:
     return RawTask(
         id="task-123",
         title="NEW TITLE (edited in To-Do)",
@@ -46,7 +46,7 @@ def _refreshed_task() -> RawTask:
         list_name="Tasks",
         created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         last_modification_time=datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(days=10),
-        completed=False,
+        completed=completed,
         categories=["bar"],
         source="outlook_com",
     )
@@ -101,3 +101,27 @@ def test_overlay_accumulates_tokens_and_bumps_enriched_at():
     merged = overlay_regeneration(existing, _refreshed_task(), _fresh_result())
     assert merged.tokens_used == 3000  # 1000 + 2000
     assert merged.enriched_at >= old_enriched_at
+
+
+def test_overlay_auto_promotes_completed_task_to_closed_column():
+    """When the source marks the task complete, the kanban auto-moves it to Closed."""
+    existing = _existing_memory()  # currently in "dive"
+    merged = overlay_regeneration(existing, _refreshed_task(completed=True), _fresh_result())
+    assert merged.column == "closed", "completed task should auto-promote to Closed"
+    assert merged.completed is True
+
+
+def test_overlay_does_not_overwrite_closed_when_already_closed():
+    """If the memory is already in Closed, leave it there (idempotent)."""
+    existing = _existing_memory()
+    existing.column = "closed"
+    merged = overlay_regeneration(existing, _refreshed_task(completed=True), _fresh_result())
+    assert merged.column == "closed"
+
+
+def test_overlay_does_not_force_closed_when_task_is_not_completed():
+    """Re-enriching an open task must not move it to Closed."""
+    existing = _existing_memory()  # column="dive", not completed
+    merged = overlay_regeneration(existing, _refreshed_task(completed=False), _fresh_result())
+    assert merged.column == "dive", "open task should preserve user-placed column"
+    assert merged.completed is False
