@@ -1,0 +1,72 @@
+# =============================================================================
+# Agency config for Pensieve (memory store for Microsoft To-Do).
+#
+# Spun out of CISO GRC pillar 1 (day-to-day) on 2026-05-28. Sibling to
+# Inbox Copilot. Both share the "no external LLMs" hard constraint and the
+# Phase-0-while-Graph-blocked pattern.
+#
+# HARD CONSTRAINT (from AGENTS.md, do not remove):
+#   No external LLMs. Every classification or generation MUST hit Azure
+#   OpenAI (Cortex hub gpt-5.4-2, keyless DefaultAzureCredential) or
+#   Microsoft 365 Copilot via MCP. Never an external endpoint.
+# =============================================================================
+
+# Baseline org/team defaults — fetched at session start, merged as base layer.
+# Local file always wins over anything declared here.
+remote_config = [
+    { git = "https://github.com/andy-herman/agency-baseline", branch = "main" },
+]
+
+# ---------------------------------------------------------------------------
+# Default MCPs (in addition to baseline ado/enghub/m365-user/change-ledger/logger).
+# Minimum viable set for Microsoft To-Do enrichment work.
+# ---------------------------------------------------------------------------
+[mcps.builtins]
+graph = true             # Microsoft Graph — /me/todo/lists/{id}/tasks
+m365-copilot = true      # org-approved LLM surface for research / synthesis
+planner = true           # Planner is the shared-task counterpart to To-Do
+logger = true            # App Insights telemetry (also from baseline)
+
+# ---------------------------------------------------------------------------
+# Phase profiles. Pick whichever matches what you're building right now.
+# ---------------------------------------------------------------------------
+
+# Phase 0: local PowerShell enrichment against canned task samples.
+# Graph auth is blocked by corp CA on the built-in PS SDK app — same as
+# Inbox Copilot Phase 0. Live Graph is OFF in this profile.
+[profiles.phase0.mcps.builtins]
+graph = false
+m365-copilot = true      # still allowed — this is org LLM, not external
+logger = true
+
+# Phase 1: live Graph CRUD on Microsoft To-Do, round-trip enrichment to
+# Notes field. Requires Graph unblock (see OPEN-QUESTIONS.md Q1).
+[profiles.phase1.mcps.builtins]
+graph = true
+m365-copilot = true
+logger = true
+
+# Phase 2: SQLite memory store + kanban web view + FastAPI backend.
+# Add calendar so memories can cross-reference meeting context for impact.
+[profiles.phase2.mcps.builtins]
+graph = true
+calendar = true
+m365-copilot = true
+logger = true
+
+# Phase 2.5 / reverie: calendar focus-block auto-proposal + write-on-confirm.
+# Same MCP set as phase2 — Reverie work doesn't pull new MCPs, just heavier
+# use of `calendar` (findMeetingTimes + POST /me/events).
+[profiles.reverie.mcps.builtins]
+graph = true
+calendar = true
+m365-copilot = true
+logger = true
+
+# Phase 3 / promo-feed: reflection export to Synapse Promo Coach.
+# m365-user enables IC4→IC5 framing with org / manager / team context.
+[profiles.promo-feed.mcps.builtins]
+graph = true
+m365-user = true         # org graph for impact framing
+m365-copilot = true
+logger = true

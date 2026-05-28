@@ -1,0 +1,38 @@
+# --- Pensieve gitignore ---
+
+# Secrets / env
+.env
+.env.local
+
+# Local data store (SQLite + samples drafts + sync state)
+data/*.db
+data/*.db-*
+data/sync_state.json
+
+# Local reflections (markdown exports may contain sensitive impact statements)
+data/reflections/
+data/vials/
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

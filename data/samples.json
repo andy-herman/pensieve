@@ -1,0 +1,97 @@
+{
+  "strand_catalog": [
+    { "id": "dora-rfi",               "display_name": "DORA RFI",                 "kind": "deep",     "description": "EU DORA regulatory RFI work for the CISO GRC team" },
+    { "id": "uk-ctp-self-assessment", "display_name": "UK CTP Self-Assessment",   "kind": "deep",     "description": "UK Critical Third Party self-assessment workstream" },
+    { "id": "nis2-mapping",           "display_name": "NIS2 Mapping",             "kind": "deep",     "description": "Cross-walk NIS2 controls to other regimes" },
+    { "id": "inbox-copilot-build",    "display_name": "Inbox Copilot Build",      "kind": "deep",     "description": "Building the Inbox Copilot side project" },
+    { "id": "pensieve-build",         "display_name": "Pensieve Build",           "kind": "deep",     "description": "Building Pensieve itself" },
+    { "id": "argus-build",            "display_name": "Argus Build",              "kind": "deep",     "description": "Argus regulatory copilot work" },
+    { "id": "synapse-build",          "display_name": "Synapse Build",            "kind": "deep",     "description": "Synapse career intelligence platform work" },
+    { "id": "1on1-prep",              "display_name": "1on1 Prep",                "kind": "tactical", "description": "Prep for 1:1s with manager and direct reports" },
+    { "id": "team-mgmt",              "display_name": "Team Mgmt",                "kind": "tactical", "description": "People management work that is not 1:1 prep" },
+    { "id": "learning",               "display_name": "Learning",                 "kind": "learning", "description": "Reading, training, certification" },
+    { "id": "ic5-promo-evidence",    "display_name": "IC5 Promo Evidence",       "kind": "writing",  "description": "Writing reflection prose for the IC4 to IC5 promo packet" },
+    { "id": "ops-chores",             "display_name": "Ops Chores",               "kind": "tactical", "description": "Invoice approvals, status updates, compliance trainings" }
+  ],
+  "recent_context": {
+    "user_recent_strands": ["dora-rfi", "pensieve-build", "1on1-prep"],
+    "recent_titles_in_same_list": [
+      "Send DORA cross-walk to Mike",
+      "Review EU Reg lead feedback on RFI section 3",
+      "Prep Mike 1:1 for Tuesday",
+      "Draft Pensieve Phase 0 enrichment prompt"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "todo_sample_01",
+      "title": "Draft DORA Article 6 risk taxonomy",
+      "notes": "Need first cut by Friday for EU Reg lead. They want it ahead of the Tuesday regulator briefing.",
+      "created_at": "2026-05-26T15:30:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_02",
+      "title": "Cross-walk NIS2 controls to DORA Article 6",
+      "notes": "Reuse the table from the UK CTP work. Flagged by Mike as risky to do separately.",
+      "created_at": "2026-05-26T16:10:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_03",
+      "title": "Prep 1:1 talking points for Mike",
+      "notes": "",
+      "created_at": "2026-05-27T08:00:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_04",
+      "title": "Write Pensieve Phase 0 enrichment prompt",
+      "notes": "Goal: enrichment quality is good enough that I'd trust it on real tasks.",
+      "created_at": "2026-05-28T09:00:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_05",
+      "title": "Watch the Azure AI Foundry deep-dive video",
+      "notes": "Recommended by Tim. ~45 minutes. Eval frameworks chapter most relevant.",
+      "created_at": "2026-05-25T13:20:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_06",
+      "title": "Approve Q2 vendor invoices in MyOrder",
+      "notes": "End of month deadline. 4 invoices waiting.",
+      "created_at": "2026-05-27T17:45:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_07",
+      "title": "Write H1 self-reflection narrative draft",
+      "notes": "Anchor on: DORA RFI delivery, Argus shipping, Inbox Copilot scope. Target IC5.",
+      "created_at": "2026-05-24T11:00:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_08",
+      "title": "Argus: fix the empty-state crash in the timeline view",
+      "notes": "Repro: open Argus, switch to Timeline tab with no events. Stack trace in #argus channel.",
+      "created_at": "2026-05-27T19:30:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_09",
+      "title": "Renew passport",
+      "notes": "",
+      "created_at": "2026-05-20T07:30:00-07:00",
+      "list_name": "Tasks"
+    },
+    {
+      "id": "todo_sample_10",
+      "title": "Review Sara's growth plan draft",
+      "notes": "Sent Monday. Focus on the technical-leadership pillar; she's asking for concrete examples to anchor against.",
+      "created_at": "2026-05-26T10:15:00-07:00",
+      "list_name": "Tasks"
+    }
+  ]
+}
