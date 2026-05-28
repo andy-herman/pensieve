@@ -58,3 +58,24 @@ def test_taskSource_interface_contract():
     """All concrete sources implement TaskSource."""
     for cls in (SampleFileSource, OutlookCOMSource):
         assert issubclass(cls, TaskSource)
+
+
+def test_outlook_source_constructor_shape():
+    """OutlookCOMSource accepts a list of list-names (defaults to all-lists)."""
+    s1 = OutlookCOMSource()
+    assert s1.list_names == []
+    assert s1.include_subfolders is True
+    s2 = OutlookCOMSource(list_names=["Tasks", "Personal"])
+    assert s2.list_names == ["Tasks", "Personal"]
+    s3 = OutlookCOMSource(list_names=["  ", "", "X"])
+    assert s3.list_names == ["X"]
+
+
+def test_outlook_walk_subfolders_handles_no_folders():
+    """The static walker tolerates objects without a Folders collection."""
+
+    class _Stub:
+        pass
+
+    out = list(OutlookCOMSource._walk_subfolders(_Stub()))
+    assert out == []

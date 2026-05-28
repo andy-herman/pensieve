@@ -38,7 +38,11 @@ def _to_aware(dt) -> Optional[datetime]:
 
 
 class OutlookCOMSource(TaskSource):
-    """Reads the default Tasks folder from a running Outlook desktop client.
+    """Reads task folders from a running Outlook desktop client.
+
+    By default, enumerates the default Tasks folder PLUS every Microsoft
+    To-Do list (which Outlook surfaces as child folders of the default
+    Tasks folder). Use ``list_names`` to filter to specific lists by name.
 
     Requirements:
       - Windows
@@ -54,11 +58,20 @@ class OutlookCOMSource(TaskSource):
 
     def __init__(
         self,
-        list_name: Optional[str] = None,
+        list_names: Optional[list[str]] = None,
         skip_completed_older_than_days: int = 30,
-        include_subfolders: bool = False,
+        include_subfolders: bool = True,
     ):
-        self.list_name = list_name
+        """
+        :param list_names: If provided, restrict to these list names (case-insensitive
+            match against folder Name). If None or empty, pull from ALL lists
+            (default Tasks folder + every To-Do list folder under it).
+        :param skip_completed_older_than_days: Drop completed tasks finished
+            before this cutoff.
+        :param include_subfolders: When True (default), walk subfolders of each
+            matched folder. Set False to restrict to the matched folder only.
+        """
+        self.list_names = [n.strip() for n in (list_names or []) if n and n.strip()]
         self.skip_completed_older_than_days = skip_completed_older_than_days
         self.include_subfolders = include_subfolders
         self._app = None
@@ -79,14 +92,38 @@ class OutlookCOMSource(TaskSource):
                 f"Could not connect to Outlook via COM. Is Outlook desktop running? ({e})"
             ) from e
 
-    def _tasks_folder(self):
+    def _root_tasks_folder(self):
         self._connect()
-        root = self._ns.GetDefaultFolder(self.OL_FOLDER_TASKS)
-        if self.list_name and self.list_name.lower() != "tasks":
-            for folder in root.Folders:
-                if folder.Name.lower() == self.list_name.lower():
-                    return folder
-        return root
+        return self._ns.GetDefaultFolder(self.OL_FOLDER_TASKS)
+
+    def _iter_candidate_folders(self):
+        """Yield (display_name, folder) for every task folder we should read.
+
+        Microsoft To-Do lists land as child folders of the default Tasks
+        folder. We yield the default folder itself first, then each child
+        (and grandchildren if include_subfolders is True).
+        """
+        root = self._root_tasks_folder()
+        yield (root.Name or "Tasks", root)
+        if self.include_subfolders:
+            yield from self._walk_subfolders(root)
+
+    @classmethod
+    def _walk_subfolders(cls, folder):
+        try:
+            children = folder.Folders
+        except Exception:
+            return
+        for sub in children:
+            yield (sub.Name or "", sub)
+            yield from cls._walk_subfolders(sub)
+
+    def _selected_folders(self):
+        """Apply list_names filter (if any) over the candidate folders."""
+        wanted = {n.lower() for n in self.list_names} if self.list_names else None
+        for name, folder in self._iter_candidate_folders():
+            if wanted is None or name.lower() in wanted:
+                yield (name, folder)
 
     def _iter_items(self, folder):
         items = folder.Items
@@ -96,9 +133,6 @@ class OutlookCOMSource(TaskSource):
             pass
         for item in items:
             yield item
-        if self.include_subfolders:
-            for sub in folder.Folders:
-                yield from self._iter_items(sub)
 
     def _should_skip(self, item) -> bool:
         try:
@@ -113,7 +147,7 @@ class OutlookCOMSource(TaskSource):
             return False
         return False
 
-    def _to_raw(self, item) -> Optional[RawTask]:
+    def _to_raw(self, item, list_name: str) -> Optional[RawTask]:
         try:
             entry_id = getattr(item, "EntryID", None)
             if not entry_id:
@@ -132,7 +166,7 @@ class OutlookCOMSource(TaskSource):
                 id=entry_id,
                 title=title,
                 notes=body,
-                list_name=self.list_name or "Tasks",
+                list_name=list_name,
                 created_at=created,
                 last_modification_time=modified,
                 completed=completed,
@@ -145,13 +179,13 @@ class OutlookCOMSource(TaskSource):
             return None
 
     def list_tasks(self) -> Iterator[RawTask]:
-        folder = self._tasks_folder()
-        for item in self._iter_items(folder):
-            if self._should_skip(item):
-                continue
-            raw = self._to_raw(item)
-            if raw is not None:
-                yield raw
+        for folder_name, folder in self._selected_folders():
+            for item in self._iter_items(folder):
+                if self._should_skip(item):
+                    continue
+                raw = self._to_raw(item, folder_name)
+                if raw is not None:
+                    yield raw
 
     def get_task(self, task_id: str) -> Optional[RawTask]:
         self._connect()
@@ -159,4 +193,30 @@ class OutlookCOMSource(TaskSource):
             item = self._ns.GetItemFromID(task_id)
         except Exception:
             return None
-        return self._to_raw(item)
+        list_name = "Tasks"
+        try:
+            parent = item.Parent
+            if parent is not None and getattr(parent, "Name", None):
+                list_name = parent.Name
+        except Exception:
+            pass
+        return self._to_raw(item, list_name)
+
+    def discover_lists(self) -> list[dict]:
+        """Enumerate available task folders (Microsoft To-Do lists) with a count.
+
+        Returns a list of dicts with keys: ``name``, ``item_count``, ``entry_id``.
+        Read-only; used by the ``pensieve lists`` command.
+        """
+        out = []
+        for name, folder in self._iter_candidate_folders():
+            try:
+                count = folder.Items.Count
+            except Exception:
+                count = -1
+            try:
+                entry_id = folder.EntryID
+            except Exception:
+                entry_id = ""
+            out.append({"name": name, "item_count": count, "entry_id": entry_id})
+        return out

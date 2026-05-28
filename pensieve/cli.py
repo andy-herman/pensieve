@@ -21,7 +21,16 @@ console = Console()
 
 # Module-level singletons for typer defaults to satisfy ruff B008
 _OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com (default from .env)")
-_OPT_LIST = typer.Option(None, "--list", help="Outlook tasks folder name (default: Tasks)")
+_OPT_LIST = typer.Option(
+    None,
+    "--list",
+    "-l",
+    help=(
+        "Restrict to specific Outlook task folder (Microsoft To-Do list) names. "
+        "Repeatable: --list 'My List' --list 'Personal'. "
+        "Default = ALL lists (default Tasks folder + every To-Do list under it)."
+    ),
+)
 _OPT_STRAND_CATALOG = typer.Option(
     None,
     "--strand-catalog",
@@ -31,7 +40,7 @@ _OPT_DRY_RUN = typer.Option(False, "--dry-run", help="Show what would be enriche
 _OPT_FORCE = typer.Option(False, "--force", help="Re-enrich every task even if unchanged")
 
 
-def _build_source(name: str, list_name: Optional[str] = None):
+def _build_source(name: str, list_names: Optional[list[str]] = None):
     settings = get_settings()
     if name == "sample_file":
         from pensieve.sources.sample_file import SampleFileSource
@@ -41,7 +50,7 @@ def _build_source(name: str, list_name: Optional[str] = None):
         from pensieve.sources.outlook_com import OutlookCOMSource
 
         return OutlookCOMSource(
-            list_name=list_name or settings.default_list_name,
+            list_names=list_names,
             skip_completed_older_than_days=settings.outlook_skip_completed_older_than_days,
         )
     raise typer.BadParameter(f"Unknown source: {name}. Use 'sample_file' or 'outlook_com'.")
@@ -89,7 +98,7 @@ def init() -> None:
 @app.command()
 def sync(
     source: str = _OPT_SOURCE,
-    list_name: Optional[str] = _OPT_LIST,
+    list_name: Optional[list[str]] = _OPT_LIST,
     strand_catalog_path: Optional[Path] = _OPT_STRAND_CATALOG,
     dry_run: bool = _OPT_DRY_RUN,
     force: bool = _OPT_FORCE,
@@ -97,8 +106,11 @@ def sync(
     """Pull tasks from source, enrich, upsert to Chroma."""
     settings = get_settings()
     src_name = source or settings.default_source
-    src = _build_source(src_name, list_name=list_name)
-    console.print(f"[bold]Pensieve sync[/bold] source={src_name} dry_run={dry_run} force={force}")
+    src = _build_source(src_name, list_names=list_name)
+    list_label = ",".join(list_name) if list_name else "(all)"
+    console.print(
+        f"[bold]Pensieve sync[/bold] source={src_name} lists={list_label} dry_run={dry_run} force={force}"
+    )
 
     strand_catalog = None
     recent_context = None
@@ -207,6 +219,33 @@ def goals() -> None:
         return
     for g in gs:
         console.print(f"  #{g.get('number')} {g.get('short_name')} ({g.get('house')}) - {g.get('id')}")
+
+
+@app.command()
+def lists() -> None:
+    """Enumerate Outlook task folders (Microsoft To-Do lists) visible to Pensieve."""
+    from pensieve.sources.outlook_com import OutlookCOMSource, OutlookCOMUnavailable
+
+    src = OutlookCOMSource()
+    try:
+        folders = src.discover_lists()
+    except OutlookCOMUnavailable as e:
+        console.print(f"[red]Outlook COM unavailable:[/red] {e}")
+        raise typer.Exit(code=1) from e
+    if not folders:
+        console.print("[yellow]No task folders found.[/yellow]")
+        return
+    t = Table(title="Outlook task folders / To-Do lists", show_header=True)
+    t.add_column("name")
+    t.add_column("items", justify="right")
+    for f in folders:
+        t.add_row(f["name"], str(f["item_count"]))
+    console.print(t)
+    console.print(
+        f"[dim]Total: {len(folders)} folder(s). "
+        "Use [bold]pensieve sync --source outlook_com[/bold] to pull from all, "
+        "or [bold]--list 'Name'[/bold] (repeatable) to restrict.[/dim]"
+    )
 
 
 def main() -> None:
