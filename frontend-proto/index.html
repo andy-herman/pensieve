@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>The Pensieve - Today's Memories</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="pensieve.css" />
+</head>
+<body>
+
+  <header class="masthead">
+    <div class="title-block">
+      <h1 class="title">The Pensieve</h1>
+      <p class="tagline">Stir the surface and look within.</p>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search memories..." aria-label="Search memories" />
+      <div id="strand-filter" class="strand-filter" aria-label="Filter by strand"></div>
+      <button id="clear-filters" class="ghost-button" title="Show every memory">Clear filters</button>
+    </div>
+  </header>
+
+  <main id="board" class="board" aria-label="Pensieve kanban board"></main>
+
+  <div id="card-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="1"></div>
+    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close" data-close="1" aria-label="Close">x</button>
+      <div class="modal-body" id="modal-body"></div>
+    </article>
+  </div>
+
+  <div class="snitch" aria-hidden="true">
+    <svg viewBox="0 0 60 30" width="48" height="24">
+      <ellipse cx="30" cy="15" rx="6" ry="6" class="snitch-body" />
+      <path d="M24,15 Q12,4 4,12 Q12,16 24,17 Z" class="snitch-wing" />
+      <path d="M36,15 Q48,4 56,12 Q48,16 36,17 Z" class="snitch-wing" />
+    </svg>
+  </div>
+
+  <footer class="footer">
+    <span>Pensieve Phase 2 prototype</span>
+    <span class="dot">.</span>
+    <span id="memory-count">0 memories</span>
+    <span class="dot">.</span>
+    <a href="https://github.com/andy-herman/pensieve" target="_blank" rel="noopener">github.com/andy-herman/pensieve</a>
+  </footer>
+
+  <script src="pensieve.js"></script>
+</body>
+</html>
