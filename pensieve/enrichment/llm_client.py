@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any, Optional
 
 import httpx
@@ -11,6 +13,32 @@ from pensieve.config import Settings
 
 # Models that require max_completion_tokens instead of max_tokens
 _MAX_COMPLETION_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+# Shared token cache across all client instances and worker threads.
+# DefaultAzureCredential is thread-safe for cached token reads, but parallel
+# get_token() calls during first-acquisition can race the InteractiveBrowser
+# OAuth state. Serialize first-acquisition and reuse the token until expiry.
+_TOKEN_LOCK = threading.Lock()
+_TOKEN_CACHE: dict[str, tuple[str, float]] = {}  # scope -> (token, expires_on_epoch)
+_SHARED_CRED: Optional[DefaultAzureCredential] = None
+
+
+def _get_shared_token(scope: str) -> str:
+    """Get a bearer token for the given scope, with a thread-safe cache."""
+    global _SHARED_CRED
+    now = time.time()
+    cached = _TOKEN_CACHE.get(scope)
+    if cached and cached[1] - now > 60:
+        return cached[0]
+    with _TOKEN_LOCK:
+        cached = _TOKEN_CACHE.get(scope)
+        if cached and cached[1] - now > 60:
+            return cached[0]
+        if _SHARED_CRED is None:
+            _SHARED_CRED = DefaultAzureCredential(exclude_interactive_browser_credential=False)
+        tok = _SHARED_CRED.get_token(scope)
+        _TOKEN_CACHE[scope] = (tok.token, float(tok.expires_on))
+        return tok.token
 
 
 def _uses_max_completion_tokens(deployment: str) -> bool:
@@ -23,12 +51,11 @@ class AzureOpenAIChatClient:
 
     Auth precedence mirrors the PowerShell shim:
       1. AZURE_OPENAI_API_KEY if set (and not the placeholder)
-      2. Otherwise AAD bearer via DefaultAzureCredential
+      2. Otherwise AAD bearer via DefaultAzureCredential (shared, cached, thread-safe)
     """
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._cred: Optional[DefaultAzureCredential] = None
 
         if not settings.azure_openai_endpoint:
             raise ValueError("AZURE_OPENAI_ENDPOINT is not set. Add it to .env or environment.")
@@ -41,11 +68,7 @@ class AzureOpenAIChatClient:
         return bool(key) and key != "REPLACE_WITH_KEY_FROM_AZURE_PORTAL"
 
     def _get_token(self) -> str:
-        if self._cred is None:
-            self._cred = DefaultAzureCredential(exclude_interactive_browser_credential=False)
-        scope = self.settings.azure_openai_token_scope
-        token = self._cred.get_token(scope)
-        return token.token
+        return _get_shared_token(self.settings.azure_openai_token_scope)
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json"}

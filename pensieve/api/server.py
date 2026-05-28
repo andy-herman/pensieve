@@ -1,9 +1,10 @@
-"""FastAPI app — read-only HTTP layer over ChromaMemoryStore."""
+"""FastAPI app — HTTP layer over ChromaMemoryStore + sync trigger."""
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.store import ChromaMemoryStore
+from pensieve.sync_state import get_tracker
 
 
 def create_app() -> FastAPI:
@@ -108,6 +110,116 @@ def create_app() -> FastAPI:
     @app.get("/api/goals")
     def goals() -> dict[str, Any]:
         return {"goals": load_connect_goals()}
+
+    @app.get("/api/sync/status")
+    def sync_status() -> dict[str, Any]:
+        return get_tracker().snapshot()
+
+    @app.post("/api/sync")
+    def trigger_sync(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Kick off a background sync from the configured source (default outlook_com).
+
+        Body (all optional):
+          source: "outlook_com" | "sample_file" (default: settings.default_source)
+          lists:  list[str] (Outlook task folder names to restrict to; default = all)
+          force:  bool (re-enrich every task, even unchanged ones)
+        """
+        body = body or {}
+        tracker = get_tracker()
+        if tracker.is_running():
+            snap = tracker.snapshot()
+            return {"ok": False, "already_running": True, "state": snap}
+
+        src_name = (body.get("source") or settings.default_source or "outlook_com").strip()
+        lists_raw = body.get("lists") or []
+        if isinstance(lists_raw, str):
+            lists_raw = [lists_raw]
+        list_names: list[str] = [str(x).strip() for x in lists_raw if str(x).strip()]
+        force = bool(body.get("force", False))
+
+        tracker.begin(
+            source=src_name,
+            lists=list_names,
+            message="Connecting to source...",
+        )
+
+        def _runner() -> None:
+            # COM apartments must be initialized per-thread on Windows.
+            _com_inited = False
+            try:
+                try:
+                    import pythoncom  # type: ignore[import-not-found]
+
+                    pythoncom.CoInitialize()
+                    _com_inited = True
+                except Exception:
+                    pass
+
+                from pensieve.cli import _build_recent_context_from_chroma, _build_source
+                from pensieve.sync import run_sync
+
+                src = _build_source(src_name, list_names=list_names or None)
+                strand_catalog = None
+                recent_context = None
+                if src_name == "outlook_com":
+                    if settings.samples_path.exists():
+                        import json as _json
+
+                        with settings.samples_path.open("r", encoding="utf-8") as f:
+                            blob = _json.load(f)
+                        strand_catalog = blob.get("strand_catalog")
+                    recent_context = _build_recent_context_from_chroma()
+                tracker.update("Enriching new and changed tasks...")
+                stats = run_sync(
+                    src,
+                    strand_catalog=strand_catalog,
+                    recent_context=recent_context,
+                    dry_run=False,
+                    force=force,
+                )
+                tracker.finish_ok(
+                    {
+                        "total_tasks": stats.total_tasks,
+                        "new_enriched": stats.new_enriched,
+                        "updated_enriched": stats.updated_enriched,
+                        "skipped_unchanged": stats.skipped_unchanged,
+                        "failed": stats.failed,
+                        "review_queue": stats.review_queue,
+                        "tokens_used": stats.tokens_used,
+                    },
+                    message=(
+                        f"Sync complete: {stats.new_enriched} new, "
+                        f"{stats.updated_enriched} updated, "
+                        f"{stats.skipped_unchanged} unchanged."
+                    ),
+                )
+            except Exception as e:
+                tracker.finish_error(str(e))
+            finally:
+                if _com_inited:
+                    try:
+                        import pythoncom  # type: ignore[import-not-found]
+
+                        pythoncom.CoUninitialize()
+                    except Exception:
+                        pass
+
+        t = threading.Thread(target=_runner, daemon=True, name="pensieve-sync")
+        tracker.attach_thread(t)
+        t.start()
+        return {"ok": True, "started": True, "state": tracker.snapshot()}
+
+    @app.get("/api/lists")
+    def lists() -> dict[str, Any]:
+        """Enumerate Outlook task folders / Microsoft To-Do lists."""
+        from pensieve.sources.outlook_com import OutlookCOMSource, OutlookCOMUnavailable
+
+        try:
+            src = OutlookCOMSource()
+            folders = src.discover_lists()
+        except OutlookCOMUnavailable as e:
+            raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
+        return {"count": len(folders), "lists": folders}
 
     # Serve the dashboard from /, if frontend-proto exists.
     frontend_dir: Path = REPO_ROOT / "frontend-proto"

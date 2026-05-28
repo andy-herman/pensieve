@@ -370,6 +370,38 @@ async function loadMemoriesFromApi() {
   }
 }
 
+async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 } = {}) {
+  const start = Date.now();
+  let lastMsg = "";
+  while (Date.now() - start < maxMs) {
+    let state;
+    try {
+      state = await fetchJson("/api/sync/status");
+    } catch (e) {
+      throw new Error(`status check failed: ${e.message}`);
+    }
+    if (state.message && state.message !== lastMsg) {
+      lastMsg = state.message;
+      if (buttonEl) buttonEl.title = state.message;
+    }
+    if (state.status === "done") {
+      const s = state.stats || {};
+      const parts = [];
+      if (s.new_enriched != null) parts.push(`${s.new_enriched} new`);
+      if (s.updated_enriched != null) parts.push(`${s.updated_enriched} updated`);
+      if (s.skipped_unchanged != null) parts.push(`${s.skipped_unchanged} unchanged`);
+      if (s.failed) parts.push(`${s.failed} failed`);
+      toast(`Pulled from Microsoft To-Do — ${parts.join(", ") || "complete"}`);
+      return state;
+    }
+    if (state.status === "error") {
+      throw new Error(state.error || "sync failed");
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  throw new Error("sync timed out");
+}
+
 async function persistColumnChange(memoryId, column) {
   if (!STATE.apiConnected) return;
   try {
@@ -998,6 +1030,47 @@ function init() {
       const footerSource = $("#api-source-label");
       if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
       toast(STATE.apiConnected ? "Memories refreshed" : "API offline");
+    });
+  }
+
+  // Pull from Microsoft To-Do (Outlook) -> kicks off backend sync
+  const pullTodoBtn = $("#pull-todo-btn");
+  if (pullTodoBtn) {
+    pullTodoBtn.addEventListener("click", async () => {
+      if (pullTodoBtn.disabled) return;
+      pullTodoBtn.disabled = true;
+      const original = pullTodoBtn.innerHTML;
+      pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
+      pullTodoBtn.classList.add("is-pulling");
+      try {
+        const res = await fetch(`${API_BASE}/api/sync`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ source: "outlook_com" }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`${res.status}: ${text.slice(0, 120)}`);
+        }
+        const body = await res.json();
+        if (body.already_running) {
+          toast("A sync is already in flight - waiting for it to finish");
+        } else {
+          toast("Pulling from Microsoft To-Do...");
+        }
+        await pollSyncUntilDone(pullTodoBtn);
+        await loadMemoriesFromApi();
+        renderStrandFilter();
+        renderBoard();
+        const footerSource = $("#api-source-label");
+        if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
+      } catch (e) {
+        toast(`Pull failed: ${e.message}`);
+      } finally {
+        pullTodoBtn.disabled = false;
+        pullTodoBtn.innerHTML = original;
+        pullTodoBtn.classList.remove("is-pulling");
+      }
     });
   }
 

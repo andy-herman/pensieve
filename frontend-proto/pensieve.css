@@ -1096,3 +1096,38 @@ html[data-theme="marauder"] .modal-textarea {
   border-color: rgba(255,255,255,0.2);
   color: var(--ink);
 }
+
+/* ============================================================
+   Pull-from-To-Do button (Hedwig)
+   ============================================================ */
+
+.pull-todo-btn {
+  background: linear-gradient(140deg, rgba(201, 166, 85, 0.18), rgba(46, 90, 58, 0.18));
+  border: 1px solid rgba(201, 166, 85, 0.55);
+  font-family: "Cinzel", serif;
+  letter-spacing: 0.04em;
+  padding: 0.45em 0.95em;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.pull-todo-btn:hover {
+  background: linear-gradient(140deg, rgba(201, 166, 85, 0.32), rgba(46, 90, 58, 0.28));
+  box-shadow: 0 0 12px rgba(201, 166, 85, 0.55);
+  transform: translateY(-1px);
+}
+
+.pull-todo-btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.pull-todo-btn.is-pulling {
+  animation: hedwig-flap 1.2s ease-in-out infinite;
+  background: linear-gradient(140deg, rgba(201, 166, 85, 0.4), rgba(122, 32, 24, 0.3));
+  box-shadow: 0 0 18px rgba(201, 166, 85, 0.7);
+}
+
+@keyframes hedwig-flap {
+  0%, 100% { transform: translateY(0) rotate(-0.5deg); }
+  50%      { transform: translateY(-3px) rotate(0.5deg); }
+}
