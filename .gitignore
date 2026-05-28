@@ -36,3 +36,8 @@ dist/
 Thumbs.db
 *.swp
 *.swo
+
+# Pensieve runtime artifacts
+data/audit-log.jsonl
+data/enriched*.json
+
