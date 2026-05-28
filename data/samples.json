@@ -1,97 +1,186 @@
 {
+  "_meta": {
+    "description": "Canned sample input for Pensieve Phase 0 dry-run. Mirrors the eventual Graph /me/todo/lists?$expand=tasks shape, augmented with strand_catalog + connect goal context. Connect goals come from data/connect-goals.json (Enrich-Memories.ps1 loads both files).",
+    "last_updated": "2026-05-28",
+    "v2_notes": "v2 adds connect_goal_ids to each strand. Memory enrichment is expected to inherit goal alignment from strand AND independently propose alignment based on task content."
+  },
   "strand_catalog": [
-    { "id": "dora-rfi",               "display_name": "DORA RFI",                 "kind": "deep",     "description": "EU DORA regulatory RFI work for the CISO GRC team" },
-    { "id": "uk-ctp-self-assessment", "display_name": "UK CTP Self-Assessment",   "kind": "deep",     "description": "UK Critical Third Party self-assessment workstream" },
-    { "id": "nis2-mapping",           "display_name": "NIS2 Mapping",             "kind": "deep",     "description": "Cross-walk NIS2 controls to other regimes" },
-    { "id": "inbox-copilot-build",    "display_name": "Inbox Copilot Build",      "kind": "deep",     "description": "Building the Inbox Copilot side project" },
-    { "id": "pensieve-build",         "display_name": "Pensieve Build",           "kind": "deep",     "description": "Building Pensieve itself" },
-    { "id": "argus-build",            "display_name": "Argus Build",              "kind": "deep",     "description": "Argus regulatory copilot work" },
-    { "id": "synapse-build",          "display_name": "Synapse Build",            "kind": "deep",     "description": "Synapse career intelligence platform work" },
-    { "id": "1on1-prep",              "display_name": "1on1 Prep",                "kind": "tactical", "description": "Prep for 1:1s with manager and direct reports" },
-    { "id": "team-mgmt",              "display_name": "Team Mgmt",                "kind": "tactical", "description": "People management work that is not 1:1 prep" },
-    { "id": "learning",               "display_name": "Learning",                 "kind": "learning", "description": "Reading, training, certification" },
-    { "id": "ic5-promo-evidence",    "display_name": "IC5 Promo Evidence",       "kind": "writing",  "description": "Writing reflection prose for the IC4 to IC5 promo packet" },
-    { "id": "ops-chores",             "display_name": "Ops Chores",               "kind": "tactical", "description": "Invoice approvals, status updates, compliance trainings" }
+    {
+      "id": "dora-rfi",
+      "display_name": "DORA RFI Responses",
+      "kind": "deep",
+      "description": "Drafting + reviewing responses to JET RFIs under DORA. Article-grounded, evidence-backed. Coordinates with Azure/M365 product owners.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-1-dora-deep-dive"]
+    },
+    {
+      "id": "nis2-mapping",
+      "display_name": "NIS2 Crosswalk + Scoping",
+      "kind": "deep",
+      "description": "Mapping NIS2 articles to existing DORA controls. Producing crosswalk decks + scope/gap assessments for CISO GRC leadership.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-3-nis2-foundation", "goal-1-dora-deep-dive"]
+    },
+    {
+      "id": "uk-ctp-domain",
+      "display_name": "UK CTP Domain Write-up",
+      "kind": "deep",
+      "description": "Drafting + iterating UK CTP self-assessment domain write-ups. Sprint-by-sprint cadence; uses Argus for cross-domain consistency.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-2-uk-ctp"]
+    },
+    {
+      "id": "argus-build",
+      "display_name": "Argus Build",
+      "kind": "deep",
+      "description": "Argus product development: regulator personas, narrative engine, UK CTP portal, scheduled workflows. Local prototype, packaged Windows app.",
+      "default_reverie_minutes": 120,
+      "connect_goal_ids": ["goal-4-ai-transformation"]
+    },
+    {
+      "id": "pensieve-build",
+      "display_name": "Pensieve Build",
+      "kind": "deep",
+      "description": "Building Pensieve itself \u2014 To-Do enrichment + memory + Reverie calendar blocks. Internal productivity multiplier for AI program.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-4-ai-transformation"]
+    },
+    {
+      "id": "ai-program-launch",
+      "display_name": "AI Program Launch + Governance",
+      "kind": "deep",
+      "description": "Structured AI transformation program for CISO GRC. Idea intake, triage, pilot cohorts, governance docs.",
+      "default_reverie_minutes": 60,
+      "connect_goal_ids": ["goal-4-ai-transformation"]
+    },
+    {
+      "id": "1on1-prep",
+      "display_name": "1:1 Prep + Team Mgmt",
+      "kind": "tactical",
+      "description": "Preparing for 1:1s with directs and manager. Team agenda items. Trust-building / cross-org coordination prep.",
+      "default_reverie_minutes": 25,
+      "connect_goal_ids": []
+    },
+    {
+      "id": "leadership-update",
+      "display_name": "Leadership Updates (Friday Steph cadence)",
+      "kind": "writing",
+      "description": "Weekly structured update to Steph every Friday, timed to inform her Monday sync with Molly + Oliver. Mentioned explicitly in Connect setback reflection.",
+      "default_reverie_minutes": 45,
+      "connect_goal_ids": ["goal-2-uk-ctp", "goal-1-dora-deep-dive", "goal-3-nis2-foundation", "goal-4-ai-transformation"]
+    },
+    {
+      "id": "ic5-promo-evidence",
+      "display_name": "Promo Evidence + Self-Reflection",
+      "kind": "writing",
+      "description": "Capturing accomplishments for Connect / promo case. H1 self-reflection. Stack rank moments. Synapse Promo Coach output target.",
+      "default_reverie_minutes": 45,
+      "connect_goal_ids": []
+    },
+    {
+      "id": "learning-ai",
+      "display_name": "Learning (AI / Foundry / Azure)",
+      "kind": "learning",
+      "description": "AI Foundry deep-dives, Azure OpenAI new model rollouts, agent-framework videos. Feeds the AI program work.",
+      "default_reverie_minutes": 30,
+      "connect_goal_ids": ["goal-4-ai-transformation"]
+    },
+    {
+      "id": "ops-chores",
+      "display_name": "Ops + Admin Chores",
+      "kind": "tactical",
+      "description": "Procurement, invoices, expense reports, MSFT housekeeping. Low-impact but unavoidable.",
+      "default_reverie_minutes": 20,
+      "connect_goal_ids": []
+    },
+    {
+      "id": "personal-admin",
+      "display_name": "Personal Admin",
+      "kind": "tactical",
+      "description": "Non-work tasks that accidentally land in the same To-Do list. Should NOT be enriched as work memories.",
+      "default_reverie_minutes": 15,
+      "connect_goal_ids": []
+    }
   ],
   "recent_context": {
-    "user_recent_strands": ["dora-rfi", "pensieve-build", "1on1-prep"],
+    "user_recent_strands": ["dora-rfi", "uk-ctp-domain", "argus-build", "pensieve-build", "leadership-update"],
     "recent_titles_in_same_list": [
-      "Send DORA cross-walk to Mike",
-      "Review EU Reg lead feedback on RFI section 3",
-      "Prep Mike 1:1 for Tuesday",
-      "Draft Pensieve Phase 0 enrichment prompt"
+      "Reply to JET RFI 0094: ICT third-party register",
+      "UK CTP Domain 6: Operational Resilience Testing write-up",
+      "Argus narrative engine: handle empty-evidence case",
+      "Friday update to Steph: AI program status"
     ]
   },
   "tasks": [
     {
       "id": "todo_sample_01",
-      "title": "Draft DORA Article 6 risk taxonomy",
-      "notes": "Need first cut by Friday for EU Reg lead. They want it ahead of the Tuesday regulator briefing.",
-      "created_at": "2026-05-26T15:30:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "CISO GRC \u2192 DORA",
+      "title": "Draft response: JET RFI 0107 Article 6 ICT risk mgmt framework",
+      "notes": "JET asked for explicit mapping of Article 6 to internal ICT risk policy. Need Azure + M365 owner confirmation before submission. Deadline Thursday.",
+      "created_at": "2026-05-27T09:14:00-07:00"
     },
     {
       "id": "todo_sample_02",
-      "title": "Cross-walk NIS2 controls to DORA Article 6",
-      "notes": "Reuse the table from the UK CTP work. Flagged by Mike as risky to do separately.",
-      "created_at": "2026-05-26T16:10:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "CISO GRC \u2192 NIS2",
+      "title": "Cross-walk NIS2 Article 21 to DORA Article 6 controls",
+      "notes": "Two-column deck for next CISO GRC sync. Use existing DORA evidence packages where possible to minimize new ask.",
+      "created_at": "2026-05-27T11:42:00-07:00"
     },
     {
       "id": "todo_sample_03",
-      "title": "Prep 1:1 talking points for Mike",
+      "list_name": "Work \u2192 Today",
+      "title": "1:1 prep with Mike",
       "notes": "",
-      "created_at": "2026-05-27T08:00:00-07:00",
-      "list_name": "Tasks"
+      "created_at": "2026-05-28T08:02:00-07:00"
     },
     {
       "id": "todo_sample_04",
-      "title": "Write Pensieve Phase 0 enrichment prompt",
-      "notes": "Goal: enrichment quality is good enough that I'd trust it on real tasks.",
-      "created_at": "2026-05-28T09:00:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Pensieve \u2192 Phase 0",
+      "title": "Rewrite enrich-memory-prompt.md to handle empty notes gracefully",
+      "notes": "Three of 10 samples have empty notes. Prompt currently leans heavily on notes \u2014 add explicit fallback: lean on title + recent_context + strand_catalog only.",
+      "created_at": "2026-05-28T09:55:00-07:00"
     },
     {
       "id": "todo_sample_05",
-      "title": "Watch the Azure AI Foundry deep-dive video",
-      "notes": "Recommended by Tim. ~45 minutes. Eval frameworks chapter most relevant.",
-      "created_at": "2026-05-25T13:20:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Learning",
+      "title": "Watch Foundry Agent Framework deep-dive (BUILD 2026 session)",
+      "notes": "45 min video. Want to evaluate if I can replace Pensieve's custom prompt routing with Foundry agents.",
+      "created_at": "2026-05-26T16:00:00-07:00"
     },
     {
       "id": "todo_sample_06",
-      "title": "Approve Q2 vendor invoices in MyOrder",
-      "notes": "End of month deadline. 4 invoices waiting.",
-      "created_at": "2026-05-27T17:45:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Ops",
+      "title": "Approve Argus production VM invoice (Azure subscription)",
+      "notes": "Standard monthly Azure spend. Goes to Steph for cost-center confirmation if over $400.",
+      "created_at": "2026-05-28T08:18:00-07:00"
     },
     {
       "id": "todo_sample_07",
-      "title": "Write H1 self-reflection narrative draft",
-      "notes": "Anchor on: DORA RFI delivery, Argus shipping, Inbox Copilot scope. Target IC5.",
-      "created_at": "2026-05-24T11:00:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Career",
+      "title": "H1 self-reflection \u2014 stack rank top 6 moments since Oct 2025",
+      "notes": "For promo case + Connect refresh. Pull from session notes, decisions log, Living Our Culture callouts. Synapse Promo Coach can help score impact.",
+      "created_at": "2026-05-27T19:30:00-07:00"
     },
     {
       "id": "todo_sample_08",
-      "title": "Argus: fix the empty-state crash in the timeline view",
-      "notes": "Repro: open Argus, switch to Timeline tab with no events. Stack trace in #argus channel.",
-      "created_at": "2026-05-27T19:30:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Argus",
+      "title": "Fix Argus regulator-detail crash on missing acronym field",
+      "notes": "Hunter from CELA hit this on the BaFin persona page. NPE in render \u2014 should fall back to short_name. Repro file in repo.",
+      "created_at": "2026-05-27T22:08:00-07:00"
     },
     {
       "id": "todo_sample_09",
-      "title": "Renew passport",
-      "notes": "",
-      "created_at": "2026-05-20T07:30:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Personal \u2192 To-Do",
+      "title": "Renew passport before October trip",
+      "notes": "Application packet + new photo. Expedited if over $190 cheaper than rebooking flights.",
+      "created_at": "2026-05-26T20:14:00-07:00"
     },
     {
       "id": "todo_sample_10",
-      "title": "Review Sara's growth plan draft",
-      "notes": "Sent Monday. Focus on the technical-leadership pillar; she's asking for concrete examples to anchor against.",
-      "created_at": "2026-05-26T10:15:00-07:00",
-      "list_name": "Tasks"
+      "list_name": "Team \u2192 Direct Reports",
+      "title": "Review Sara's H2 growth plan draft",
+      "notes": "Sara sent her self-authored growth plan covering 3 stretch goals + 1 cross-team rotation interest. Need feedback before Friday 1:1.",
+      "created_at": "2026-05-28T07:50:00-07:00"
     }
   ]
 }

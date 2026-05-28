@@ -39,77 +39,83 @@ Answer = yes for ≥ 80% of samples → Phase 0 done.
 
 ---
 
-## Phase 1 — Live Graph, round-trip enrichment (target: 1.5–2 weeks)
+## Phase 1 — Outlook COM (read-only) + ChromaDB + dashboard ✅ shipped 2026-05-28
 
-**Goal:** Pensieve reads real To-Do tasks, enriches them, and writes the
-enrichment back to the task's `body.content` (the Notes field) so it's
-visible in To-Do itself. Memories are also captured locally (file or
-SQLite, see Phase 2 question).
+**Goal:** Pensieve reads Andy's real To-Do tasks via local Outlook COM (no Graph, no Entra app, no admin consent), enriches them with the v2 prompt (Connect-Goal aware), persists Memories locally in ChromaDB, and renders them on an HP-themed kanban dashboard he can use daily. Zero writes to To-Do — Phase 1 is observe-only.
 
-### Prerequisite
+### Architecture pivot (the headline)
 
-Graph unblock decision from the [Inbox Copilot 2026-05-22 decisions log
-entry](../../Luna%20Master/AI%20Agents%20-%20Copilot/Memory/Decisions%20Log.md) must
-be resolved. Three paths there:
-1. **Custom Entra app registration** (long-term right answer, days of admin
-   consent turnaround).
-2. **Azure CLI client minting Graph tokens** — needs verification that the
-   pre-consented scope set includes `Tasks.Read` / `Tasks.ReadWrite` for
-   Microsoft tenant accounts.
-3. **Wait for built-in PS SDK app to be allow-listed** — not under our
-   control.
+Original Phase 1 plan: live Graph (`Tasks.ReadWrite`) read + writeback to Notes. That path is dead under SFI:
 
-Phase 1 can't start until one of (1) or (2) is confirmed working for
-`Tasks.ReadWrite` scope.
+- Microsoft Graph PS SDK built-in app blocked by corp CA (verified 2026-05-22 in Inbox Copilot session)
+- Azure CLI client token reconfirmed to have **zero** Tasks/Mail/Calendar scopes (JWT decoded 2026-05-28)
+- Custom corp Entra app reg requires admin consent for Tasks scopes; FTE self-service is locked down under SFI
+- Personal MSA app is a workaround but only sees personal tasks, not work tasks
+
+**Decision (2026-05-28):** Pivot Phase 1 to local Outlook COM via pywin32. Outlook desktop already authenticates against the corp tenant; COM gives us the same tasks Graph would, with zero auth surface and zero tenant-policy dependency. Writeback deferred to Phase 2 pending a real Graph unblock.
 
 ### Ships
 
-- Graph client (PowerShell or Python — defer until unblock path is known).
-- Round-trip sync: read all tasks from a configured list → enrich any that
-  lack the `[pensieve-enriched]` sentinel → write enrichment to Notes →
-  add sentinel.
-- Closure capture: on status transition to `done`, prompt user for closure
-  context + impact statement.
-- Idempotency: re-running the sync doesn't re-enrich already-enriched tasks.
-- Reversibility: dry-run mode shows the diff before write. `--apply` flag
-  required to actually call `PATCH /me/todo/lists/{lid}/tasks/{tid}`.
+- **`pensieve/` Python package** (replaces Phase 0 PowerShell entry point; PS scripts kept as legacy):
+  - `pensieve/sources/outlook_com.py` — read-only COM source (zero `.Save()` calls)
+  - `pensieve/sources/sample_file.py` — dev source against `data/samples.json`
+  - `pensieve/sources/base.py` — `TaskSource` abstract; **no write methods on the interface**
+  - `pensieve/enrichment/` — LLM client (port of Inbox Copilot helper), v2 prompt loader, Connect-Goals context, single-task enricher
+  - `pensieve/store/chroma.py` — `ChromaMemoryStore` wrapping `chromadb.PersistentClient` at `data/chroma/`
+  - `pensieve/store/schema.py` — `Memory` Pydantic model + Chroma-metadata flattening (CSV for list fields) + dashboard serializer
+  - `pensieve/sync.py` — orchestrator with ThreadPoolExecutor concurrency=3, idempotency via `source_last_modified`, audit log
+  - `pensieve/api/server.py` — FastAPI: `/api/healthz`, `/api/memories`, `PATCH /api/memories/{id}` (in-card edit), `PATCH /api/memories/{id}/column` (drag-drop), `/api/search?q=` (semantic), `/api/goals` + StaticFiles mount for the dashboard
+  - `pensieve/cli.py` — Typer CLI: `init`, `sync`, `status`, `search`, `serve`, `goals`
+- **`frontend-proto/` HP-themed dashboard** (already existed; rewired to API)
+  - Fetches Memories from `/api/memories` with seed-data fallback when API is offline
+  - Drag-drop column changes PATCH the API
+  - Semantic-search input runs `/api/search?q=`
+  - Click any card → full edit modal: title, strand, column, review flag, why, impact, Connect-Goal multi-select chips, alignment note, private note → Save PATCHes API and updates board
+  - Footer shows connection status + source label
+- **`data/connect-goals.json`** — canonical Connect-Goal catalog (mirrors vault `Memory\Connect Goals\Current.md`); enrichment prompt feeds these to the LLM as context
+- **`tests/`** — 15 pytests covering sources read-only contract, store CRUD + idempotency + semantic search, enrichment prompt build
+- **End-to-end verified:** 10/10 samples enriched successfully (54,935 tokens, 1 flagged for review), idempotent re-sync correctly skips unchanged tasks, dashboard live at `http://localhost:8765/`, in-card edits round-trip through Chroma
 
 ### Ship gate
 
-Andy lets Pensieve run on his real To-Do for a week. At end of week:
-*"Did this make my To-Do better or worse?"* Better = Phase 1 done.
+Andy runs `pensieve sync --source outlook_com` against his real To-Do, uses the dashboard daily for one week, and at end of week:
+*"My real To-Do tasks are untouched, and the Pensieve dashboard is the place I look first when planning my day."* → Phase 1 done.
+
+### Explicitly deferred from Phase 1
+
+- **Writeback to To-Do Notes** — Phase 2. Pending: a viable Graph or COM write path that respects user-edited Notes.
+- **Calendar integration** — Phase 2.5 (Reverie). Andy manually blocks focus time for now.
+- **Reflection export to Synapse** — Phase 3.
 
 ---
 
-## Phase 2 — SQLite memory store + kanban UI (target: 2–3 weeks)
+## Phase 2 — Writeback + closure capture (target: 1.5–2 weeks)
 
-**Goal:** Pensieve becomes more than a To-Do sidecar — it has its own
-view of work as a kanban board and its own searchable memory store.
+**Goal:** Make the enrichment visible *inside* Microsoft To-Do itself (not just on the Pensieve dashboard), and capture impact statements at task closure so the Phase 3 Vials have richer fuel.
+
+### Prerequisite
+
+A viable write path to the To-Do `body.content` Notes field. Options:
+
+| Path | Status | Notes |
+|---|---|---|
+| Outlook COM `.Save()` on the TaskItem | Likely viable — same auth surface that Phase 1 already proves works | Need to validate Outlook doesn't strip / reformat the markdown we write |
+| Custom corp Entra app reg with `Tasks.ReadWrite` | Blocked under SFI — see OPEN-QUESTIONS Q1 | Long-term right answer if admin consent eventually lands |
+| Personal MSA Graph app | Only sees personal tasks | Not viable for work tasks |
+
+**Leaning:** Outlook COM write, sentinel-guarded so user-edited Notes are never overwritten. This breaks the Phase 1 read-only-source contract — Phase 2 introduces a separate `TaskSink` interface; sources stay read-only.
 
 ### Ships
 
-- SQLite schema per `SPEC.md` section 6:
-  - `memories` (the core enriched record)
-  - `strands` (projects / workstreams)
-  - `vials` (closed-task impact snapshots — created at closure in Phase 1
-    but only surfaced UI-side here)
-- FastAPI backend with REST + WebSocket on a localhost port (suggest
-  `:8420` — collides with Synapse, so pick `:8430` or `:8440`).
-- Sync command CRUD: list memories, filter by strand, get a memory, update
-  a memory's strand assignment.
-- React + Vite kanban UI:
-  - 5 columns: `open` / `in_flight` / `blocked` / `review` / `done`
-  - Color-coded by strand
-  - Drag-and-drop status transitions write back to To-Do via Phase 1
-    pipeline
-  - Strand sidebar with counts
-- Strand management: create / rename / archive strands; LLM-suggest a
-  strand for a memory with no human-assigned strand.
+- `pensieve/sinks/` — new abstract `TaskSink` interface; `OutlookCOMSink` implementation
+- Sentinel-comment scheme: `<!-- pensieve-managed:v1 -->` markers around Pensieve-written sections; manual edits outside the markers are preserved
+- Dry-run mode shows the diff before write; `--apply` required
+- Closure capture flow: when sync detects a task transitioned to `Completed`, surface a one-shot prompt ("What changed? What's the impact?") via the dashboard; persisted as Vial fuel on the Memory
+- New dashboard control: per-Memory "exclude from writeback" toggle for sensitive tasks
 
 ### Ship gate
 
-Andy opens the kanban >1x/day for 5 consecutive days. Pattern is the same
-as Inbox Copilot cockpit gate.
+Andy opts in to writeback for ≥ 5 consecutive days and reports no destructive overwrites of his manual edits.
 
 ---
 

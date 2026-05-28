@@ -40,4 +40,6 @@ Thumbs.db
 # Pensieve runtime artifacts
 data/audit-log.jsonl
 data/enriched*.json
+data/chroma/
+data/notes-backups/
 

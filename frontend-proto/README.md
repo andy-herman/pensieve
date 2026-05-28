@@ -1,67 +1,129 @@
-# Pensieve Frontend Prototype
+# Pensieve dashboard (frontend-proto)
 
-A static, HP-themed kanban dashboard for visualising enriched Pensieve memories. This is a **single-page prototype**, not the production frontend — it exists to lock the look-and-feel for Phase 2 before the React + Vite build starts.
+A single static HTML page that renders Pensieve memories as a Harry Potter-themed kanban board.
 
-## How to run
+No build step. No framework. No transpilation. Open `index.html` in a browser (or open `http://localhost:8765/` while the Pensieve API is running) and it works.
 
-Just open `index.html` in any modern browser. There is no build step, no server, no install. The Google Fonts (`Cinzel`, `IM Fell English`, `IM Fell English SC`) are loaded from a CDN at runtime; the page still renders without them.
+This folder is the entire frontend. Three files plus assets:
 
-```powershell
-# from Pensieve repo root
-Start-Process "frontend-proto\index.html"
+```
+frontend-proto/
+|-- index.html        Markup + masthead + modal scaffolding + Hedwig SVG
+|-- pensieve.css      Themes, columns, House palettes, candle flicker, etc.
+|-- pensieve.js       State, rendering, drag-drop, easter eggs, API client
+|-- README.md         You are here
 ```
 
-If you want clean URLs and the ability to fetch the real audit log later, you can serve it instead:
+## What it shows
 
-```powershell
-# Python 3
-python -m http.server 8080 -d frontend-proto
-# Then open http://localhost:8080
-```
+Memories laid out as kanban cards. Each card surfaces:
 
-## The five columns
+- The task title
+- Strand assignment + Strand kind badge (deep, tactical, learning, writing)
+- One-line `why` and `impact` (from the enrichment LLM)
+- Confidence dots (strand + impact + Connect alignment)
+- House colored band for each Connect Goal the memory is aligned to
+- A "needs review" wax-seal badge when confidence is below threshold or the LLM explicitly flagged it
 
-| Glyph | Column | What it represents |
-|---|---|---|
-| 📜 | **Memory** | Freshly enriched from To-Do, not yet acted on |
-| 🔥 | **Dive** | Actively being worked on (focus session in progress) |
-| 🌙 | **Reverie** | Calendar block proposed or scheduled (Phase 2.5) |
-| ✨ | **Reflection** | Done, awaiting post-Reverie debrief |
-| 🧪 | **Vial** | Distilled into Synapse Promo Coach evidence (Phase 3) |
+## Two views
 
-Drag any card across columns to move it. Click any card to open the detail view with full `why`, `impact_hypothesis`, confidence bars, and Reverie/Dive/Reflection/Vial actions.
+**Lifecycle view** (default)
 
-## The data
+Five columns walking a memory through its life:
 
-`pensieve.js` ships with the 12 strands from `data/samples.json` plus the 10 enriched memories from the Phase 0 smoke test on 2026-05-28 (sourced from `data/audit-log.jsonl`) and 2 extra cards for visual fullness.
+| Column | What goes here |
+| ------ | -------------- |
+| Memory | Captured, awaiting depth |
+| Dive | Surfaced for active work this week |
+| Reverie | Inside a scheduled focus block (Phase 4) |
+| Reflection | Being closed out, impact statement being written |
+| Vial | Stored as evidence of finished impact |
 
-**To wire real data later:**
+Drag a card from one column to another to move it. The change is persisted to the local ChromaDB via `PATCH /api/memories/{id}/column`.
 
-1. Replace the `MEMORIES` constant with `await fetch('/api/memories').then(r => r.json())` once the Pensieve backend exists.
-2. Replace the `STRANDS` constant similarly.
-3. POST status changes back to the API in the `drop` and modal-action handlers.
+**Houses view**
 
-## Design language
+One column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for memories the LLM declined to align (operational chores, personal admin, etc.).
 
-- **Background**: aged parchment cream with subtle SVG noise + radial candle-glow and emerald/midnight tints
-- **Headers**: Cinzel display serif with gold-glow text shadow
-- **Body**: IM Fell English (and SC for tiny caps) - same family as the Hogwarts acceptance letter aesthetic
-- **Cards**: parchment slips with a strand-coloured top border and candle-glow on hover
-- **Snitch**: drifts in the lower-right corner as a tasteful idle animation
-- **Wax-red badges** mark memories that need human review (low strand confidence or no strand fit)
+Drag a card into a House to mark that Memory as aligned to that goal. The change updates in-memory state immediately and (in a future iteration) will be persisted to Chroma.
 
-The whole palette and typography live in CSS custom properties at the top of `pensieve.css` - change two values to re-theme the entire board.
+## Three themes
 
-## Status
+| Theme | How to switch |
+| ----- | -------------- |
+| Day (parchment + ink) | Default; click the sun/moon icon to toggle |
+| Night (candle-lit) | Click the sun/moon icon to toggle |
+| Marauder | Type `i solemnly swear that i am up to no good` (anywhere on the page, outside an input). Revert with `mischief managed`. |
 
-| Item | Status |
-|---|---|
-| Single-page prototype with 5 Pensieve columns | ✅ landed 2026-05-28 |
-| Drag-and-drop between columns | ✅ |
-| Card detail modal with strand/why/impact/confidence | ✅ |
-| Strand filter chips + text search | ✅ |
-| Snitch idle animation | ✅ |
-| Wire to live `/api/memories` | ⏳ Phase 1 backend |
-| Reverie scheduling action surface | ⏳ Phase 2.5 |
-| React + Vite migration | ⏳ Phase 2 |
-| `data/audit-log.jsonl` -> `pensieve.js` regenerator script | ⏳ |
+Theme preference is stored in `localStorage` and survives reloads.
+
+## Search
+
+The search input in the masthead supports two modes:
+
+1. **Text filter** (default, as you type): filters the currently loaded memories by title, why, and impact substring match. Fast, local, no API call.
+2. **Semantic search** (press Enter or click the magnifier): sends the query to `/api/search` which runs a ChromaDB vector similarity query. The board is restricted to the semantic top-K (default 20).
+
+Click "Clear filters" to drop both the text filter and the semantic restriction.
+
+## Goals editor
+
+The "Set goals" button opens a modal where you can rename your Connect Goals, change their short label, edit summaries, and pick a House for each. Changes are persisted to localStorage and applied immediately to both views.
+
+The canonical source for the goals lives in `data/connect-goals.json` in the repo root (and ultimately in your vault). The dashboard hydrates from `/api/goals` when the API is available and falls back to localStorage / the bundled defaults otherwise.
+
+## Hedwig
+
+Top-right of the masthead, Hedwig carries a letter showing the count of memories currently in the review queue (low confidence or LLM-flagged). She flutters when the count is nonzero.
+
+## Footprint trail
+
+While dragging a card, faint footprints appear under your cursor and fade out after about 1.7 seconds. Pure cosmetics; no functional purpose.
+
+## API client behavior
+
+On load, the dashboard tries `GET /api/healthz` to discover whether a local Pensieve API is running. Behavior:
+
+- **API reachable**: pulls memories from `/api/memories`, pulls goals from `/api/goals`, persists column changes via PATCH, supports semantic search via `/api/search`.
+- **API unreachable**: falls back to the bundled `SEED_MEMORIES` array (10 demo memories from Phase 0), shows "offline (seed data)" in the footer, and disables semantic search with a toast message.
+
+`API_BASE` is determined in this order:
+
+1. `localStorage.pensieve-api-base` if set
+2. `window.location.origin` if the page is served over HTTP(S) (this is the normal case when opened via `http://localhost:8765/`)
+3. Default `http://127.0.0.1:8765` (this is the fallback when opened directly as `file://`)
+
+## Easter eggs
+
+- `i solemnly swear that i am up to no good` -> Marauder theme
+- `mischief managed` -> revert to day theme (only undoes Marauder; leaves day/night alone if you were on night when you triggered it)
+- A snitch occasionally flits across the bottom-right (CSS animation, just for vibes)
+
+## Browser support
+
+Tested in current Edge and Chrome on Windows. Uses standard ES2020 features and HTML drag-and-drop. No polyfills. Should work in any modern Chromium-based browser; Safari and Firefox are untested but expected to work.
+
+## Refresh
+
+The circular arrow button in the masthead re-fetches memories from the API. Use it after running `pensieve sync` in a separate terminal to pick up newly enriched tasks without reloading the page.
+
+## When to edit which file
+
+| You want to | Edit |
+| ----------- | ---- |
+| Change colors, fonts, theme palettes, House accents | `pensieve.css` |
+| Add a column, change Lifecycle labels, tweak strand badges | `pensieve.js` (look for `LIFECYCLE_COLUMNS` and `STRANDS`) |
+| Add a new toolbar button or footer element | `index.html` (markup) + `pensieve.js` (handler) |
+| Change how a card renders | `pensieve.js` `renderCard` |
+| Change how the dashboard talks to the API | `pensieve.js` section 5b ("API client + remote sync") |
+
+## Constraints
+
+The dashboard intentionally:
+
+- Has no build step
+- Has no framework dependency
+- Loads zero JavaScript modules from any CDN
+- Loads two webfonts from Google Fonts (Cinzel + IM Fell English); replace those with self-hosted fonts if you want a fully offline build
+- Reads only from the local Pensieve API; it never directly talks to Microsoft, Azure, or any third party
+- Never writes to your Outlook tasks

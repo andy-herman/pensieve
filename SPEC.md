@@ -40,11 +40,13 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 
 | Phase | What ships | Ship gate |
 |---|---|---|
-| **0** | Local PS enrichment of canned To-Do task samples | Enrichment quality is good enough that Andy would trust it on real tasks |
-| **1** | Live Graph integration → read tasks → enrich → write back to Notes field | Andy lets it run on his real To-Do for a week without disabling it |
-| **2** | Local SQLite memory store + kanban web view | Andy opens the kanban >1x/day for 5 days |
+| **0** | Local PowerShell enrichment of canned To-Do task samples | Enrichment quality is good enough that Andy would trust it on real tasks |
+| **1** | **Python `pensieve` package**: Outlook COM (read-only) → LLM enrichment → local ChromaDB persistence → FastAPI + HP-themed kanban dashboard at `http://localhost:8765/`. Connect Goal alignment per Memory. | Andy uses the dashboard daily for a week; no destructive change ever lands on his real To-Do tasks |
+| **2** | Writeback path (sentinel-guarded mirror of `why` + `strand` into the To-Do Notes field) + closure-capture flow | Andy opts in to writeback for ≥ 5 days without disabling it |
 | **2.5** | **Reverie** — Pensieve proposes focus-block calendar events from selected memories; user confirms before write | Andy accepts ≥ 3 Pensieve-proposed Reveries in a week and actually works the planned strand during the block |
 | **3** | Reflection export → Synapse Promo Coach format | One real Vial makes it into a real Synapse Promo Coach analysis |
+
+**Phase 1 architecture pivot (2026-05-28):** Original plan called for Microsoft Graph (`Tasks.ReadWrite`) for both read and writeback. Under SFI (late 2025+) corp Entra app registration with delegated `Tasks.*` scopes requires admin consent and is locked down for FTE accounts. Path 2 (Azure CLI token) confirmed dead — see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Phase 1 now bypasses Graph entirely via local Outlook COM interop (read-only). Writeback deferred to Phase 2 pending unblock or alternative path.
 
 **Out of MVP:**
 - Phase 4 — Tauri desktop polish (post-MVP)
@@ -65,44 +67,67 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 
 | Term | What it is | Persistence |
 |---|---|---|
-| **Memory** | An enriched task record: original To-Do title + notes + LLM-extracted *why* / *impact* / *strand* / *closure context* | SQLite `memories` table; To-Do task `body` field for the round-trip subset |
-| **Strand** | A project / workstream a memory belongs to. Examples: `dora-rfi`, `inbox-copilot-build`, `1on1-prep`, `ic5-promo-evidence` | SQLite `strands` table; manually curated + LLM-suggested |
-| **Dive** | A query against memories — time window + strand + status filter | Ephemeral (UI state) |
-| **Reverie** | A calendar-blocked focus session scheduled to work on one or more memories (typically grouped by strand). Pensieve proposes; user confirms; on write, a tentative Outlook event is created with strand metadata in the body. Round-trip: when the Reverie fires, Pensieve prompts user for which memories were actually advanced. | SQLite `reveries` table + corresponding Outlook calendar event id |
-| **Reflection** | A synthesis of memories over a review period (week / month / H1 / H2) — narrative form, framed for the audience | SQLite `reflections` table; exported as markdown for Synapse |
-| **Vial** | A single closed task's distilled impact statement, IC4→IC5 framed, ready for promo-evidence hand-off | SQLite `vials` table; exported as Synapse journal entry rows |
+| **Memory** | An enriched task record: original To-Do title + notes + LLM-extracted *why* / *impact* / *strand* / *Connect-goal alignment* / *closure context* | ChromaDB `memories` collection; (Phase 2) To-Do task `body` field mirrors `why` + `strand` |
+| **Strand** | A project / workstream a memory belongs to. Examples: `dora-rfi`, `inbox-copilot-build`, `1on1-prep`, `ic5-promo-evidence` | `data/samples.json` strand catalog; flattened into each Memory record; LLM-suggested with `needs_human_strand_review` flag for low-confidence cases |
+| **Connect Goal** | One of Andy's semi-annual Connect commitments (House-aligned: Argus / DORA / Mentoring / AI-program). Memories carry `connect_goal_ids` (multi-select) + `connect_alignment_note` so the dashboard can group, filter, and at promo-time generate evidence per Connect goal. | `data/connect-goals.json` (canonical mirror of vault `Memory\Connect Goals\Current.md`); flattened into Memory metadata |
+| **Dive** | A query against memories — time window + strand + status + semantic search | Ephemeral (UI state); semantic search uses Chroma `query()` over the document embedding |
+| **Reverie** | A calendar-blocked focus session scheduled to work on one or more memories (typically grouped by strand). Pensieve proposes; user confirms; on write, a tentative Outlook event is created with strand metadata in the body. Round-trip: when the Reverie fires, Pensieve prompts user for which memories were actually advanced. | Phase 2.5 — separate ChromaDB collection (`reveries`) + corresponding Outlook calendar event id |
+| **Reflection** | A synthesis of memories over a review period (week / month / H1 / H2) — narrative form, framed for the audience. Phase 3 reflections are Connect-Goal-aware: one section per Connect commitment. | Phase 3 — separate ChromaDB collection (`reflections`); exported as markdown for Synapse |
+| **Vial** | A single closed task's distilled impact statement, IC4→IC5 framed, ready for promo-evidence hand-off | Phase 3 — separate ChromaDB collection (`vials`); exported as Synapse journal entry rows |
 
 ## 6. Data shape
 
-### Memory (the core record)
+### Memory (the core record — actual `pensieve/store/schema.py`)
 
-| Field | Source | Type |
-|---|---|---|
-| `id` | UUID | string |
-| `todo_task_id` | Graph `/me/todo/lists/{lid}/tasks/{tid}` | string |
-| `todo_list_id` | Graph | string |
-| `title` | To-Do task title | string |
-| `original_notes` | To-Do task `body.content` at first sync | string |
-| `why` | LLM-extracted from notes + surrounding context | string |
-| `strand_id` | FK to `strands` | string |
-| `status` | `open` / `in_flight` / `blocked` / `review` / `done` | enum |
-| `created_at` | task creation (Graph) | timestamp |
-| `closed_at` | when status transitions to `done` | timestamp \| null |
-| `closure_context` | What changed when closed (LLM + user prompt) | string \| null |
-| `impact` | LLM-extracted impact statement | string \| null |
-| `confidence` | LLM self-rated confidence in the enrichment | float 0–1 |
-| `last_synced_at` | last Graph round-trip | timestamp |
+| Field | Source | Type | Notes |
+|---|---|---|---|
+| `id` | source task id (Outlook `EntryID` for `outlook_com`; sample id for `sample_file`) | string | Stable across re-syncs → idempotency key |
+| `source` | `outlook_com` / `sample_file` | string | |
+| `source_last_modified` | Outlook `LastModificationTime` (or sample equivalent) | ISO timestamp | Used to skip re-enrichment when task unchanged |
+| `title` | task title | string | Editable in dashboard |
+| `original_notes` | task body content at first sync | string | |
+| `why` | LLM-extracted | string | Editable in dashboard |
+| `why_concise` | LLM-extracted (≤ 100 chars) | string | Renders on card front |
+| `impact` | LLM-extracted impact hypothesis | string | Editable in dashboard |
+| `suggested_strand` | LLM-extracted strand id | string \| null | Editable in dashboard |
+| `strand_kind` | strand archetype (RFI / build / mentoring / ...) | string | |
+| `needs_human_strand_review` | LLM self-flag when strand confidence is low | bool | Editable in dashboard |
+| `connect_goal_ids` | LLM-extracted, multi-select | list[string] | Editable in dashboard |
+| `connect_alignment_note` | LLM-extracted prose | string | Editable in dashboard |
+| `connect_alignment_confidence` | LLM 0–1 | float | |
+| `confidence_strand` | LLM 0–1 | float | |
+| `confidence_impact` | LLM 0–1 | float | |
+| `notes_for_user` | LLM-extracted "things the user should know" | string | Editable in dashboard |
+| `categories` | LLM-extracted tags | list[string] | |
+| `column` | kanban column — `memory` / `dive` / `reverie` / `reflection` / `vial` | enum | Editable via drag-drop or dashboard dropdown |
+| `enriched_at` | when the LLM enrichment ran | ISO timestamp | |
+| `prompt_version` | enrichment prompt version (`v2`) | string | |
 
-### Strand
+**Chroma metadata constraint:** ChromaDB only accepts scalar metadata (str/int/float/bool). Lists (`connect_goal_ids`, `categories`) are CSV-flattened on write (`connect_goal_ids_csv`) and reconstructed on read in `Memory.to_chroma_metadata()` / `ChromaMemoryStore._reconstruct()`.
+
+### Strand (catalog entry, sourced from `data/samples.json`)
 
 | Field | Type |
 |---|---|
-| `id` | string (slug, e.g. `ic5-promo-evidence`) |
+| `id` | string (slug, e.g. `dora-rfi`) |
 | `display_name` | string |
+| `kind` | string (RFI / build / mentoring / ops / learning / 1on1 / promo) |
 | `description` | string |
 | `color` | string (kanban tag color) |
-| `external_link` | optional ADO project / SharePoint / brainstorm URL |
-| `default_reverie_minutes` | int — Pensieve's default block size when proposing a Reverie for memories in this strand (e.g. `60` for deep RFI work, `25` for chore strands) |
+| `external_link` | optional ADO / SharePoint / brainstorm URL |
+| `default_reverie_minutes` | int — Phase 2.5 default focus-block size |
+
+### Connect Goal (sourced from `data/connect-goals.json`)
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string (slug, e.g. `goal-1-dora-deep-dive`) | |
+| `number` | int (1–6) | Display order |
+| `name` | string | Full Connect-document phrasing |
+| `short_name` | string | Kanban chip label |
+| `house` | enum (`gryffindor` / `slytherin` / `ravenclaw` / `hufflepuff`) | Drives dashboard chip color |
+| `glyph` | string (1–2 chars) | Visual marker on chip |
+| `description` | string | What "good" looks like for this commitment |
 
 ### Reverie (Phase 2.5)
 
@@ -111,51 +136,58 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 | `id` | UUID |
 | `proposed_start` | timestamp |
 | `proposed_end` | timestamp |
-| `strand_id` | FK to `strands` (Reveries are strand-scoped, not per-task) |
+| `strand_id` | FK to strand catalog (Reveries are strand-scoped, not per-task) |
 | `memory_ids` | list[str] — memories the user picked to work on in this block |
 | `status` | `proposed` / `accepted` / `declined` / `fired` / `completed` / `bumped` |
-| `outlook_event_id` | Graph calendar event id (null until accepted) |
+| `outlook_event_id` | Graph or COM calendar event id (null until accepted) |
 | `outlook_event_etag` | for conflict detection on later edits |
-| `actual_memories_advanced` | list[str] — populated by the post-Reverie prompt; what user actually worked on |
+| `actual_memories_advanced` | list[str] — populated by the post-Reverie prompt |
 | `proposed_at` | timestamp |
 | `accepted_at` | timestamp \| null |
 | `fired_at` | timestamp \| null |
 
-## 7. Pipeline (Phase 0 → 3)
+## 7. Pipeline (Phase 1 = built, Phases 2/2.5/3 = planned)
 
 ```
                   ┌───────────────────────┐
-                  │  Microsoft To-Do      │
-                  │  (Phase 1+)           │
+                  │  Microsoft To-Do      │   read-only
+                  │  via local Outlook    │   (no .Save() calls)
+                  │  COM interop          │
                   └───────────┬───────────┘
-                              │ Graph read
+                              │ pywin32
               ┌───────────────▼───────────────┐
-              │  Pensieve sync                │
-              │  (Phase 0: canned samples)    │
+              │  pensieve.sources.outlook_com │
+              │  (or sample_file for dev)     │
               └───────────────┬───────────────┘
-                              │
+                              │ RawTask
               ┌───────────────▼───────────────┐
-              │  Enrich prompt (Azure OpenAI) │
-              │  → why / strand / impact      │
+              │  pensieve.enrichment.enricher │
+              │  Azure OpenAI gpt-5.4-2       │
+              │  + Connect-Goals context      │
+              │  → why / strand / impact /    │
+              │    connect_goal_ids / ...     │
               └───────────────┬───────────────┘
-                              │
+                              │ Memory
               ┌───────────────▼───────────────┐
-              │  SQLite memories table        │
-              │  (Phase 2)                    │
+              │  ChromaDB (PersistentClient)  │
+              │  data/chroma/ — local-only    │
+              │  collection: memories         │
               └───────────────┬───────────────┘
                               │
         ┌─────────────────────┼─────────────────────┐
         │                     │                     │
-┌───────▼───────┐  ┌──────────▼──────────┐  ┌──────▼─────────┐
-│ Kanban UI     │  │ Reflection builder  │  │ To-Do write-   │
-│ (Phase 2)     │  │ (Phase 3)           │  │ back to Notes  │
-└───────────────┘  └──────────┬──────────┘  │ (Phase 1)      │
-                              │              └────────────────┘
-                   ┌──────────▼──────────┐
-                   │ Synapse Promo Coach │
-                   │ (Phase 3 export)    │
-                   └─────────────────────┘
+┌───────▼────────┐  ┌─────────▼──────────┐  ┌──────▼──────────────┐
+│ FastAPI server │  │ Phase 3 Reflection │  │ Phase 2 writeback   │
+│ + HP-themed    │  │ builder (planned)  │  │ to To-Do Notes      │
+│ dashboard      │  └─────────┬──────────┘  │ (sentinel-guarded,  │
+│ localhost:8765 │            │             │  user opt-in)       │
+│ + semantic     │  ┌─────────▼──────────┐  └─────────────────────┘
+│   search +     │  │ Synapse Promo      │
+│   in-card edit │  │ Coach (Phase 3)    │
+└────────────────┘  └────────────────────┘
 ```
+
+**Phase 2.5 Reverie** plugs into the same pipeline: kanban multi-select → Reverie proposal → Outlook calendar write (separate `reveries` collection). Same read-only-COM contract for read paths; explicit-user-confirm gate for the one calendar write.
 
 ## 8. Out-of-scope (MVP)
 
@@ -167,12 +199,15 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 
 ## 9. Hard constraints (architectural invariants)
 
-1. **No external LLMs.** Inherited from CISO GRC pillar; matched to Inbox Copilot and Synapse.
-2. **Reversibility.** Any phase that mutates To-Do shows a diff before writing. Phase 0 never writes.
-3. **Phase 0 works without Graph.** Corp CA still blocks the built-in PS SDK app.
-4. **Strand assignment is human-in-the-loop.** LLM suggests; user confirms before persistence (in Phase 1+).
-5. **Closed tasks remain immutable in Pensieve.** A Vial is a snapshot; if To-Do data later changes, the Vial doesn't.
-6. **Reverie write to calendar requires explicit user confirmation.** Pensieve never silently puts events on the user's calendar. Proposed Reveries appear in the UI as tentative cards; only after user clicks Accept does Pensieve `POST /me/events` via Graph. Reverie events are marked `showAs = "tentative"` on first write so they're visually distinct from meetings.
+1. **No external LLMs.** Inherited from CISO GRC pillar; matched to Inbox Copilot and Synapse. Azure OpenAI Cortex hub, keyless via `DefaultAzureCredential`.
+2. **Sources are read-only.** Every `TaskSource` implementation has zero mutation methods. `OutlookCOMSource` deliberately has no `.Save()` calls anywhere. Enforced by a unit test that asserts forbidden method names (`save`, `update_task`, `patch`, `delete_task`, `set_notes`, `create_task`) don't exist on any source class. Phase 2 writeback, when added, will be a separate `TaskSink` interface — explicitly opt-in.
+3. **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+) requires admin consent for new corp Entra apps accessing `Tasks.*` / `Mail.*` / `Calendars.*` scopes; self-service registration for FTE accounts is locked down. See [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Phase 1 uses local Outlook COM interop instead — same data, zero auth surface, zero tenant-policy dependency.
+4. **All data is local.** ChromaDB persists to `data/chroma/`. No network egress except the LLM enrichment call. Nothing leaves the machine without an explicit Phase 3 export action.
+5. **Strand assignment is human-in-the-loop.** LLM suggests with `confidence_strand`; low-confidence rows are flagged `needs_human_strand_review = true` and the dashboard surfaces them with a review pill. User can override strand inline in the card-edit modal.
+6. **Connect-Goal alignment is first-class.** Every Memory carries `connect_goal_ids` + `connect_alignment_note`. Dashboard surfaces House-colored chips. Phase 3 Reflections will be Connect-Goal-grouped by default.
+7. **Reversibility for any future writeback.** Phase 2 writeback (when added) must show a diff before write and use a sentinel comment so user-edited Notes are never overwritten.
+8. **Closed tasks remain immutable in Pensieve.** A Vial is a snapshot; if To-Do data later changes, the Vial doesn't.
+9. **Reverie write to calendar requires explicit user confirmation.** Pensieve never silently puts events on the user's calendar. Proposed Reveries appear in the UI as tentative cards; only after user clicks Accept does Pensieve create the calendar event. Reverie events are marked `showAs = "tentative"` on first write so they're visually distinct from meetings.
 
 ## 10. Open questions
 
@@ -184,16 +219,17 @@ Pensieve deliberately re-uses architecture decisions from sibling projects:
 
 | Decision | Inherited from |
 |---|---|
-| PowerShell Phase 0 + dotenv | Inbox Copilot |
+| PowerShell Phase 0 (legacy; replaced by Python in Phase 1) | Inbox Copilot |
 | Azure OpenAI Cortex hub endpoint | Argus + Synapse |
-| `Invoke-AzureOpenAI.ps1` REST wrapper | Inbox Copilot |
-| FastAPI + asyncio + Pydantic v2 backend (Phase 2+) | Argus + Synapse + Inbox Copilot |
-| SQLite for structured memory | Synapse |
-| React + Vite frontend | Argus `frontend_shell` |
+| `Invoke-AzureOpenAI.ps1` REST wrapper (legacy; ported to `pensieve/enrichment/llm_client.py`) | Inbox Copilot |
+| FastAPI + asyncio + Pydantic v2 backend | Argus + Synapse + Inbox Copilot |
+| ChromaDB for local memory store (replaced earlier "SQLite" plan) | New choice for Pensieve — semantic search out of the box |
+| Vanilla JS + HTML/CSS dashboard (HP-themed) | Custom for Pensieve; small enough to stay framework-free |
 | Tauri v2 desktop packaging (post-MVP polish) | Synapse + Argus |
 | No-external-LLM constraint | Inbox Copilot |
 | Vault-aligned session lifecycle | Global Copilot Instructions |
 | Agency `agency.toml` per project + baseline `remote_config` | Agency Copilot rollout 2026-05-28 |
+| Outlook COM as the SFI-safe productivity-data source | New choice for Pensieve — first project to hit the SFI Graph block |
 
 This is deliberate: less to invent, less to maintain, less surface area
 to debug when something breaks.

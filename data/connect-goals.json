@@ -1,0 +1,90 @@
+{
+  "_meta": {
+    "source": "Andy's Connect May 2026 (status: in review)",
+    "reflection_period": "2025-10-26 .. 2026-05-16",
+    "vault_canonical": "C:/Andy Herman/Luna Master/AI Agents - Copilot/Memory/Connect Goals/Current.md",
+    "vault_pdf": "C:/Andy Herman/Luna Master/AI Agents - Copilot/Memory/Connect Goals/2026-05_Connect_AndyHerman.pdf",
+    "last_synced": "2026-05-28",
+    "house_mapping_rationale": "Gryffindor=Goal1 (frontline regulator courage); Hufflepuff=Goal2 (sustained year-over-year dedication); Slytherin=Goal3 (strategic long-game foundation); Ravenclaw=Goal4 (innovation + intellect)"
+  },
+  "goals": [
+    {
+      "id": "goal-1-dora-deep-dive",
+      "number": 1,
+      "short_name": "DORA Deep Dive",
+      "name": "DORA Deep Dive Compliance",
+      "house": "gryffindor",
+      "house_glyph": "\u26A1",
+      "color_primary": "#7a2018",
+      "color_accent": "#c9a655",
+      "summary": "Lead CISO GRC role on DORA Core Team through deep dive examination phase. Partner with Azure + M365 Product Trust to deliver accurate JET responses on schedule. Co-develop regulatory readiness playbook.",
+      "success_criteria": [
+        "All deep dive JET responses delivered on schedule with no compliance gaps",
+        "Co-author documented regulatory readiness playbook with Azure Product Trust",
+        "Structured, timely leadership updates on progress, risks, blockers"
+      ],
+      "impact_statement": "Validated cross-org playbook accelerates NIS2 and UK CTP readiness. Integrated with Argus, becomes the operational foundation for how CISO GRC responds to regulators at scale.",
+      "keywords_for_alignment": ["DORA", "JET", "RFI", "deep dive", "Joint Examination Team", "regulator response", "ERCM", "ERM", "Azure Product Trust", "playbook", "RACI", "evidence acceptance", "EU regulator"]
+    },
+    {
+      "id": "goal-2-uk-ctp",
+      "number": 2,
+      "short_name": "UK CTP",
+      "name": "UK CTP Year 1 Complete + Year 2 Launch",
+      "house": "hufflepuff",
+      "house_glyph": "\u2698",
+      "color_primary": "#b08a26",
+      "color_accent": "#2a1d10",
+      "summary": "Deliver Year 1 UK CTP obligations following designation. Submit Self-Assessment within 3-month post-designation window. Initiate Year 2 roadmap for scenario testing and mapping exercises across systemic third-party services.",
+      "success_criteria": [
+        "Validated Year 1 Self-Assessment submitted to regulators on time post-designation",
+        "Initial dependency mapping complete within 12 months of designation",
+        "Year 2 readiness roadmap: scenario testing, incident mgmt playbook, partner engagement model",
+        "Maintain weekly leadership update cadence (Friday \u2192 Steph \u2192 Monday Molly/Oliver sync)"
+      ],
+      "impact_statement": "Year 1 submission establishes Microsoft regulatory credibility with BoE, PRA, FCA. Year 2 roadmap positions CISO GRC to lead scenario testing as strategic program, not reactive exercise.",
+      "keywords_for_alignment": ["UK CTP", "CTP", "designation", "self-assessment", "self assessment", "BoE", "PRA", "FCA", "Bank of England", "scenario testing", "dependency mapping", "domain write-up", "ICT third party", "year 1", "year 2", "Year 1", "Year 2"]
+    },
+    {
+      "id": "goal-3-nis2-foundation",
+      "number": 3,
+      "short_name": "NIS2",
+      "name": "NIS2 Readiness Foundation",
+      "house": "slytherin",
+      "house_glyph": "\u269C",
+      "color_primary": "#2e5a3a",
+      "color_accent": "#a8a8a8",
+      "summary": "Build NIS2 foundational posture during H1 while Ireland transposition pending. Lead scoping + gap analysis. Apply communication-first model day one. Identify core team partners across engineering, legal, compliance.",
+      "success_criteria": [
+        "NIS2 scope and gap assessment documenting anticipated obligations + current coverage",
+        "Communication-first model applied day one (leadership visibility plan alongside delivery plan)",
+        "Core team partners identified and engagement begun"
+      ],
+      "impact_statement": "Builds NIS2 foundation now to reduce ramp time. Reusing DORA + UK CTP playbook multiplies prior investment. Demonstrates CISO GRC is scalable regulatory program function, not one-off engagements.",
+      "keywords_for_alignment": ["NIS2", "Ireland transposition", "directive", "scope assessment", "gap analysis", "core team", "engineering legal compliance", "phased readiness", "EU directive"]
+    },
+    {
+      "id": "goal-4-ai-transformation",
+      "number": 4,
+      "short_name": "AI Program + Argus",
+      "name": "AI Strategy, Innovation, and Transformation Program for CISO GRC",
+      "house": "ravenclaw",
+      "house_glyph": "\u269B",
+      "color_primary": "#2c4670",
+      "color_accent": "#c9a655",
+      "summary": "Design + operationalize structured AI transformation program for CISO GRC. Layered architecture across four capability areas (day-to-day automation, productivity multipliers, onboarding/knowledge, executive dashboards). Scale Argus from MVP to wider-used regulatory compliance platform.",
+      "success_criteria": [
+        "Program launched with documented governance: idea intake, triage, piloting, adoption",
+        "Argus demos with Azure + M365 product leadership completed; next-phase investment secured",
+        "At least one production capability across each of the four focus areas",
+        "Argus dashboarding deployed for leadership near real-time program visibility"
+      ],
+      "impact_statement": "Establishes CISO GRC as center of excellence for AI-driven regulatory compliance. Reduces manual toil, accelerates onboarding, closes leadership visibility gap. Capabilities scale across future regulatory obligations.",
+      "keywords_for_alignment": ["Argus", "Pensieve", "Inbox Copilot", "Synapse", "AI program", "AI transformation", "innovation", "pilot cohort", "idea triage", "biweekly", "automation", "productivity multiplier", "onboarding", "executive dashboard", "Power BI", "ADO", "regulator persona", "narrative engine", "evidence engine"]
+    }
+  ],
+  "behaviors": {
+    "trust_intentionally": "Approachable, direct, action-oriented with partners across Azure, M365, ERCM, CELA. Invest in relationships. Focus energy on shared outcomes over org friction.",
+    "solve_at_scale": "Build solutions that serve more than the immediate problem. Push for consolidated tooling (ADO, Power BI) over siloed workflows. Bias toward durable technical solutions."
+  }
+}

@@ -6,54 +6,71 @@ can see what was tried.
 
 ---
 
-## Q1 — Graph unblock path (blocks Phase 1)
+## Q1 — Graph unblock path (was: blocks Phase 1)
 
-**Status:** Open. Same blocker as Inbox Copilot Phase 1.
+**Status:** CLOSED 2026-05-28 — Phase 1 architecturally bypassed Graph entirely via local Outlook COM. Question remains open for Phase 2 writeback and Phase 2.5 Reverie, but no longer blocks shipping.
 
-**Background:** Microsoft Graph PS SDK app (`14d82eec-204b-4c2f-b7e8-296a70dab67e`)
-is blocked by corp Conditional Access for Andy's account. Verified
-2026-05-22 in the Inbox Copilot session.
+**Background:** Microsoft Graph PS SDK app (`14d82eec-204b-4c2f-b7e8-296a70dab67e`) is blocked by corp Conditional Access for Andy's account (verified 2026-05-22 in Inbox Copilot session).
 
-**Three paths:**
+**Three paths evaluated:**
 
-| Path | Time to unblock | Sustainability |
+| Path | Result | Notes |
 |---|---|---|
-| Custom Entra app registration via corp onboarding | Days of admin-consent turnaround | High — long-term right answer |
-| Azure CLI client minting Graph tokens | Hours | Depends on whether pre-consented scope includes `Tasks.ReadWrite` |
-| Wait for built-in PS SDK to be allow-listed | Indefinite, not under our control | Not viable |
+| Custom Entra app registration via corp onboarding | **Blocked under SFI for FTE self-service.** | Late-2025+ Microsoft Security Future Initiative tightened delegated `Tasks.*` / `Mail.*` / `Calendars.*` scopes — corp Entra app reg requires admin consent and FTE self-service is locked down. Long-term right answer if admin consent eventually lands; not viable as ship-blocker for Phase 1. |
+| Azure CLI client minting Graph tokens | **Dead.** | Reconfirmed 2026-05-28 via JWT decode: `az account get-access-token --resource https://graph.microsoft.com` returns a token from the Azure CLI client (`appid: 04b07795-8ddb-461a-bbee-02f9e1bf7b46`) whose `scp` claim contains only admin-style scopes (Application.ReadWrite.All, Group.ReadWrite.All, User.ReadWrite.All, Directory.AccessAsUser.All, AuditLog.Read.All, AppRoleAssignment.ReadWrite.All, DelegatedPermissionGrant.ReadWrite.All, openid, profile, email). **Zero** Tasks-, Mail-, or Calendar-related scopes. |
+| Wait for built-in PS SDK app to be allow-listed | **Not viable.** | Not under our control. |
 
-**Decision trigger:** Before Phase 1 kickoff.
+**Phase 1 decision (2026-05-28):** **Pivot Phase 1 to local Outlook COM via pywin32.** Outlook desktop already authenticates against the corp tenant for the user; COM gives Pensieve the same task data Graph would, with zero auth surface and zero tenant-policy dependency. `pensieve/sources/outlook_com.py` ships read-only (no `.Save()` calls anywhere; enforced by a unit test that asserts forbidden method names don't exist on any source class).
 
-**Tasks.ReadWrite probe (do this first):**
-```powershell
-$token = az account get-access-token --resource https://graph.microsoft.com `
-    --query accessToken -o tsv
-# Decode the JWT scp claim and check for Tasks.ReadWrite / Tasks.Read
-```
-If the scope is present, Path 2 is viable for now. If not, file the
-Entra app registration and proceed Path 1.
+**Phase 2 + Phase 2.5 implications:**
+
+- **Writeback (Phase 2)** will likely use Outlook COM `.Save()` on the TaskItem (same auth surface that Phase 1 proves works). Sentinel-guarded so user-edited Notes are never overwritten.
+- **Calendar (Phase 2.5)** will likely use Outlook COM `AppointmentItem` rather than Graph `POST /me/events`. Personal MSA fallback remains an option for personal-calendar dogfooding.
+- **Corp Entra app reg** stays on the long-term roadmap but is not on the critical path for any phase.
+
+---
+
+## Q12 — When (if ever) do we revisit Graph-based writeback?
+
+**Status:** Open. Affects Phase 2.
+
+Phase 1 ships entirely on local Outlook COM. Phase 2 writeback can either:
+
+- **Stay on COM** — same auth surface, no admin-consent dependency, no SFI risk. Limits Pensieve to machines with Outlook desktop installed.
+- **Add a Graph path behind a feature flag** — would unlock headless / non-Outlook-desktop machines and a future team rollout. Requires admin-consent unblock or alternative.
+
+**Decision trigger:** When Andy hits a "I want to use Pensieve from a machine without Outlook desktop" moment, or when the team rollout (Phase 6) starts.
+
+---
+
+## Q13 — Calendar integration approach when Phase 2.5 lands
+
+**Status:** Open. Affects Phase 2.5.
+
+Same architectural fork as Q12 but for calendar:
+
+- **Outlook COM `AppointmentItem`** — same SFI-safe path Phase 1 uses for tasks. Likely default.
+- **Graph `POST /me/events`** — only if Q1 corp Entra app reg eventually lands. Better for Reverie suggestions that need calendar-density awareness via `findMeetingTimes`.
+
+**Decision trigger:** Start of Phase 2.5 design.
 
 ---
 
 ## Q2 — Where does enriched detail live?
 
-**Status:** Open. Affects Phase 1 + Phase 2 design.
+**Status:** RESOLVED 2026-05-28 — **Option C (both), with Phase 1 shipping the local half only.**
 
-**Options:**
+Memories live canonically in ChromaDB (`data/chroma/memories` collection). Phase 1 does NOT mirror back to To-Do Notes — keeps the read-only-source contract. Phase 2 will add a sentinel-guarded mirror (`why` + `strand` only) so the enrichment is visible inside To-Do itself; manual edits between the sentinels are preserved.
+
+Original options + decision context:
 
 | Option | Pro | Con |
 |---|---|---|
 | **A. To-Do Notes field only** (round-trip) | Visible in native To-Do UI; survives if Pensieve dies | Notes field is plain text; no structure; size limits; hard to query |
-| **B. SQLite only** (Pensieve never writes back) | Clean schema; full structure; fast queries | Enrichment invisible inside To-Do — defeats half the value |
-| **C. Both** — SQLite is canonical, Notes mirrors a subset | Best of both | Sync complexity; potential drift |
+| **B. ChromaDB only** (Pensieve never writes back) | Clean schema; full structure; fast queries; semantic search out of the box | Enrichment invisible inside To-Do — half the value |
+| **C. Both** — ChromaDB canonical, Notes mirrors a subset | Best of both | Sync complexity; potential drift; needs sentinel |
 
-**Leaning:** (C). Notes mirror = title + why + strand. SQLite = everything
-including closure_context, impact, vial. Mirror is one-way (Pensieve → To-Do
-Notes); Notes are not parsed back. This means manual Notes edits in To-Do
-are lost on next sync — needs a sentinel comment so Pensieve can detect
-"user wrote here" and skip overwrite.
-
-**Decision trigger:** Phase 1 design.
+Phase 1 ships B; Phase 2 promotes to C.
 
 ---
 

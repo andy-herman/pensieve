@@ -34,17 +34,28 @@ they can be filtered from the global Sessions folder.
 ## Hard constraints
 
 - **No external LLMs.** Every classification or generation MUST hit Azure
-  OpenAI (Cortex hub `https://agents-wus3-02.services.ai.azure.com/`,
-  deployment `gpt-5.4-2`, keyless via `DefaultAzureCredential`) or
-  Microsoft 365 Copilot via MCP. Never an external endpoint. Inherited
-  from the CISO GRC pillar 1 constraint and matched to Inbox Copilot and
-  Synapse for consistency.
-- **Reversibility in Phase 0/1.** No task is modified without a
-  user-visible diff. Phase 0 is dry-run only.
-- **Phase 0 must work without live Graph.** Corp Conditional Access blocks
-  the built-in `Microsoft.Graph` PS SDK app on Andy's account
-  (verified 2026-05-22 in the Inbox Copilot session — same problem here).
-  Phase 0 operates against canned task samples; Phase 1 unblocks Graph.
+  OpenAI (Cortex hub, deployment `gpt-5.4-2`, keyless via
+  `DefaultAzureCredential`) or Microsoft 365 Copilot via MCP. Never an
+  external endpoint. Inherited from the CISO GRC pillar 1 constraint and
+  matched to Inbox Copilot and Synapse for consistency.
+- **Sources are read-only.** `pensieve/sources/outlook_com.py` and every
+  other `TaskSource` implementation has zero mutation methods. Enforced by
+  a unit test (`tests/test_sources.py::test_sources_are_read_only_no_write_methods`)
+  that asserts forbidden method names (`save`, `update_task`, `patch`,
+  `delete_task`, `set_notes`, `create_task`) don't exist on any source
+  class. Phase 2 writeback, when added, will live behind a separate
+  `TaskSink` interface that is opt-in.
+- **Reversibility for any future writeback.** When Phase 2 lands, no task
+  is modified without a user-visible diff and a sentinel-comment scheme
+  that preserves user-edited Notes outside the Pensieve-managed section.
+- **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+)
+  requires admin consent for new corp Entra apps accessing `Tasks.*` /
+  `Mail.*` / `Calendars.*` scopes; FTE self-service is locked down. See
+  [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Phase 1 uses local
+  Outlook COM via `pywin32` — same data, zero auth surface, zero
+  tenant-policy dependency.
+- **All data is local.** ChromaDB persists to `data/chroma/`. No network
+  egress except the LLM enrichment call.
 
 ---
 
@@ -52,47 +63,114 @@ they can be filtered from the global Sessions folder.
 
 | Layer | Choice | Why |
 |---|---|---|
-| Phase 0 entry | PowerShell + dotenv-style `.env` | Matches Inbox Copilot Phase 0 — fastest path to validating enrichment quality |
-| LLM (all phases) | Azure OpenAI `gpt-5.4-2` via Cortex hub, keyless | Same as Argus + Synapse |
-| Phase 1 Graph access | Microsoft Graph SDK (Python) or Graph REST direct | Tied to Graph-unblock decision (see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md)) |
-| Phase 2 backend | Python 3.12 + FastAPI + Uvicorn + Pydantic v2 | Matches Argus / Synapse / Inbox Copilot |
-| Phase 2 store | SQLite (memories, strands, vials, reflections) | Matches Synapse `agent_i.db` pattern |
-| Phase 2 UI | React 18 + Vite (kanban view, localhost-only) | Matches frontend_shell pattern |
+| Phase 0 entry (legacy) | PowerShell + dotenv | Validated enrichment quality fast; replaced by Python in Phase 1 |
+| Phase 1+ primary stack | Python 3.12 + Typer CLI + FastAPI + Pydantic v2 | Matches Argus / Synapse / Inbox Copilot |
+| LLM (all phases) | Azure OpenAI `gpt-5.4-2` via Cortex hub, keyless via `DefaultAzureCredential` | Same as Argus + Synapse |
+| Phase 1 task source | Local Outlook desktop via `pywin32` COM interop, **read-only** | SFI bypass — see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Zero Graph dependency, zero Entra app reg, zero admin consent. |
+| Memory store | **ChromaDB** `PersistentClient` at `data/chroma/` (cosine HNSW) | Local-only, semantic search out of the box, replaces earlier "SQLite" plan |
+| Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, HP-themed, served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
 | Phase 4 polish (post-MVP) | Tauri v2 desktop shell | Matches Argus + Synapse packaging |
 | Telemetry | App Insights via `logger` MCP / SDK | Inherited from baseline |
 
 ---
 
-## Repo layout (current + planned)
+## Repo layout (current)
 
 ```
 Pensieve/
 ├── AGENTS.md              # this file
-├── README.md              # one-page pitch + how to run
+├── README.md              # public-facing pitch + quickstart
 ├── SPEC.md                # authoritative product spec
 ├── PHASES.md              # Phase 0–3 plan
 ├── OPEN-QUESTIONS.md      # known unknowns + decision triggers
 ├── agency.toml            # Agency MCP config (baseline + Pensieve-specific)
-├── .env.example           # Azure OpenAI env vars
+├── pyproject.toml         # Python package metadata (editable install)
+├── .env / .env.example    # Azure OpenAI + ChromaDB env vars
 ├── .gitignore
 │
-├── data/                  # (planned) canned task samples, exported reflections
-│   └── samples.json
-├── prompts/               # enrichment / Reverie / reflection prompt files
-│   ├── README.md          # index + conventions for all prompts
-│   ├── reverie-proposal-prompt.md   # Phase 2.5, pre-staged 2026-05-28
-│   ├── reverie-debrief-prompt.md    # Phase 2.5, pre-staged 2026-05-28
-│   └── enrich-memory-prompt.md      # (planned, Phase 0)
-├── scripts/               # (planned) Phase 0 PowerShell pipeline
+├── pensieve/              # the Python package (Phase 1 primary entry)
+│   ├── __init__.py
+│   ├── cli.py             # Typer CLI: init / sync / status / search / serve / goals
+│   ├── config.py          # pydantic-settings .env loading
+│   ├── sync.py            # orchestrator: sources → enrichment → ChromaDB
+│   ├── sources/           # TaskSource implementations (READ-ONLY contract)
+│   │   ├── base.py
+│   │   ├── outlook_com.py # pywin32 Outlook COM source
+│   │   └── sample_file.py # dev source against data/samples.json
+│   ├── enrichment/
+│   │   ├── llm_client.py  # port of Inbox Copilot Invoke-AzureOpenAI.ps1
+│   │   ├── prompt.py      # loads prompts/enrich-memory-prompt.md
+│   │   ├── connect_goals.py
+│   │   └── enricher.py
+│   ├── store/
+│   │   ├── schema.py      # Memory + Vial Pydantic models
+│   │   └── chroma.py      # ChromaMemoryStore (PersistentClient)
+│   └── api/
+│       └── server.py      # FastAPI + StaticFiles mount for the dashboard
+│
+├── frontend-proto/        # HP-themed kanban dashboard
+│   ├── index.html
+│   ├── pensieve.js        # vanilla JS; fetches from API; in-card edit modal
+│   ├── pensieve.css       # 3 themes (parchment / night / marauder), Houses, polish
+│   └── README.md
+│
+├── data/                  # local-only data
+│   ├── samples.json       # canned tasks + strand catalog
+│   ├── connect-goals.json # canonical Connect-Goal catalog
+│   ├── chroma/            # ChromaDB persistent store (gitignored)
+│   └── audit-log.jsonl    # one line per sync action (gitignored)
+│
+├── prompts/
+│   ├── enrich-memory-prompt.md      # v2 (Connect-aware) — used by Phase 1
+│   ├── reverie-proposal-prompt.md   # Phase 2.5 pre-stage
+│   ├── reverie-debrief-prompt.md    # Phase 2.5 pre-stage
+│   └── README.md
+│
+├── scripts/               # LEGACY — Phase 0 PowerShell pipeline
 │   ├── Enrich-Memories.ps1
 │   └── lib/
 │       ├── Load-DotEnv.ps1
 │       └── Invoke-AzureOpenAI.ps1
-└── src/                   # (planned, Phase 2+) Python backend
+│
+└── tests/                 # pytest suite (15 tests)
+    ├── conftest.py
+    ├── test_sources.py    # read-only contract enforcement
+    ├── test_store.py      # Chroma upsert/idempotent/search/column-update
+    └── test_enrichment.py # prompt + goals + payload shape
 ```
 
-`scripts/lib/` mirrors Inbox Copilot's helper layout so the dotenv loader and
-Azure OpenAI REST wrapper can be lifted verbatim.
+Phase 0 PowerShell scripts are kept under `scripts/` as legacy. The Python
+package under `pensieve/` is now the canonical entry point; PowerShell is
+not extended further.
+
+---
+
+## Canonical commands
+
+```powershell
+# one-time setup
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .[dev]
+
+# verify config
+pensieve init
+
+# pull Andy's real To-Do via Outlook COM, enrich, persist to ChromaDB
+pensieve sync --source outlook_com
+
+# or run against the dev sample file
+pensieve sync --source sample_file
+
+# inspect what's in the store
+pensieve status
+pensieve search "DORA regulator"
+pensieve goals
+
+# run the dashboard
+pensieve serve --port 8765
+# open http://localhost:8765/
+```
 
 ---
 

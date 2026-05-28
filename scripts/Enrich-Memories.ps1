@@ -48,6 +48,16 @@ $promptPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'prompts\enrich-memor
 if (-not (Test-Path $promptPath)) { throw "Prompt file not found at $promptPath" }
 $systemPrompt = Get-Content $promptPath -Raw
 
+$goalsPath = Join-Path $dataDir 'connect-goals.json'
+$connectGoals = @()
+if (Test-Path $goalsPath) {
+    $goalsBlob = Get-Content $goalsPath -Raw | ConvertFrom-Json
+    $connectGoals = @($goalsBlob.goals)
+    Write-Host ("Loaded {0} Connect goals from connect-goals.json" -f $connectGoals.Count) -ForegroundColor DarkGray
+} else {
+    Write-Host "WARN: connect-goals.json not found at $goalsPath - Connect alignment will be empty." -ForegroundColor Yellow
+}
+
 function Write-Audit {
     param([hashtable] $Entry)
     if ($NoAudit) { return }
@@ -59,12 +69,14 @@ function Invoke-Enrich {
     param(
         [hashtable] $Task,
         [array]     $StrandCatalog,
+        [array]     $ConnectGoals,
         [hashtable] $RecentContext
     )
 
     $userPayload = @{
         task            = $Task
         strand_catalog  = $StrandCatalog
+        connect_goals   = $ConnectGoals
         recent_context  = $RecentContext
     } | ConvertTo-Json -Depth 10 -Compress
 
@@ -73,7 +85,7 @@ function Invoke-Enrich {
         @{ role = 'user';   content = "Enrich this task into a Memory.`n`nINPUT:`n$userPayload" }
     )
 
-    $resp    = Invoke-AzureOpenAIChat -Messages $messages -MaxOutputTokens 600 -ResponseFormat 'json_object'
+    $resp    = Invoke-AzureOpenAIChat -Messages $messages -MaxOutputTokens 1500 -ResponseFormat 'json_object'
     $content = $resp.choices[0].message.content
     $parsed  = $content | ConvertFrom-Json
 
@@ -129,12 +141,13 @@ foreach ($task in $payload.tasks) {
     }
 
     try {
-        $result   = Invoke-Enrich -Task $taskHash -StrandCatalog $strandCatalog -RecentContext $recentContext
+        $result   = Invoke-Enrich -Task $taskHash -StrandCatalog $strandCatalog -ConnectGoals $connectGoals -RecentContext $recentContext
         $memory   = $result.memory
         $totalTokens += $result.tokens
 
-        $strandConf = [double]$memory.strand_confidence
-        $impactConf = [double]$memory.impact_confidence
+        $strandConf = [double]$memory.confidence_strand
+        $impactConf = [double]$memory.confidence_impact
+        $alignConf  = [double]$memory.connect_alignment_confidence
         $needsReview = $strandConf -lt $threshold -or $impactConf -lt $threshold -or $memory.needs_human_strand_review -eq $true
 
         $strandDisplay = if ($memory.suggested_strand) {
@@ -142,11 +155,23 @@ foreach ($task in $payload.tasks) {
             if ($hit) { $hit.display_name } else { "<unknown:$($memory.suggested_strand)>" }
         } else { "<unstranded>" }
 
+        $goalDisplay = if ($memory.connect_goal_ids -and @($memory.connect_goal_ids).Count -gt 0) {
+            $names = foreach ($gid in @($memory.connect_goal_ids)) {
+                $g = $connectGoals | Where-Object { $_.id -eq $gid } | Select-Object -First 1
+                if ($g) { "#$($g.number) $($g.short_name)" } else { "<unknown:$gid>" }
+            }
+            ($names -join ', ')
+        } else { '<no Connect alignment>' }
+
         $marker = if ($needsReview) { "REVIEW" } else { "OK    " }
         $color  = if ($needsReview) { 'Yellow' } else { 'Green' }
-        Write-Host ("[{0}] {1,-26} (s={2,4:N2} i={3,4:N2}) {4}" -f $marker, $strandDisplay, $strandConf, $impactConf, $task.title) -ForegroundColor $color
+        Write-Host ("[{0}] {1,-26} (s={2,4:N2} i={3,4:N2} a={4,4:N2}) {5}" -f $marker, $strandDisplay, $strandConf, $impactConf, $alignConf, $task.title) -ForegroundColor $color
         Write-Host ("    why:    {0}" -f $memory.why) -ForegroundColor DarkGray
-        Write-Host ("    impact: {0}" -f $memory.impact_hypothesis) -ForegroundColor DarkGray
+        Write-Host ("    impact: {0}" -f $memory.impact) -ForegroundColor DarkGray
+        Write-Host ("    goals:  {0}" -f $goalDisplay) -ForegroundColor DarkCyan
+        if ($memory.connect_alignment_note) {
+            Write-Host ("    align:  {0}" -f $memory.connect_alignment_note) -ForegroundColor DarkCyan
+        }
         if ($memory.notes_for_user) {
             Write-Host ("    note:   {0}" -f $memory.notes_for_user) -ForegroundColor DarkYellow
         }
