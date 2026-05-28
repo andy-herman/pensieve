@@ -232,11 +232,10 @@ def create_app() -> FastAPI:
         Preserves the user's manual: column (lifecycle placement) and
         notes_for_user (private note).
         """
-        from datetime import datetime, timezone
-
         from pensieve.cli import _build_recent_context_from_chroma
         from pensieve.enrichment import AzureOpenAIChatClient, enrich_task, load_connect_goals
         from pensieve.sources.base import RawTask
+        from pensieve.sync import overlay_regeneration
 
         existing = store.get_memory(memory_id)
         if existing is None:
@@ -283,25 +282,12 @@ def create_app() -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Enrichment failed: {e}") from e
 
-        # Overlay regenerated fields onto the existing Memory; preserve user-only fields.
-        existing.suggested_strand = result.suggested_strand
-        existing.strand_kind = result.strand_kind
-        existing.needs_human_strand_review = result.needs_human_strand_review
-        existing.why = result.why
-        existing.impact = result.impact
-        existing.confidence_strand = result.confidence_strand
-        existing.confidence_impact = result.confidence_impact
-        existing.connect_goal_ids = list(result.connect_goal_ids or [])
-        existing.connect_alignment_confidence = result.connect_alignment_confidence
-        existing.connect_alignment_note = result.connect_alignment_note
-        # Preserve user-only fields: column, notes_for_user
-        existing.tokens_used = (existing.tokens_used or 0) + (result.tokens_used or 0)
-        existing.enriched_at = datetime.now(timezone.utc)
-        store.upsert_memory(existing)
+        merged = overlay_regeneration(existing, task, result)
+        store.upsert_memory(merged)
         return {
             "ok": True,
             "tokens_used": result.tokens_used,
-            "memory": existing.to_dashboard_dict(),
+            "memory": merged.to_dashboard_dict(),
         }
 
     # Serve the dashboard from /, if frontend-proto exists.

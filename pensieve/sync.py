@@ -70,6 +70,41 @@ def _build_memory(task: RawTask, result) -> Memory:
     )
 
 
+def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
+    """Merge a fresh enrichment + source snapshot onto an existing Memory.
+
+    Regenerates: title, original_notes, list_name, source dates, completion,
+    due, categories, plus all enrichment outputs (why/impact/strand/connect/etc.).
+    PRESERVES user-only fields: column (lifecycle placement) and notes_for_user
+    (private note). This is what makes 'edit title in To-Do then refresh' safe:
+    your dragged column and private notes survive re-enrichment.
+    """
+    existing.title = task.title
+    existing.original_notes = task.notes
+    if task.list_name:
+        existing.list_name = task.list_name
+    existing.source_created_at = task.created_at or existing.source_created_at
+    existing.source_last_modified = task.last_modification_time or existing.source_last_modified
+    existing.completed = task.completed
+    existing.completed_at = task.completed_at
+    existing.due_date = task.due_date
+    existing.categories = list(task.categories or [])
+    existing.suggested_strand = result.suggested_strand
+    existing.strand_kind = result.strand_kind
+    existing.needs_human_strand_review = result.needs_human_strand_review
+    existing.why = result.why
+    existing.impact = result.impact
+    existing.confidence_strand = result.confidence_strand
+    existing.confidence_impact = result.confidence_impact
+    existing.connect_goal_ids = list(result.connect_goal_ids or [])
+    existing.connect_alignment_confidence = result.connect_alignment_confidence
+    existing.connect_alignment_note = result.connect_alignment_note
+    # PRESERVED on purpose: existing.column, existing.notes_for_user
+    existing.tokens_used = (existing.tokens_used or 0) + (result.tokens_used or 0)
+    existing.enriched_at = datetime.now(timezone.utc)
+    return existing
+
+
 def run_sync(
     source: TaskSource,
     *,
@@ -156,7 +191,14 @@ def run_sync(
                 client=client,
                 connect_goals=connect_goals,
             )
-            mem = _build_memory(task, result)
+            if reason in ("force", "modified"):
+                existing = store.get_memory(task.id)
+                if existing is not None:
+                    mem = overlay_regeneration(existing, task, result)
+                else:
+                    mem = _build_memory(task, result)
+            else:
+                mem = _build_memory(task, result)
             return task, reason, mem, None
         except Exception as e:
             return task, reason, None, str(e)
