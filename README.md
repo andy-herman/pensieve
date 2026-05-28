@@ -15,7 +15,7 @@ It runs entirely on your machine. Your To-Do data is read-only. Your enrichments
 1. [Why this exists](#why-this-exists)
 2. [What it does](#what-it-does)
 3. [Core concepts](#core-concepts)
-4. [Connect Goals and the Four Houses](#connect-goals-and-the-four-houses)
+4. [Connect Goals and the Houses](#connect-goals-and-the-houses)
 5. [Phased roadmap](#phased-roadmap)
 6. [Architecture](#architecture)
 7. [Quickstart](#quickstart)
@@ -41,7 +41,7 @@ Microsoft To-Do is good at capturing tasks. It is not good at telling you:
 
 Pensieve sits next to To-Do, reads your tasks, and answers those questions. It does not change your To-Do. It enriches a parallel local store you can explore, search, and reflect against.
 
-The mental model is from the books: a Pensieve is a basin where you store and revisit memories. Captured tasks become Memories. Memories you take depth on become Dives. Focus blocks become Reverie. Closed work that taught you something becomes a Vial worth keeping.
+The mental model is from the books: a Pensieve is a basin where you store and revisit memories. Captured tasks become Memories. Memories you take depth on become Dives. Work that needs another look gets pulled into Review. Closed work that taught you something is kept as evidence (Phase 3 will distill it into "Vials" for performance reviews).
 
 ## What it does
 
@@ -67,15 +67,19 @@ What it deliberately does **not** do (yet):
 | **Task** | A row from Microsoft To-Do (Outlook task), pulled read-only | Outlook, mirrored into Pensieve only as input |
 | **Strand** | A named recurring thread of work (DORA RFI Responses, NIS2 Crosswalk, 1:1 Prep, etc.). Each Strand has a `kind` (deep, tactical, learning, writing) and may map to one or more Connect Goals. | `data/samples.json` `strand_catalog` (you maintain it) |
 | **Memory** | An enriched task. Has a Strand assignment, a `why`, an `impact`, confidence scores, and one or more Connect Goal alignments. Stored as a row in ChromaDB with title-and-body embeddings. | `data/chroma/` |
-| **Lifecycle column** | Where a Memory sits in your workflow: Memory → Dive → Reverie → Reflection → Vial. You drag cards between columns. | Dashboard state, persisted via API |
+| **Lifecycle column** | Where a Memory sits in your workflow: Memory → Dive → Review → Closed. You drag cards between columns; your placement survives re-syncs. | Dashboard state, persisted via API |
 | **Dive** | A Memory you decided to take depth on this week |
-| **Reverie** | A Memory that is currently inside a scheduled focus block (planned; calendar integration is deferred) |
-| **Reflection** | A Memory that is being closed out, where you write the impact statement |
-| **Vial** | A closed Memory worth keeping as evidence of impact for reviews or self-assessments |
-| **Connect Goal** | One of your four annual top-level goals. Pensieve maps each Memory to zero, one, or several. | `data/connect-goals.json` |
-| **House** | A Hogwarts house each Connect Goal is mapped to (purely a visual identity for the Houses view) | Set inside each goal's record |
+| **Review** | A Memory you want a second look at — manually flagged for follow-up (this is user-driven; the "needs review" badge that the LLM raises is independent and can appear in any column) |
+| **Closed** | A Memory that is done. Tasks completed in To-Do auto-route here on the next sync. |
+| **Connect Goal** | One of your annual top-level goals. Pensieve maps each Memory to zero, one, or several. Count is up to you — import your Connect PDF and any number of goals works. | `data/connect-goals.json` |
+| **House** | A Hogwarts house each Connect Goal is mapped to (purely a visual identity for the Houses view). 8 House slots available (4 canonical + Internal / Muggleborn / Centaur / Phoenix); goals beyond 8 cycle. | Set inside each goal's record |
 
-## Connect Goals and the Four Houses
+Future-stage concepts still in the codebase but not exposed as columns today:
+
+- **Reverie** — a scheduled focus block (Phase 2.5). The proposal and debrief prompts are pre-staged in `prompts/`; calendar integration is deferred.
+- **Vial** — a single closed task's distilled impact statement, exported to Synapse Promo Coach (Phase 3). The Pydantic model exists; the export pipeline does not yet.
+
+## Connect Goals and the Houses
 
 Connect Goals are the annual top-level goals you set with your manager (the Microsoft Connect process is the inspiration; the concept works with any annual goal framework — OKRs, V2MOM, MBOs).
 
@@ -83,12 +87,18 @@ Pensieve treats them as first-class. Every Memory gets aligned (or explicitly no
 
 The dashboard supports two views:
 
-- **Lifecycle view**: 5 columns (Memory → Vial), the classic kanban
-- **Houses view**: one column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for work that doesn't directly map to any annual goal
+- **Lifecycle view**: 4 columns (Memory → Dive → Review → Closed), the classic kanban
+- **Houses view**: one column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for work that doesn't directly map to any annual goal. Columns auto-fit, so any number of goals lays out cleanly.
 
-You define your own goals in `data/connect-goals.json`. The dashboard also has an in-app editor for them (Set goals button) that persists to localStorage if you want to tweak presentation without editing the file.
+You can populate your goals in three ways:
 
-The House mapping is intentional but cosmetic. A reasonable starting heuristic:
+1. **Upload your Connect PDF** (recommended). Click **Set Goals** in the dashboard, choose your Connect PDF, click ✨ Parse with AI. The backend extracts each goal and deterministically assigns a House from an 8-entry palette.
+2. **Hand-edit** them with the in-modal editor (+ Add goal / × delete on each card).
+3. **Edit `data/connect-goals.json`** directly if you prefer your text editor.
+
+All three paths persist to the same file via `POST /api/goals`. The dashboard hydrates from `GET /api/goals` on load.
+
+The 8 House slots are intentional but cosmetic:
 
 | House | Best fit for goals that are |
 | ----- | --------------------------- |
@@ -96,8 +106,12 @@ The House mapping is intentional but cosmetic. A reasonable starting heuristic:
 | Hufflepuff (yellow and black) | Sustained, year-over-year, dependable delivery |
 | Slytherin (green and silver) | Long-game strategic foundation, careful positioning |
 | Ravenclaw (blue and bronze) | Innovation, learning, intellectual depth |
+| Internal (slate and gold) | Internal-team-facing operational work |
+| Muggleborn (terracotta and parchment) | Cross-organization muggle-side coordination |
+| Centaur (forest and gold) | Long-arc strategic foresight and judgment work |
+| Phoenix (ember and saffron) | High-stakes recovery or transformation work |
 
-You're encouraged to assign houses based on the actual texture of each goal, not by rote.
+Goals beyond eight cycle through the palette again. You can rename or recolor any House in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
 
 ## Phased roadmap
 
@@ -325,8 +339,8 @@ The dashboard is a single static page served by the FastAPI app at the root URL.
 
 Features:
 
-- **Lifecycle view** with 5 columns (Memory, Dive, Reverie, Reflection, Vial). Drag cards between columns; the change persists to Chroma via PATCH.
-- **Houses view** with one column per Connect Goal plus an Unhoused column. Drag a card to a House to mark that Memory as aligned to that goal.
+- **Lifecycle view** with 4 columns (Memory, Dive, Review, Closed). Drag cards between columns; the change persists to Chroma via PATCH. Tasks completed in To-Do auto-route to Closed on the next sync (no LLM tokens spent).
+- **Houses view** with one column per Connect Goal plus an Unhoused column. Columns auto-fit, so any number of goals lays out cleanly. Drag a card to a House to mark that Memory as aligned to that goal.
 - **Three themes**:
   - *Day*: parchment and ink, sunlit
   - *Night*: candle-lit, deep blues, gentle star field
@@ -335,7 +349,7 @@ Features:
 - **Semantic search**: press Enter in the search box (or click the magnifier) to query Chroma. The board filters to the semantic top-K.
 - **Hedwig review counter**: top-right, shows how many memories are currently in the review queue (low confidence or explicitly flagged by the LLM).
 - **Footprint trail**: while dragging a card, faint footprints follow your cursor and fade out.
-- **Goals editor**: the Set goals button opens a modal where you can rename, re-house, and re-summarize your Connect Goals.
+- **Goals editor**: the **Set Goals** button opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals. Saves to `data/connect-goals.json` via the API.
 
 The dashboard remains functional without the API server: if `/api/healthz` is unreachable, it falls back to the bundled seed memories and shows "offline (seed data)" in the footer.
 
@@ -401,7 +415,7 @@ pensieve/
 |
 |-- data/                      Local store (gitignored where appropriate)
 |   |-- samples.json           Strand catalog + sample tasks (also used in tests)
-|   |-- connect-goals.json     Your four Connect goals
+|   |-- connect-goals.json     Your Connect goals (any count; populated by PDF import or by hand)
 |   |-- chroma/                ChromaDB persistent store (gitignored)
 |   |-- audit-log.jsonl        Append-only log of every sync action (gitignored)
 |

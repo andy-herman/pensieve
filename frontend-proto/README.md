@@ -29,21 +29,20 @@ Memories laid out as kanban cards. Each card surfaces:
 
 **Lifecycle view** (default)
 
-Five columns walking a memory through its life:
+Four columns walking a memory through its life:
 
 | Column | What goes here |
 | ------ | -------------- |
 | Memory | Captured, awaiting depth |
 | Dive | Surfaced for active work this week |
-| Reverie | Inside a scheduled focus block (Phase 4) |
-| Reflection | Being closed out, impact statement being written |
-| Vial | Stored as evidence of finished impact |
+| Review | Flagged for a second look — needs another pass before closing |
+| Closed | Done. Tasks marked complete in To-Do auto-route here on the next sync (no LLM tokens spent). |
 
 Drag a card from one column to another to move it. The change is persisted to the local ChromaDB via `PATCH /api/memories/{id}/column`.
 
 **Houses view**
 
-One column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for memories the LLM declined to align (operational chores, personal admin, etc.).
+One column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for memories the LLM declined to align (operational chores, personal admin, etc.). Columns auto-fit, so any number of goals lays out cleanly (the dashboard ships with 4 canonical Houses plus 4 extended slots — Internal / Muggleborn / Centaur / Phoenix — and goals beyond eight cycle through the palette).
 
 Drag a card into a House to mark that Memory as aligned to that goal. The change updates in-memory state immediately and (in a future iteration) will be persisted to Chroma.
 
@@ -68,9 +67,14 @@ Click "Clear filters" to drop both the text filter and the semantic restriction.
 
 ## Goals editor
 
-The "Set goals" button opens a modal where you can rename your Connect Goals, change their short label, edit summaries, and pick a House for each. Changes are persisted to localStorage and applied immediately to both views.
+The **Set Goals** button opens a modal where you can:
 
-The canonical source for the goals lives in `data/connect-goals.json` in the repo root (and ultimately in your vault). The dashboard hydrates from `/api/goals` when the API is available and falls back to localStorage / the bundled defaults otherwise.
+- **Upload your Connect PDF** and click ✨ Parse with AI — the backend extracts each goal and deterministically assigns a House. Review the proposal in the editor, tweak as needed, click Save.
+- **Hand-edit** any goal's short name, full name, or summary.
+- **+ Add goal** for a blank goal you fill in by hand.
+- **× delete** any goal you don't want.
+
+Saves round-trip through `POST /api/goals` and persist to `data/connect-goals.json`. If the API server is unreachable, edits fall back to localStorage so you don't lose them.
 
 ## Hedwig
 

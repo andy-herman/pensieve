@@ -1,6 +1,6 @@
 /* ============================================================
    The Pensieve - Phase 2 prototype JS (v2)
-   - Two views: Lifecycle (5 columns) + Houses (Connect goals)
+   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Houses (Connect goals)
    - Connect goals editable via in-app modal (persisted in localStorage)
    - Themes: day / night (toggle) + marauder (easter egg)
    - Hedwig review counter, footprint trail on drag, snitch
