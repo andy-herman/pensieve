@@ -19,14 +19,27 @@ from pensieve.sync import run_sync
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
+# Module-level singletons for typer defaults to satisfy ruff B008
+_OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com (default from .env)")
+_OPT_LIST = typer.Option(None, "--list", help="Outlook tasks folder name (default: Tasks)")
+_OPT_STRAND_CATALOG = typer.Option(
+    None,
+    "--strand-catalog",
+    help="JSON file containing strand_catalog + recent_context (for outlook_com source)",
+)
+_OPT_DRY_RUN = typer.Option(False, "--dry-run", help="Show what would be enriched without calling LLM")
+_OPT_FORCE = typer.Option(False, "--force", help="Re-enrich every task even if unchanged")
+
 
 def _build_source(name: str, list_name: Optional[str] = None):
     settings = get_settings()
     if name == "sample_file":
         from pensieve.sources.sample_file import SampleFileSource
+
         return SampleFileSource(settings.samples_path)
     if name == "outlook_com":
         from pensieve.sources.outlook_com import OutlookCOMSource
+
         return OutlookCOMSource(
             list_name=list_name or settings.default_list_name,
             skip_completed_older_than_days=settings.outlook_skip_completed_older_than_days,
@@ -65,7 +78,9 @@ def init() -> None:
     console.print(f"  chroma_dir = {s.chroma_dir}")
     console.print(f"  endpoint   = {s.azure_openai_endpoint or '[red]not set[/red]'}")
     console.print(f"  deployment = {s.azure_openai_deployment}")
-    console.print(f"  goals file = {s.connect_goals_path} ({'OK' if s.connect_goals_path.exists() else 'missing'})")
+    console.print(
+        f"  goals file = {s.connect_goals_path} ({'OK' if s.connect_goals_path.exists() else 'missing'})"
+    )
     console.print(f"  samples    = {s.samples_path} ({'OK' if s.samples_path.exists() else 'missing'})")
     store = ChromaMemoryStore(s)
     console.print(f"  chroma     = {store.count()} memories currently")
@@ -73,13 +88,11 @@ def init() -> None:
 
 @app.command()
 def sync(
-    source: str = typer.Option(None, "--source", "-s", help="sample_file | outlook_com (default from .env)"),
-    list_name: Optional[str] = typer.Option(None, "--list", help="Outlook tasks folder name (default: Tasks)"),
-    strand_catalog_path: Optional[Path] = typer.Option(
-        None, "--strand-catalog", help="JSON file containing strand_catalog + recent_context (for outlook_com source)"
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be enriched without calling LLM"),
-    force: bool = typer.Option(False, "--force", help="Re-enrich every task even if unchanged"),
+    source: str = _OPT_SOURCE,
+    list_name: Optional[str] = _OPT_LIST,
+    strand_catalog_path: Optional[Path] = _OPT_STRAND_CATALOG,
+    dry_run: bool = _OPT_DRY_RUN,
+    force: bool = _OPT_FORCE,
 ) -> None:
     """Pull tasks from source, enrich, upsert to Chroma."""
     settings = get_settings()
@@ -91,6 +104,7 @@ def sync(
     recent_context = None
     if strand_catalog_path:
         import json
+
         with strand_catalog_path.open("r", encoding="utf-8") as f:
             blob = json.load(f)
         strand_catalog = blob.get("strand_catalog")
@@ -100,6 +114,7 @@ def sync(
         # and synthesize recent_context from prior Chroma state.
         if settings.samples_path.exists():
             import json
+
             with settings.samples_path.open("r", encoding="utf-8") as f:
                 blob = json.load(f)
             strand_catalog = blob.get("strand_catalog")
@@ -133,12 +148,14 @@ def status() -> None:
         if m.needs_human_strand_review or m.confidence_strand < s.enrichment_confidence_threshold:
             review += 1
     t = Table(title="By column", show_header=True)
-    t.add_column("column"); t.add_column("count", justify="right")
+    t.add_column("column")
+    t.add_column("count", justify="right")
     for col in ("memory", "dive", "reverie", "reflection", "vial"):
         t.add_row(col, str(by_col.get(col, 0)))
     console.print(t)
     t2 = Table(title="By strand", show_header=True)
-    t2.add_column("strand"); t2.add_column("count", justify="right")
+    t2.add_column("strand")
+    t2.add_column("count", justify="right")
     for k, v in sorted(by_strand.items(), key=lambda x: -x[1]):
         t2.add_row(k, str(v))
     console.print(t2)

@@ -67,7 +67,9 @@ class ChromaMemoryStore:
         res = self._memories.get(ids=[memory_id], include=["metadatas", "documents"])
         if not res or not res.get("ids"):
             return None
-        return self._reconstruct(res["ids"][0], (res.get("metadatas") or [{}])[0], (res.get("documents") or [""])[0])
+        return self._reconstruct(
+            res["ids"][0], (res.get("metadatas") or [{}])[0], (res.get("documents") or [""])[0]
+        )
 
     def list_memories(self) -> list[Memory]:
         res = self._memories.get(include=["metadatas", "documents"])

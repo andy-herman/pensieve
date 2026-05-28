@@ -20,7 +20,9 @@ def tmp_store(tmp_path, monkeypatch):
     get_settings.cache_clear()  # type: ignore[attr-defined]
 
 
-def _mk_memory(id_="t1", title="Hello world", strand="dora-rfi", why="Because.", impact="Things happen.") -> Memory:
+def _mk_memory(
+    id_="t1", title="Hello world", strand="dora-rfi", why="Because.", impact="Things happen."
+) -> Memory:
     return Memory(
         id=id_,
         source="sample_file",
@@ -64,8 +66,12 @@ def test_update_column(tmp_store):
 
 
 def test_search_finds_match(tmp_store):
-    tmp_store.upsert_memory(_mk_memory(id_="t1", title="DORA RFI response draft", why="JET asked.", impact="Closes RFI."))
-    tmp_store.upsert_memory(_mk_memory(id_="t2", title="Buy groceries", strand="personal-admin", why="Hungry.", impact="Eat."))
+    tmp_store.upsert_memory(
+        _mk_memory(id_="t1", title="DORA RFI response draft", why="JET asked.", impact="Closes RFI.")
+    )
+    tmp_store.upsert_memory(
+        _mk_memory(id_="t2", title="Buy groceries", strand="personal-admin", why="Hungry.", impact="Eat.")
+    )
     results = tmp_store.search("regulator RFI")
     assert len(results) >= 1
     assert results[0].id == "t1"

@@ -42,10 +42,7 @@ def test_sample_source_missing_file_raises(tmp_path):
 
 
 def _public_methods(cls):
-    return {
-        n for n, _ in inspect.getmembers(cls, predicate=inspect.isfunction)
-        if not n.startswith("_")
-    }
+    return {n for n, _ in inspect.getmembers(cls, predicate=inspect.isfunction) if not n.startswith("_")}
 
 
 def test_sources_are_read_only_no_write_methods():

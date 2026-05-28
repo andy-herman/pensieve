@@ -31,9 +31,7 @@ class AzureOpenAIChatClient:
         self._cred: Optional[DefaultAzureCredential] = None
 
         if not settings.azure_openai_endpoint:
-            raise ValueError(
-                "AZURE_OPENAI_ENDPOINT is not set. Add it to .env or environment."
-            )
+            raise ValueError("AZURE_OPENAI_ENDPOINT is not set. Add it to .env or environment.")
         if not settings.azure_openai_deployment:
             raise ValueError("AZURE_OPENAI_DEPLOYMENT is not set.")
 
@@ -82,7 +80,5 @@ class AzureOpenAIChatClient:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(self._url(), headers=self._headers(), json=body)
             if resp.status_code >= 400:
-                raise RuntimeError(
-                    f"Azure OpenAI call failed [{resp.status_code}]: {resp.text}"
-                )
+                raise RuntimeError(f"Azure OpenAI call failed [{resp.status_code}]: {resp.text}")
             return resp.json()

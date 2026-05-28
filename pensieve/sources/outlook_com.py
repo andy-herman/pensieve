@@ -24,8 +24,12 @@ def _to_aware(dt) -> Optional[datetime]:
             return datetime.fromisoformat(dt)
         if hasattr(dt, "year"):
             return datetime(
-                dt.year, dt.month, dt.day,
-                getattr(dt, "hour", 0), getattr(dt, "minute", 0), getattr(dt, "second", 0),
+                dt.year,
+                dt.month,
+                dt.day,
+                getattr(dt, "hour", 0),
+                getattr(dt, "minute", 0),
+                getattr(dt, "second", 0),
                 tzinfo=timezone.utc,
             )
     except Exception:
@@ -66,9 +70,7 @@ class OutlookCOMSource(TaskSource):
         try:
             import win32com.client  # type: ignore[import-not-found]
         except ImportError as e:
-            raise OutlookCOMUnavailable(
-                "pywin32 is not installed. Run: pip install pywin32"
-            ) from e
+            raise OutlookCOMUnavailable("pywin32 is not installed. Run: pip install pywin32") from e
         try:
             self._app = win32com.client.Dispatch("Outlook.Application")
             self._ns = self._app.GetNamespace("MAPI")
@@ -120,9 +122,7 @@ class OutlookCOMSource(TaskSource):
             if not title:
                 return None
             body = getattr(item, "Body", "") or ""
-            categories = [
-                c.strip() for c in (getattr(item, "Categories", "") or "").split(",") if c.strip()
-            ]
+            categories = [c.strip() for c in (getattr(item, "Categories", "") or "").split(",") if c.strip()]
             created = _to_aware(getattr(item, "CreationTime", None))
             modified = _to_aware(getattr(item, "LastModificationTime", None))
             due = _to_aware(getattr(item, "DueDate", None))

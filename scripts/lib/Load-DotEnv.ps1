@@ -1,5 +1,8 @@
 # scripts/lib/Load-DotEnv.ps1
 #
+# *** LEGACY (Phase 0) — replaced by python-dotenv via pydantic-settings on 2026-05-28. ***
+# Kept for historical reference only; not maintained.
+#
 # Tiny .env loader. Mirrors python-dotenv semantics enough for our needs:
 #   - lines starting with `#` are comments
 #   - blank lines ignored

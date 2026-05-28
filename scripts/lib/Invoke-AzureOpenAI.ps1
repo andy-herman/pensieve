@@ -1,5 +1,8 @@
 # scripts/lib/Invoke-AzureOpenAI.ps1
 #
+# *** LEGACY (Phase 0) — ported into pensieve/enrichment/llm_client.py on 2026-05-28. ***
+# Kept for historical reference only; not maintained.
+#
 # Thin wrapper around the Azure OpenAI chat-completions REST endpoint.
 # Mirrors Argus's `_ClientShim` behavior:
 #   - Routes max_tokens -> max_completion_tokens for gpt-5+/o1+/o3+/o4+

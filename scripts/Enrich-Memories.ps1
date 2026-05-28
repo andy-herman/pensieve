@@ -1,5 +1,9 @@
 # scripts/Enrich-Memories.ps1
 #
+# *** LEGACY (Phase 0) — superseded by `pensieve sync` (Python CLI) on 2026-05-28. ***
+# Kept for historical reference only; not maintained.
+# See README.md, AGENTS.md, and pensieve/cli.py for the current path.
+#
 # Phase 0 main script. Reads To-Do tasks (canned samples in Phase 0;
 # live Graph in Phase 1), runs each through Azure OpenAI using the
 # Pensieve enrichment prompt, and emits a Memory record per task.
