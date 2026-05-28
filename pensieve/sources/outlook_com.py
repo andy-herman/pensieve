@@ -76,6 +76,10 @@ class OutlookCOMSource(TaskSource):
         self.include_subfolders = include_subfolders
         self._app = None
         self._ns = None
+        # Populated during list_tasks() so the sync orchestrator's deletion
+        # sweep knows which lists we covered (and therefore which previously
+        # ingested memories are safe to consider orphans).
+        self._last_covered_lists: Optional[set[str]] = None
 
     def _connect(self):
         if self._app is not None:
@@ -179,13 +183,22 @@ class OutlookCOMSource(TaskSource):
             return None
 
     def list_tasks(self) -> Iterator[RawTask]:
+        # Reset coverage tracking for this run. We accumulate folder names
+        # below so covered_lists() can report exactly what we scanned (even
+        # for folders that turned out to be empty).
+        covered: set[str] = set()
         for folder_name, folder in self._selected_folders():
+            covered.add(folder_name)
             for item in self._iter_items(folder):
                 if self._should_skip(item):
                     continue
                 raw = self._to_raw(item, folder_name)
                 if raw is not None:
                     yield raw
+        self._last_covered_lists = covered
+
+    def covered_lists(self) -> Optional[set[str]]:
+        return None if self._last_covered_lists is None else set(self._last_covered_lists)
 
     def get_task(self, task_id: str) -> Optional[RawTask]:
         self._connect()

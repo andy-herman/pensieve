@@ -42,6 +42,22 @@ class TaskSource(ABC):
     def get_task(self, task_id: str) -> Optional[RawTask]:
         """Fetch a single task by its source-specific id, or None if not present."""
 
+    def covered_lists(self) -> Optional[set[str]]:
+        """Return the set of list_name values this source is responsible for.
+
+        Used by the sync orchestrator's deletion sweep: a task previously
+        ingested from list X should only be considered "deleted at source" if
+        we actually scanned list X this run. Returning ``None`` means the
+        source covers EVERY list — any memory of this source not in the
+        current pull is fair game for deletion.
+
+        Implementations that filter (e.g. OutlookCOMSource with ``list_names``)
+        SHOULD record the names of folders/lists they walked during
+        ``list_tasks()`` and surface them here. Otherwise a user who narrows
+        to one list would have memories from other lists silently deleted.
+        """
+        return None
+
     def health_check(self) -> tuple[bool, str]:
         """Return (ok, message). Default just tries to list one task."""
         try:

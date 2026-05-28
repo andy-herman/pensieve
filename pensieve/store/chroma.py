@@ -101,6 +101,43 @@ class ChromaMemoryStore:
         res = self._memories.get(include=[])
         return set(res.get("ids") or [])
 
+    def find_orphan_ids(
+        self,
+        source: str,
+        live_ids: set[str],
+        covered_lists: Optional[set[str]] = None,
+    ) -> list[tuple[str, str, str]]:
+        """Find memories that no longer exist at the source.
+
+        Scoped to ``source`` so a sync of Outlook never deletes sample-data
+        memories (or vice versa). When ``covered_lists`` is provided (a set of
+        list_name strings the current sync was responsible for), the scan is
+        further narrowed to those lists — so syncing only "Agentic AI work"
+        cannot orphan tasks in "CISO GRC" lists we didn't pull from.
+
+        Returns a list of ``(memory_id, title, list_name)`` tuples for
+        deletion + audit logging by the caller.
+        """
+        try:
+            res = self._memories.get(where={"source": source}, include=["metadatas"])
+        except Exception:
+            # Fallback for chroma versions that dislike the where clause.
+            res = self._memories.get(include=["metadatas"])
+        ids = res.get("ids") or []
+        metas = res.get("metadatas") or []
+        out: list[tuple[str, str, str]] = []
+        for mid, meta in zip(ids, metas, strict=False):
+            meta = meta or {}
+            if meta.get("source") != source:
+                continue
+            list_name = meta.get("list_name", "") or ""
+            if covered_lists is not None and list_name not in covered_lists:
+                continue
+            if mid in live_ids:
+                continue
+            out.append((mid, meta.get("title", "") or "", list_name))
+        return out
+
     # ----- internal -----
 
     def _reconstruct(self, mid: str, meta: dict, doc: str) -> Memory:

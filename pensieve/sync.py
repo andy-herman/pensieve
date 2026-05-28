@@ -31,6 +31,7 @@ class SyncStats:
     failed: int = 0
     review_queue: int = 0
     tokens_used: int = 0
+    deleted: int = 0
 
 
 def _audit_write(entry: dict) -> None:
@@ -155,6 +156,39 @@ def run_sync(
         f"Chroma has {len(known_ids)} memories already."
     )
 
+    # Deletion sweep: any memory we previously ingested from this source
+    # whose id is NOT in the live pull (and is in a list we just covered)
+    # has been deleted at the source. Honour that and remove from Chroma.
+    # Scoping to ``covered_lists`` is critical when the user filters to
+    # specific lists (Outlook ``list_names``) — without it, a narrow sync
+    # would erase memories from lists we didn't even read.
+    live_ids = {t.id for t in tasks}
+    covered = source.covered_lists()
+    orphans = store.find_orphan_ids(source.name, live_ids, covered_lists=covered)
+    for mid, title, list_name in orphans:
+        if dry_run:
+            console.print(
+                f"  [DRY] [magenta]DELETE[/magenta] {title} "
+                f"[dim](from list '{list_name}', source removed it)[/dim]"
+            )
+            continue
+        store.delete_memory(mid)
+        stats.deleted += 1
+        console.print(
+            f"  [magenta]DELETE[/magenta] {title} "
+            f"[dim](from list '{list_name}', source removed it)[/dim]"
+        )
+        _audit_write(
+            {
+                "mode": "sync",
+                "task_id": mid,
+                "source": source.name,
+                "reason": "deleted-at-source",
+                "list_name": list_name,
+                "title": title,
+            }
+        )
+
     # Decide which tasks need re-enrichment (or just a column-only nudge for
     # completion drift, which doesn't require an LLM call).
     to_enrich: list[tuple[RawTask, str]] = []  # (task, change_reason)
@@ -221,6 +255,7 @@ def run_sync(
         console.print(
             f"[green]All tasks already enriched and unchanged.[/green] "
             f"[dim]({len(column_only_updates)} auto-closed, "
+            f"{stats.deleted} deleted, "
             f"{stats.skipped_unchanged} unchanged)[/dim]"
         )
         return stats
@@ -304,6 +339,7 @@ def run_sync(
     console.print(
         f"\n[cyan]Done.[/cyan] new={stats.new_enriched}, "
         f"updated={stats.updated_enriched}, unchanged={stats.skipped_unchanged}, "
-        f"review={stats.review_queue}, failed={stats.failed}, tokens={stats.tokens_used}"
+        f"deleted={stats.deleted}, review={stats.review_queue}, "
+        f"failed={stats.failed}, tokens={stats.tokens_used}"
     )
     return stats

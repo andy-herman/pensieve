@@ -83,6 +83,54 @@ def test_known_ids(tmp_store):
     assert tmp_store.known_ids() == {"t1", "t2"}
 
 
+def test_find_orphan_ids_scoped_to_source(tmp_store):
+    """Sync of source A must never orphan memories of source B."""
+    m_sample = _mk_memory(id_="sample-1")  # source=sample_file
+    m_outlook = _mk_memory(id_="ol-1")
+    m_outlook.source = "outlook_com"
+    m_outlook.source_task_id = "ol-1"
+    tmp_store.upsert_memory(m_sample)
+    tmp_store.upsert_memory(m_outlook)
+
+    # A sync of outlook_com that returns NO live ids should orphan ol-1 only.
+    orphans = tmp_store.find_orphan_ids(source="outlook_com", live_ids=set())
+    orphan_ids = {mid for mid, _, _ in orphans}
+    assert orphan_ids == {"ol-1"}, "sample_file memory must NOT be orphaned by an outlook sync"
+
+
+def test_find_orphan_ids_respects_covered_lists(tmp_store):
+    """Sync that only covers list X must not orphan memories in list Y."""
+    m_in_scope = _mk_memory(id_="a")
+    m_in_scope.list_name = "Agentic AI work"
+    m_in_scope.source = "outlook_com"
+    m_out_of_scope = _mk_memory(id_="b")
+    m_out_of_scope.list_name = "CISO GRC"
+    m_out_of_scope.source = "outlook_com"
+    tmp_store.upsert_memory(m_in_scope)
+    tmp_store.upsert_memory(m_out_of_scope)
+
+    # Sync covered only "Agentic AI work" and returned no live ids.
+    orphans = tmp_store.find_orphan_ids(
+        source="outlook_com",
+        live_ids=set(),
+        covered_lists={"Agentic AI work"},
+    )
+    orphan_ids = {mid for mid, _, _ in orphans}
+    assert orphan_ids == {"a"}, "memory in uncovered list must NOT be considered orphan"
+
+
+def test_find_orphan_ids_skips_live_tasks(tmp_store):
+    """Memories still present in the source pull are never orphaned."""
+    m1 = _mk_memory(id_="a")
+    m1.source = "outlook_com"
+    m2 = _mk_memory(id_="b")
+    m2.source = "outlook_com"
+    tmp_store.upsert_memory(m1)
+    tmp_store.upsert_memory(m2)
+    orphans = tmp_store.find_orphan_ids(source="outlook_com", live_ids={"a", "b"})
+    assert orphans == []
+
+
 def test_dashboard_dict_shape(tmp_store):
     tmp_store.upsert_memory(_mk_memory())
     m = tmp_store.get_memory("t1")

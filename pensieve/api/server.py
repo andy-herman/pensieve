@@ -276,6 +276,7 @@ def create_app() -> FastAPI:
                         "new_enriched": stats.new_enriched,
                         "updated_enriched": stats.updated_enriched,
                         "skipped_unchanged": stats.skipped_unchanged,
+                        "deleted": stats.deleted,
                         "failed": stats.failed,
                         "review_queue": stats.review_queue,
                         "tokens_used": stats.tokens_used,
@@ -283,6 +284,7 @@ def create_app() -> FastAPI:
                     message=(
                         f"Sync complete: {stats.new_enriched} new, "
                         f"{stats.updated_enriched} updated, "
+                        f"{stats.deleted} deleted, "
                         f"{stats.skipped_unchanged} unchanged."
                     ),
                 )

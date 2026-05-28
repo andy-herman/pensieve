@@ -139,8 +139,10 @@ This:
 
 Already-completed tasks land directly in the **Closed** column.
 
-Subsequent syncs only re-enrich tasks whose title or notes changed, and
-quietly auto-close tasks you completed in To-Do without burning AI tokens.
+Subsequent syncs only re-enrich tasks whose title or notes changed,
+quietly auto-close tasks you completed in To-Do without burning AI tokens,
+and **remove cards for tasks you deleted in To-Do** (scoped to the lists
+you actually pulled from, so a narrow sync never erases work in other lists).
 
 You can also trigger a sync from the dashboard with the **Pull from To-Do**
 button — same result, no terminal needed.
