@@ -370,6 +370,51 @@ async function loadMemoriesFromApi() {
   }
 }
 
+async function regenerateMemory(memoryId) {
+  if (!STATE.apiConnected) {
+    toast("Regenerate needs the API server (run `pensieve serve`)");
+    return;
+  }
+  const btn = $("#edit-regen");
+  const original = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("is-regenerating");
+    btn.innerHTML = "&#x2728; Brewing...";
+  }
+  try {
+    const apiId = memoryId.replace(/^mem_/, "");
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/regenerate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`${res.status}: ${text.slice(0, 160)}`);
+    }
+    const body = await res.json();
+    const fresh = body.memory;
+    if (!fresh) throw new Error("API returned no memory");
+    const newId = `mem_${fresh.source_task_id || fresh.id}`;
+    fresh.id = newId;
+    const idx = STATE.memories.findIndex(x => x.id === memoryId);
+    if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
+    renderStrandFilter();
+    renderBoard();
+    // Re-open the modal with the regenerated memory so the user sees the new text live.
+    const refreshed = STATE.memories[idx] || fresh;
+    openModal(refreshed);
+    toast(`Regenerated (+${body.tokens_used || 0} tokens)`);
+  } catch (e) {
+    toast(`Regenerate failed: ${e.message}`);
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("is-regenerating");
+      btn.innerHTML = original;
+    }
+  }
+}
+
 async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 } = {}) {
   const start = Date.now();
   let lastMsg = "";
@@ -737,6 +782,7 @@ function openModal(m) {
         &nbsp;|&nbsp; <code>${escapeHtml(m.id)}</code>
       </span>
       <span class="modal-actions-buttons">
+        <button id="edit-regen" class="ghost-button regen-btn" type="button" title="Re-run AI enrichment for this card (why, impact, strand, Connect alignment). Your column and private note are preserved.">&#x2728; Regenerate with AI</button>
         <button id="edit-cancel" class="ghost-button" type="button">Cancel</button>
         <button id="edit-save" class="primary-button" type="button" data-memory-id="${escapeHtml(m.id)}">Save</button>
       </span>
@@ -746,6 +792,8 @@ function openModal(m) {
 
   $("#edit-save").addEventListener("click", () => saveMemoryEdit(m.id));
   $("#edit-cancel").addEventListener("click", closeModal);
+  const regenBtn = $("#edit-regen");
+  if (regenBtn) regenBtn.addEventListener("click", () => regenerateMemory(m.id));
 }
 
 function readEditedFields() {

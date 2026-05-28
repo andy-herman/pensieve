@@ -221,6 +221,89 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
         return {"count": len(folders), "lists": folders}
 
+    @app.post("/api/memories/{memory_id}/regenerate")
+    def regenerate_memory(memory_id: str) -> dict[str, Any]:
+        """Re-run AI enrichment on a single Memory.
+
+        Regenerates: title (kept from source), why, impact, suggested_strand,
+        strand_kind, confidences, connect_goal_ids, connect_alignment_note,
+        needs_human_strand_review.
+
+        Preserves the user's manual: column (lifecycle placement) and
+        notes_for_user (private note).
+        """
+        from datetime import datetime, timezone
+
+        from pensieve.cli import _build_recent_context_from_chroma
+        from pensieve.enrichment import AzureOpenAIChatClient, enrich_task, load_connect_goals
+        from pensieve.sources.base import RawTask
+
+        existing = store.get_memory(memory_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+
+        # Reconstruct a RawTask from the persisted Memory.
+        task = RawTask(
+            id=existing.source_task_id or existing.id,
+            title=existing.title,
+            notes=existing.original_notes,
+            list_name=existing.list_name or "",
+            created_at=existing.source_created_at,
+            last_modification_time=existing.source_last_modified,
+            completed=existing.completed,
+            completed_at=existing.completed_at,
+            categories=list(existing.categories or []),
+            due_date=existing.due_date,
+            source=existing.source or "unknown",
+        )
+
+        # Strand catalog from samples.json; recent context from current Chroma state.
+        strand_catalog = None
+        if settings.samples_path.exists():
+            import json as _json
+
+            with settings.samples_path.open("r", encoding="utf-8") as f:
+                blob = _json.load(f)
+            strand_catalog = blob.get("strand_catalog")
+        if strand_catalog is None:
+            raise HTTPException(status_code=500, detail="strand_catalog missing (samples.json)")
+
+        recent_context = _build_recent_context_from_chroma()
+        connect_goals = load_connect_goals()
+
+        try:
+            client = AzureOpenAIChatClient(settings)
+            result = enrich_task(
+                task,
+                strand_catalog=strand_catalog,
+                recent_context=recent_context,
+                client=client,
+                connect_goals=connect_goals,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Enrichment failed: {e}") from e
+
+        # Overlay regenerated fields onto the existing Memory; preserve user-only fields.
+        existing.suggested_strand = result.suggested_strand
+        existing.strand_kind = result.strand_kind
+        existing.needs_human_strand_review = result.needs_human_strand_review
+        existing.why = result.why
+        existing.impact = result.impact
+        existing.confidence_strand = result.confidence_strand
+        existing.confidence_impact = result.confidence_impact
+        existing.connect_goal_ids = list(result.connect_goal_ids or [])
+        existing.connect_alignment_confidence = result.connect_alignment_confidence
+        existing.connect_alignment_note = result.connect_alignment_note
+        # Preserve user-only fields: column, notes_for_user
+        existing.tokens_used = (existing.tokens_used or 0) + (result.tokens_used or 0)
+        existing.enriched_at = datetime.now(timezone.utc)
+        store.upsert_memory(existing)
+        return {
+            "ok": True,
+            "tokens_used": result.tokens_used,
+            "memory": existing.to_dashboard_dict(),
+        }
+
     # Serve the dashboard from /, if frontend-proto exists.
     frontend_dir: Path = REPO_ROOT / "frontend-proto"
     if frontend_dir.exists():

@@ -1131,3 +1131,37 @@ html[data-theme="marauder"] .modal-textarea {
   0%, 100% { transform: translateY(0) rotate(-0.5deg); }
   50%      { transform: translateY(-3px) rotate(0.5deg); }
 }
+
+/* ============================================================
+   Regenerate-with-AI button (sparkle / brew)
+   ============================================================ */
+
+.regen-btn {
+  background: linear-gradient(140deg, rgba(110, 80, 180, 0.22), rgba(201, 166, 85, 0.18));
+  border: 1px solid rgba(201, 166, 85, 0.5);
+  font-family: "Cinzel", serif;
+  letter-spacing: 0.04em;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.regen-btn:hover {
+  background: linear-gradient(140deg, rgba(160, 110, 220, 0.35), rgba(201, 166, 85, 0.32));
+  box-shadow: 0 0 14px rgba(160, 110, 220, 0.65);
+  transform: translateY(-1px);
+}
+
+.regen-btn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.regen-btn.is-regenerating {
+  animation: regen-shimmer 1.3s ease-in-out infinite;
+  background: linear-gradient(140deg, rgba(160, 110, 220, 0.45), rgba(201, 166, 85, 0.3));
+  box-shadow: 0 0 18px rgba(160, 110, 220, 0.75);
+}
+
+@keyframes regen-shimmer {
+  0%, 100% { transform: translateY(0) rotate(-0.5deg); filter: brightness(1); }
+  50%      { transform: translateY(-2px) rotate(0.5deg); filter: brightness(1.15); }
+}
