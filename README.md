@@ -328,6 +328,10 @@ pensieve serve
 # Open http://localhost:8765/ in your browser
 ```
 
+> 💡 **Tired of starting the server manually?** Run `tools\Install-PensieveAutoStart.ps1`
+> once and the backend will launch (minimized) every time you log in to Windows.
+> See [tools/README.md](tools/README.md). Uninstall anytime with `Uninstall-PensieveAutoStart.ps1`.
+
 Once that round-trip is working, switch to live To-Do tasks:
 
 ```powershell

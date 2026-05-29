@@ -99,6 +99,12 @@ talks to `:8765`. You should see an empty kanban with four columns:
 
 Stop the server with Ctrl+C when you're done.
 
+> 💡 **Optional but recommended:** run `tools\Install-PensieveAutoStart.ps1`
+> once. It drops a Startup-folder shortcut so the backend launches (minimized)
+> at every Windows logon — no more manual `pensieve serve`. See
+> [tools/README.md](tools/README.md) for details. Disable any time with
+> `Uninstall-PensieveAutoStart.ps1`.
+
 ---
 
 ## Importing your Connect goals (the magic step)
