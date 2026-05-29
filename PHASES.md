@@ -131,10 +131,18 @@ actually advanced.
 ### Prerequisites
 
 - Phase 2 kanban shipped (need the "select these N memories" UX).
+- A calendar integration. Two viable backends:
+  - **Microsoft Graph `Calendars.ReadWrite`** (corp install — same auth
+    path as Phase 1 `Tasks.ReadWrite`; see OPEN-QUESTIONS.md Q1).
+  - **Google Calendar API v3** (personal-device install — OAuth client
+    in a personal Google Cloud project + `calendar.events` scope).
+    This is the right backend when the task source is `personal_graph`
+    but the user's calendar lives in Gmail/Google. Implementation lives
+    behind the same kind of provider abstraction we use for the LLM —
+    `pensieve.sinks.calendar.*` with backend selected by env var.
 - Calendar MCP enabled (already in `agency.toml` `phase2` profile;
-  also live in new `reverie` profile).
-- Graph `Calendars.ReadWrite` scope confirmed (same auth path as
-  Phase 1 `Tasks.ReadWrite` — see OPEN-QUESTIONS.md Q1).
+  also live in new `reverie` profile). Personal-device install can
+  skip MCP and use the Google Calendar Python client directly.
 
 ### Ships
 

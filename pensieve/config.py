@@ -25,6 +25,14 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        populate_by_name=True,
+    )
+
+    # --- LLM provider selection ---
+    # "azure_openai" (default) routes enrichment through the Cortex hub.
+    # "github_models" routes through GitHub Models with a PAT (personal-device installs).
+    llm_provider: Literal["azure_openai", "github_models"] = Field(
+        default="azure_openai", alias="LLM_PROVIDER"
     )
 
     # --- Azure OpenAI (mirrors PowerShell Invoke-AzureOpenAI conventions) ---
@@ -35,6 +43,33 @@ class Settings(BaseSettings):
     azure_openai_token_scope: str = Field(
         default="https://ai.azure.com/.default",
         alias="AZURE_OPENAI_TOKEN_SCOPE",
+    )
+
+    # --- GitHub Models (personal-device LLM provider) ---
+    github_token: str = Field(default="", alias="GITHUB_TOKEN")
+    github_models_base_url: str = Field(
+        default="https://models.github.ai/inference", alias="GITHUB_MODELS_BASE_URL"
+    )
+    github_models_model: str = Field(default="openai/gpt-4o-mini", alias="GITHUB_MODELS_MODEL")
+
+    # --- Personal Microsoft Graph (personal-device task source) ---
+    # Personal MS accounts (outlook.com / hotmail / live) work via Graph
+    # without admin consent. App registration is created by the user; see
+    # docs/SETUP-personal-device.md.
+    personal_graph_client_id: str = Field(default="", alias="PERSONAL_GRAPH_CLIENT_ID")
+    personal_graph_authority: str = Field(
+        default="https://login.microsoftonline.com/consumers",
+        alias="PERSONAL_GRAPH_AUTHORITY",
+    )
+    personal_graph_scopes: str = Field(
+        default="Tasks.Read", alias="PERSONAL_GRAPH_SCOPES"
+    )
+    personal_graph_token_cache_name: str = Field(
+        default="personal-graph-token-cache.bin",
+        alias="PERSONAL_GRAPH_TOKEN_CACHE_NAME",
+    )
+    personal_graph_skip_completed_older_days: int = Field(
+        default=30, alias="PERSONAL_GRAPH_SKIP_COMPLETED_OLDER_DAYS"
     )
 
     # --- Pensieve runtime ---
@@ -55,7 +90,7 @@ class Settings(BaseSettings):
     enrichment_concurrency: int = Field(default=3, alias="PENSIEVE_ENRICHMENT_CONCURRENCY")
 
     # --- Sources ---
-    default_source: Literal["sample_file", "outlook_com"] = Field(
+    default_source: Literal["sample_file", "outlook_com", "personal_graph"] = Field(
         default="sample_file", alias="PENSIEVE_DEFAULT_SOURCE"
     )
     outlook_skip_completed_older_than_days: int = Field(
@@ -90,6 +125,13 @@ class Settings(BaseSettings):
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
+
+    def personal_graph_scope_list(self) -> list[str]:
+        return [s.strip() for s in self.personal_graph_scopes.split(",") if s.strip()]
+
+    @property
+    def personal_graph_token_cache_path(self) -> Path:
+        return self.data_dir / self.personal_graph_token_cache_name
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

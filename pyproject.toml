@@ -32,6 +32,11 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.3.0",
 ]
+personal = [
+    # Personal-device extras: MSAL for personal-MS-account Graph auth.
+    # Not required for the corp Cortex hub + Outlook COM path.
+    "msal>=1.28.0",
+]
 
 [project.scripts]
 pensieve = "pensieve.cli:app"

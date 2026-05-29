@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from pensieve.enrichment.llm_client import AzureOpenAIChatClient
+from pensieve.enrichment.chat_provider import ChatClient
 from pensieve.enrichment.prompt import load_system_prompt
 
 # 8-entry palette. First four are the canonical HP houses used by the
@@ -118,7 +118,7 @@ def _slugify(s: str, max_len: int = 32) -> str:
 def extract_goals_from_text(
     text: str,
     *,
-    client: Optional[AzureOpenAIChatClient] = None,
+    client: Optional[ChatClient] = None,
     max_output_tokens: int = 3000,
 ) -> dict[str, Any]:
     """Send PDF text to the LLM and parse the response into a goals dict.
@@ -131,9 +131,9 @@ def extract_goals_from_text(
         raise ValueError("PDF text is empty. Nothing to extract.")
 
     if client is None:
-        from pensieve.config import get_settings
+        from pensieve.enrichment.chat_provider import get_chat_client
 
-        client = AzureOpenAIChatClient(get_settings())
+        client = get_chat_client()
 
     system_prompt = load_system_prompt("extract-connect-goals.md")
     user_payload = json.dumps({"pdf_text": text}, ensure_ascii=False)
@@ -246,7 +246,7 @@ def assign_houses_and_ids(
 def import_pdf_to_goals(
     pdf_bytes: bytes,
     *,
-    client: Optional[AzureOpenAIChatClient] = None,
+    client: Optional[ChatClient] = None,
     source_label: Optional[str] = None,
 ) -> dict[str, Any]:
     """High-level convenience: pdf bytes -> ready-to-save goals dict."""

@@ -213,8 +213,8 @@ def create_app() -> FastAPI:
         """Kick off a background sync from the configured source (default outlook_com).
 
         Body (all optional):
-          source: "outlook_com" | "sample_file" (default: settings.default_source)
-          lists:  list[str] (Outlook task folder names to restrict to; default = all)
+          source: "outlook_com" | "personal_graph" | "sample_file" (default: settings.default_source)
+          lists:  list[str] (task list names to restrict to; default = all)
           force:  bool (re-enrich every task, even unchanged ones)
         """
         body = body or {}
@@ -238,15 +238,18 @@ def create_app() -> FastAPI:
 
         def _runner() -> None:
             # COM apartments must be initialized per-thread on Windows.
+            # Only outlook_com actually uses COM; personal_graph and sample_file
+            # don't need it but the init is a no-op cost when present.
             _com_inited = False
             try:
-                try:
-                    import pythoncom  # type: ignore[import-not-found]
+                if src_name == "outlook_com":
+                    try:
+                        import pythoncom  # type: ignore[import-not-found]
 
-                    pythoncom.CoInitialize()
-                    _com_inited = True
-                except Exception:
-                    pass
+                        pythoncom.CoInitialize()
+                        _com_inited = True
+                    except Exception:
+                        pass
 
                 from pensieve.cli import _build_recent_context_from_chroma, _build_source
                 from pensieve.sync import run_sync
@@ -254,7 +257,7 @@ def create_app() -> FastAPI:
                 src = _build_source(src_name, list_names=list_names or None)
                 strand_catalog = None
                 recent_context = None
-                if src_name == "outlook_com":
+                if src_name in ("outlook_com", "personal_graph"):
                     if settings.samples_path.exists():
                         import json as _json
 
@@ -328,7 +331,7 @@ def create_app() -> FastAPI:
         notes_for_user (private note).
         """
         from pensieve.cli import _build_recent_context_from_chroma
-        from pensieve.enrichment import AzureOpenAIChatClient, enrich_task, load_connect_goals
+        from pensieve.enrichment import enrich_task, get_chat_client, load_connect_goals
         from pensieve.sources.base import RawTask
         from pensieve.sync import overlay_regeneration
 
@@ -366,7 +369,7 @@ def create_app() -> FastAPI:
         connect_goals = load_connect_goals()
 
         try:
-            client = AzureOpenAIChatClient(settings)
+            client = get_chat_client(settings)
             result = enrich_task(
                 task,
                 strand_catalog=strand_catalog,

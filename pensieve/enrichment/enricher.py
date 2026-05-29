@@ -8,8 +8,8 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 from pensieve.config import get_settings
+from pensieve.enrichment.chat_provider import ChatClient, get_chat_client
 from pensieve.enrichment.connect_goals import load_connect_goals
-from pensieve.enrichment.llm_client import AzureOpenAIChatClient
 from pensieve.enrichment.prompt import load_system_prompt
 from pensieve.sources.base import RawTask
 
@@ -58,12 +58,12 @@ def enrich_task(
     strand_catalog: list[dict],
     recent_context: dict,
     *,
-    client: Optional[AzureOpenAIChatClient] = None,
+    client: Optional[ChatClient] = None,
     connect_goals: Optional[list[dict]] = None,
 ) -> EnrichmentResult:
     settings = get_settings()
     if client is None:
-        client = AzureOpenAIChatClient(settings)
+        client = get_chat_client(settings)
     if connect_goals is None:
         connect_goals = load_connect_goals()
 

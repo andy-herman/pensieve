@@ -12,8 +12,8 @@ from rich.console import Console
 
 from pensieve.config import get_settings
 from pensieve.enrichment import (
-    AzureOpenAIChatClient,
     enrich_task,
+    get_chat_client,
     load_connect_goals,
 )
 from pensieve.sources.base import RawTask, TaskSource
@@ -145,7 +145,7 @@ def run_sync(
         recent_context = {"user_recent_strands": [], "recent_titles_in_same_list": []}
 
     store = ChromaMemoryStore(settings)
-    client = AzureOpenAIChatClient(settings) if not dry_run else None
+    client = get_chat_client(settings) if not dry_run else None
     connect_goals = load_connect_goals()
 
     known_ids = store.known_ids()

@@ -6,7 +6,9 @@ Pensieve is a local, single-user productivity tool that pulls your Microsoft To-
 
 It runs entirely on your machine. Your To-Do data is read-only. Your enrichments live in a local ChromaDB. The dashboard is a static page served from a local FastAPI server.
 
-> 🚀 **New here? See [SETUP.md](SETUP.md) for a 10-minute install + first-sync walkthrough.**
+> 🚀 **New here?** Pick your install path:
+> - **Corp install** (work laptop, Azure OpenAI Cortex hub, Outlook desktop) → [SETUP.md](SETUP.md) — 10-minute walkthrough.
+> - **Personal-device install** (personal MS account, GitHub Models PAT) → [SETUP-personal-device.md](SETUP-personal-device.md).
 
 ---
 
@@ -369,11 +371,16 @@ All config flows through `.env`. The most important keys:
 
 | Variable | Default | What it does |
 | -------- | ------- | ------------ |
-| `AZURE_OPENAI_ENDPOINT` | (required) | Your Azure OpenAI resource URL |
+| `LLM_PROVIDER` | `azure_openai` | `azure_openai` (Cortex hub) or `github_models` (PAT) |
+| `AZURE_OPENAI_ENDPOINT` | (required for azure_openai) | Your Azure OpenAI resource URL |
 | `AZURE_OPENAI_DEPLOYMENT` | `gpt-5.4-2` | Deployment name to call |
 | `AZURE_OPENAI_API_VERSION` | `2024-12-01-preview` | API version |
 | `AZURE_OPENAI_API_KEY` | (unset) | Optional override; if unset, uses `DefaultAzureCredential` |
-| `PENSIEVE_DEFAULT_SOURCE` | `sample_file` | `sample_file` or `outlook_com` |
+| `GITHUB_TOKEN` | (required for github_models) | PAT with `models:read` scope |
+| `GITHUB_MODELS_MODEL` | `openai/gpt-4o-mini` | Any model from the GitHub Models catalog |
+| `GITHUB_MODELS_BASE_URL` | `https://models.github.ai/inference` | Override only if using a proxy |
+| `PENSIEVE_DEFAULT_SOURCE` | `sample_file` | `sample_file`, `outlook_com`, or `personal_graph` |
+| `PERSONAL_GRAPH_CLIENT_ID` | (required for personal_graph) | Your personal MS app registration's client ID |
 | `PENSIEVE_BACKEND_PORT` | `8765` | Port the FastAPI binds to |
 | `PENSIEVE_DATA_DIR` | `./data` | Where Chroma, samples, goals, and the audit log live |
 | `PENSIEVE_ENRICHMENT_CONFIDENCE_THRESHOLD` | `0.6` | Below this, a memory is flagged for review |
@@ -393,11 +400,14 @@ pensieve/
 |   |   |-- base.py            TaskSource ABC + RawTask model
 |   |   |-- sample_file.py     Reads data/samples.json
 |   |   |-- outlook_com.py     Reads live Outlook desktop via COM (no writes)
+|   |   |-- personal_graph.py  Reads personal MS Graph /me/todo (personal device, no writes)
 |   |-- enrichment/            LLM enrichment pipeline
-|   |   |-- llm_client.py      Azure OpenAI chat-completions client
-|   |   |-- prompt.py          Loads the v2 enrichment prompt
-|   |   |-- connect_goals.py   Loads data/connect-goals.json
-|   |   |-- enricher.py        Per-task enrichment with structured JSON output
+|   |   |-- llm_client.py            Azure OpenAI chat-completions client
+|   |   |-- github_models_client.py  GitHub Models chat-completions client (personal device)
+|   |   |-- chat_provider.py         Factory: returns the configured chat client
+|   |   |-- prompt.py                Loads the v2 enrichment prompt
+|   |   |-- connect_goals.py         Loads data/connect-goals.json
+|   |   |-- enricher.py              Per-task enrichment with structured JSON output
 |   |-- store/                 ChromaDB-backed memory store
 |   |   |-- chroma.py          PersistentClient wrapper (upsert, get, search)
 |   |   |-- schema.py          Memory + Vial pydantic models

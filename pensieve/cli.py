@@ -20,7 +20,7 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 # Module-level singletons for typer defaults to satisfy ruff B008
-_OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com (default from .env)")
+_OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com | personal_graph (default from .env)")
 _OPT_LIST = typer.Option(
     None,
     "--list",
@@ -53,7 +53,16 @@ def _build_source(name: str, list_names: Optional[list[str]] = None):
             list_names=list_names,
             skip_completed_older_than_days=settings.outlook_skip_completed_older_than_days,
         )
-    raise typer.BadParameter(f"Unknown source: {name}. Use 'sample_file' or 'outlook_com'.")
+    if name == "personal_graph":
+        from pensieve.sources.personal_graph import PersonalGraphSource
+
+        return PersonalGraphSource(
+            list_names=list_names,
+            skip_completed_older_than_days=settings.personal_graph_skip_completed_older_days,
+        )
+    raise typer.BadParameter(
+        f"Unknown source: {name}. Use 'sample_file', 'outlook_com', or 'personal_graph'."
+    )
 
 
 def _build_recent_context_from_chroma() -> dict:
@@ -121,7 +130,7 @@ def sync(
             blob = json.load(f)
         strand_catalog = blob.get("strand_catalog")
         recent_context = blob.get("recent_context")
-    elif src_name == "outlook_com":
+    elif src_name in ("outlook_com", "personal_graph"):
         # Pull strand_catalog from samples.json (acts as the catalog of record),
         # and synthesize recent_context from prior Chroma state.
         if settings.samples_path.exists():

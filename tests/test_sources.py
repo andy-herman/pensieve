@@ -9,6 +9,7 @@ import pytest
 
 from pensieve.sources.base import RawTask, TaskSource
 from pensieve.sources.outlook_com import OutlookCOMSource
+from pensieve.sources.personal_graph import PersonalGraphSource
 from pensieve.sources.sample_file import SampleFileSource
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -48,7 +49,7 @@ def _public_methods(cls):
 def test_sources_are_read_only_no_write_methods():
     """Pull-only contract: source classes must not expose write methods."""
     forbidden = {"save", "update_task", "patch", "delete_task", "set_notes", "create_task"}
-    for cls in (SampleFileSource, OutlookCOMSource):
+    for cls in (SampleFileSource, OutlookCOMSource, PersonalGraphSource):
         names = _public_methods(cls)
         leaked = names & forbidden
         assert not leaked, f"{cls.__name__} has forbidden write methods: {leaked}"
@@ -56,7 +57,7 @@ def test_sources_are_read_only_no_write_methods():
 
 def test_taskSource_interface_contract():
     """All concrete sources implement TaskSource."""
-    for cls in (SampleFileSource, OutlookCOMSource):
+    for cls in (SampleFileSource, OutlookCOMSource, PersonalGraphSource):
         assert issubclass(cls, TaskSource)
 
 
