@@ -116,7 +116,7 @@ The 8 lane slots are intentional but cosmetic:
 | `centaur` | Forest and gold | Long-arc strategic foresight and judgment work |
 | `phoenix` | Ember and saffron | High-stakes recovery or transformation work |
 
-The slug names are legacy from an earlier visual identity and persist as stable color-mapping keys (`data-lane` in the DOM, the `HOUSE_PALETTE` constant in code, the `house` field in `connect-goals.json`). Renaming them would invalidate every existing user's goals file; the visual rebrand to HUD kept them in place on purpose. Goals beyond eight cycle through the palette again. You can rename or recolor any lane in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
+The slug names are legacy from an earlier visual identity and persist as stable color-mapping keys (`data-house` in the DOM, the `HOUSE_PALETTE` constant in code, the `house` field in `connect-goals.json`). Renaming them would invalidate every existing user's goals file; the visual rebrand to HUD kept them in place on purpose. Goals beyond eight cycle through the palette again. You can rename or recolor any lane in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
 
 ## Phased roadmap
 
