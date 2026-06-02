@@ -1,9 +1,9 @@
 /* ============================================================
-   The Pensieve - Phase 2 prototype JS (v2)
-   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Houses (Connect goals)
+   Pensieve HUD theme JS (v3)
+   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Lanes (Connect goals)
    - Connect goals editable via in-app modal (persisted in localStorage)
-   - Themes: day / night (toggle) + marauder (easter egg)
-   - Hedwig review counter, footprint trail on drag, snitch
+   - Single HUD theme. No theme toggle. No easter eggs.
+   - Drag-and-drop kanban, semantic search, PDF goals import.
    ============================================================ */
 
 // ----- 1. Connect goals (canonical defaults; mirrors data/connect-goals.json) -----
@@ -285,13 +285,12 @@ const STATE = {
   goalsMeta: {},
   memories: SEED_MEMORIES.map(m => ({ ...m })),
   view: "lifecycle",      // "lifecycle" | "houses"
-  theme: loadTheme(),     // "day" | "night" | "marauder"
+  theme: "hud",           // single theme; legacy state field kept for compatibility
   filter: { strand: null, search: "" },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
   apiConnected: false,
   apiSourceLabel: "seed",
-  easterBuffer: "",
 };
 
 function loadGoals() {
@@ -307,13 +306,11 @@ function saveGoals() {
 }
 
 function loadTheme() {
-  const saved = localStorage.getItem("pensieve-theme");
-  if (saved === "night" || saved === "day" || saved === "marauder") return saved;
-  return "day";
+  return "hud";
 }
 
 function saveTheme() {
-  localStorage.setItem("pensieve-theme", STATE.theme);
+  // No-op. HUD is the only theme.
 }
 
 // ----- 5. Helpers -----
@@ -365,7 +362,7 @@ async function loadMemoriesFromApi() {
       STATE.apiSourceLabel = `${health.default_source || "live"} (${data.count} memories)`;
     } else {
       STATE.memories = [];
-      STATE.apiSourceLabel = "API connected (0 memories — run `pensieve sync`)";
+      STATE.apiSourceLabel = "API connected (0 memories, run `pensieve sync`)";
     }
     // Try to load Connect goals from the API too; fall back to localStorage defaults.
     try {
@@ -452,7 +449,7 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
       if (s.updated_enriched != null) parts.push(`${s.updated_enriched} updated`);
       if (s.skipped_unchanged != null) parts.push(`${s.skipped_unchanged} unchanged`);
       if (s.failed) parts.push(`${s.failed} failed`);
-      toast(`Pulled from Microsoft To-Do — ${parts.join(", ") || "complete"}`);
+      toast(`Pulled from Microsoft To-Do, ${parts.join(", ") || "complete"}`);
       return state;
     }
     if (state.status === "error") {
@@ -526,9 +523,9 @@ async function runSemanticSearch(q) {
 // ----- 6. Rendering -----
 
 function applyTheme() {
-  document.documentElement.setAttribute("data-theme", STATE.theme);
+  document.documentElement.setAttribute("data-theme", "hud");
   const label = $("#theme-label");
-  if (label) label.textContent = `${STATE.theme} mode`;
+  if (label) label.textContent = "hud theme";
 }
 
 function applyView() {
@@ -695,8 +692,8 @@ function renderCard(m, idx) {
   }).join("");
 
   el.innerHTML = `
-    ${review ? `<div class="wax-seal" title="Needs review">R</div>` : ""}
     <h3 class="card-title">${escapeHtml(m.title)}</h3>
+    ${review ? `<div class="card-status" title="Flagged for review">&gt; STATUS // REVIEW</div>` : ""}
     <div class="card-meta">
       <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
     </div>
@@ -730,11 +727,11 @@ function updateMemoryCount() {
 function updateHedwig() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
   const text = $("#hedwig-count");
-  const label = $("#hedwig-label");
   const block = $(".hedwig-block");
-  if (text) text.textContent = reviewing;
+  if (text) {
+    text.textContent = reviewing === 0 ? "CLEAR" : String(reviewing).padStart(2, "0");
+  }
   if (block) block.classList.toggle("has-review", reviewing > 0);
-  if (label) label.textContent = reviewing === 0 ? "All clear" : `${reviewing} need review`;
 }
 
 // ----- 7. Modal -----
@@ -784,8 +781,8 @@ function openModal(m) {
         <input type="checkbox" id="edit-review" ${m.needs_human_strand_review ? "checked" : ""} />
         Flag for review
       </label>
-      ${review ? `<span class="review-pill">Needs review</span>` : ""}
     </div>
+    ${review ? `<div class="review-status-line"><span class="review-status-rule"></span><span class="review-status-label">REVIEW FLAG ACTIVE</span><span class="review-status-rule"></span></div>` : ""}
 
     <div class="modal-section">
       <div class="modal-label">Why</div>
@@ -1048,7 +1045,7 @@ async function uploadConnectPdf(file) {
   }
 }
 
-// ----- 9. Drag + drop + footprints -----
+// ----- 9. Drag + drop -----
 
 let DRAG = { id: null, fromCol: null };
 
@@ -1103,50 +1100,7 @@ function attachDragHandlers() {
   });
 }
 
-// Footprint trail (mousemove during drag; only stamps every N moves to avoid spam)
-let footprintTick = 0;
-document.addEventListener("dragover", e => {
-  if (!DRAG.id) return;
-  if (++footprintTick % 5 !== 0) return;
-  const layer = $("#footprint-layer");
-  if (!layer) return;
-  const fp = document.createElement("div");
-  fp.className = "footprint";
-  fp.style.left = `${e.clientX}px`;
-  fp.style.top = `${e.clientY}px`;
-  fp.style.setProperty("--rot", `${Math.floor(Math.random() * 60 - 30)}deg`);
-  layer.appendChild(fp);
-  setTimeout(() => fp.remove(), 1700);
-});
-
-// ----- 10. Easter egg ----- 
-
-const SWEAR = "i solemnly swear that i am up to no good";
-const MANAGED = "mischief managed";
-
-document.addEventListener("keydown", e => {
-  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
-  if (e.key.length !== 1) {
-    if (e.key === "Backspace") STATE.easterBuffer = STATE.easterBuffer.slice(0, -1);
-    return;
-  }
-  STATE.easterBuffer = (STATE.easterBuffer + e.key.toLowerCase()).slice(-60);
-  if (STATE.easterBuffer.endsWith(SWEAR)) {
-    STATE.theme = "marauder";
-    saveTheme();
-    applyTheme();
-    toast("I solemnly swear I am up to no good");
-    STATE.easterBuffer = "";
-  } else if (STATE.easterBuffer.endsWith(MANAGED)) {
-    STATE.theme = STATE.theme === "marauder" ? "day" : STATE.theme;
-    saveTheme();
-    applyTheme();
-    toast("Mischief managed");
-    STATE.easterBuffer = "";
-  }
-});
-
-// ----- 11. Toast -----
+// ----- 10. Toast -----
 
 let toastTimer = null;
 function toast(msg) {
@@ -1176,7 +1130,7 @@ function init() {
     const footerSource = $("#api-source-label");
     if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
     if (!ok) {
-      toast(`API offline — using seed data. Start with: pensieve serve`);
+      toast(`API offline, using seed data. Start with: pensieve serve`);
     }
   });
 
@@ -1275,17 +1229,7 @@ function init() {
     });
   });
 
-  // Theme toggle (day <-> night; marauder is easter-egg only)
-  $("#theme-toggle").addEventListener("click", () => {
-    if (STATE.theme === "marauder") {
-      STATE.theme = "day";
-    } else {
-      STATE.theme = STATE.theme === "day" ? "night" : "day";
-    }
-    saveTheme();
-    applyTheme();
-    toast(`${STATE.theme} mode`);
-  });
+  // Theme toggle removed: HUD is the only theme.
 
   // Goals editor
   $("#open-goals").addEventListener("click", openGoalsEditor);

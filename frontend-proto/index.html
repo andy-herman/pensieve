@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en" data-theme="day" data-view="lifecycle">
+<html lang="en" data-theme="hud" data-view="lifecycle">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>The Pensieve - Today's Memories</title>
+  <title>Pensieve / Memory archive</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="pensieve.css" />
 </head>
 <body>
@@ -16,47 +16,30 @@
 
   <header class="masthead">
     <div class="title-block">
-      <h1 class="title">The Pensieve</h1>
-      <p class="tagline">Stir the surface and look within.</p>
+      <h1 class="title">Pensieve</h1>
+      <p class="tagline">Memory archive / live capture</p>
     </div>
 
     <div class="hedwig-block" title="Memories that need your review">
-      <svg class="hedwig" viewBox="0 0 80 70" width="64" height="56" aria-hidden="true">
-        <ellipse cx="40" cy="40" rx="22" ry="26" class="hedwig-body" />
-        <ellipse cx="40" cy="22" rx="16" ry="14" class="hedwig-head" />
-        <path d="M32,40 Q12,30 8,52 Q22,52 34,46 Z" class="hedwig-wing" />
-        <path d="M48,40 Q68,30 72,52 Q58,52 46,46 Z" class="hedwig-wing" />
-        <circle cx="34" cy="22" r="3.4" class="hedwig-eye-bg" />
-        <circle cx="46" cy="22" r="3.4" class="hedwig-eye-bg" />
-        <circle cx="34" cy="22" r="1.6" class="hedwig-eye" />
-        <circle cx="46" cy="22" r="1.6" class="hedwig-eye" />
-        <polygon points="38,26 42,26 40,30" class="hedwig-beak" />
-        <rect x="26" y="44" width="28" height="8" rx="1" class="hedwig-letter" />
-        <text x="40" y="51" text-anchor="middle" class="hedwig-letter-text" id="hedwig-count">0</text>
-      </svg>
-      <span class="hedwig-label" id="hedwig-label">All clear</span>
+      <span id="hedwig-count">CLEAR</span>
     </div>
 
     <div class="toolbar">
       <div class="search-wrap">
-        <input type="search" id="search" placeholder="Search memories... (Enter for semantic search)" aria-label="Search memories" />
-        <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB">&#x1F50D;</button>
+        <input type="search" id="search" placeholder="Search memories (Enter for semantic)" aria-label="Search memories" />
+        <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB">SEARCH</button>
       </div>
 
       <div class="view-toggle" role="group" aria-label="Board view">
         <button class="view-btn active" data-view="lifecycle" title="Group by lifecycle column">Lifecycle</button>
-        <button class="view-btn" data-view="houses" title="Group by Connect goal / House">Houses</button>
+        <button class="view-btn" data-view="houses" title="Group by Connect goal lane">Lanes</button>
       </div>
 
       <div id="strand-filter" class="strand-filter" aria-label="Filter by strand"></div>
 
-      <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Send Hedwig to fetch new tasks from Microsoft To-Do">&#x1F989; Pull from To-Do</button>
-      <button id="refresh-btn" class="ghost-button" title="Reload board from local Pensieve store">&#x21bb;</button>
+      <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Fetch new tasks from Microsoft To-Do">Pull from To-Do</button>
+      <button id="refresh-btn" class="ghost-button" title="Reload board from local Pensieve store">Refresh</button>
       <button id="open-goals" class="ghost-button" title="Set your Connect goals">Set goals</button>
-      <button id="theme-toggle" class="ghost-button theme-toggle" title="Toggle day / night" aria-label="Toggle theme">
-        <span class="theme-day-icon" aria-hidden="true">&#9728;</span>
-        <span class="theme-night-icon" aria-hidden="true">&#9789;</span>
-      </button>
       <button id="clear-filters" class="ghost-button" title="Show every memory">Clear filters</button>
     </div>
   </header>
@@ -98,22 +81,14 @@
     </article>
   </div>
 
-  <div class="snitch" aria-hidden="true">
-    <svg viewBox="0 0 60 30" width="48" height="24">
-      <ellipse cx="30" cy="15" rx="6" ry="6" class="snitch-body" />
-      <path d="M24,15 Q12,4 4,12 Q12,16 24,17 Z" class="snitch-wing" />
-      <path d="M36,15 Q48,4 56,12 Q48,16 36,17 Z" class="snitch-wing" />
-    </svg>
-  </div>
-
   <div id="toast" class="toast" hidden></div>
 
   <footer class="footer">
-    <span>Pensieve Phase 2 prototype</span>
+    <span>Pensieve / phase 2 / hud</span>
     <span class="dot">.</span>
     <span id="memory-count">0 memories</span>
     <span class="dot">.</span>
-    <span id="theme-label">day mode</span>
+    <span id="theme-label">hud theme</span>
     <span class="dot">.</span>
     <span id="api-source-label">offline (seed data)</span>
     <span class="dot">.</span>
