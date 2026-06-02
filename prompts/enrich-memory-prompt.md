@@ -61,7 +61,7 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 ```json
 {
   "memory_id": "mem_<task.id>",
-  "title": "string \u2014 5 to 12 words, no em-dash, sentence case",
+  "display_title": "string \u2014 5 to 12 words, sentence case, no trailing punctuation, no em-dash. Distill long source titles; expand fragments; echo a clean source title back unchanged when it already fits the rules.",
   "suggested_strand": "string id from strand_catalog OR null",
   "needs_human_strand_review": false,
   "why": "string \u2014 1 to 2 sentences explaining why this task exists, in the user's voice",
@@ -80,11 +80,33 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 
 1. **suggested_strand MUST be either an `id` from `strand_catalog` or `null`.** Do not invent strand IDs. If nothing fits, set it to `null` and set `needs_human_strand_review: true`.
 2. **connect_goal_ids MUST be a subset (possibly empty) of the goal IDs in `connect_goals`.** Do not invent goal IDs.
-3. **No em-dashes** in any output string (title, why, impact, notes_for_user, connect_alignment_note). Use commas, periods, or " \u2014 " replacements ONLY if you mean a hyphenated dash \u2014 prefer commas.
+3. **No em-dashes** in any output string (display_title, why, impact, notes_for_user, connect_alignment_note). Use commas, periods, or " \u2014 " replacements ONLY if you mean a hyphenated dash \u2014 prefer commas.
 4. **Confidence is honest, not aspirational.** Below 0.5 means the user must review.
 5. **If notes is empty**, lean on title + recent_context + strand_catalog descriptions. Do not fabricate context.
 6. **`why` and `impact` are in the user's voice** (first person implied), present tense, concrete. Never use marketing language ("synergize", "leverage", "transform").
 7. **Personal tasks** (passport, dentist, family) get `suggested_strand: null`, `connect_goal_ids: []`, and `connect_alignment_note` explaining "personal task, no work-goal alignment".
+
+## display_title rules (critical \u2014 this is what shows on the kanban card)
+
+The source `task.title` comes from whatever the user typed into Microsoft To-Do. It is often a full sentence, a paragraph, or sometimes a 2-word fragment. The `display_title` you produce is what shows on the kanban card, so it must be **scannable in one glance**.
+
+- **Target length: 5 to 12 words (roughly 30 to 70 characters).**
+- **If the source title is already in range** and clearly readable as a task heading, echo it back with at most light cleanup (trim whitespace, normalize sentence case, drop trailing punctuation). Do not paraphrase needlessly.
+- **If the source title is too long** (one or more full sentences, contains "I want to...", "we should...", explanations of why), distill the actual action into 5 to 12 words. Keep proper nouns (people, programs, deliverables) verbatim. Move motivation / context out of the title; it belongs in `why`.
+- **If the source title is too short or vague** (e.g. "email John", "follow up", "the deck"), expand minimally using the notes for context. Do NOT invent scope; if notes are also empty, write the most honest short title you can and lower `confidence_strand` so the user reviews it.
+- **Always sentence case.** "Draft DORA RFI response" not "draft dora rfi response" and not "DRAFT DORA RFI RESPONSE".
+- **No trailing punctuation.** No period, no exclamation, no ellipsis.
+- **No em-dashes** (see Hard rule 3).
+
+Source title examples and the display_title you should produce:
+
+| Source title | display_title |
+|---|---|
+| "Send out an email to Nida Davis to inquire about the supplier onboarding process. I want to be able to explain the process by which we onboard subcontractors to Microsoft" | "Email Nida Davis on subcontractor onboarding process" |
+| "email john" | "Email John about [closest topic from notes, or generic if blank]" |
+| "Draft response: JET RFI 0107 Article 6 ICT risk mgmt framework" | "Draft JET RFI 0107: Article 6 ICT risk framework" (already close to range; light cleanup only) |
+| "finish my required training for security team" | "Finish required security team training" |
+| "Add feature to Touchstone to serve as the 'Microsoft' voice agent and also be able to compare previous regulatory responses to see how our responses are consistent/ contradict" | "Touchstone: Microsoft voice agent plus regulatory-response consistency check" |
 
 ## Connect goal alignment guidance
 
@@ -121,7 +143,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ```json
 {
   "memory_id": "mem_todo_sample_01",
-  "title": "JET RFI 0107: Article 6 ICT risk framework mapping",
+  "display_title": "JET RFI 0107: Article 6 ICT risk framework mapping",
   "suggested_strand": "dora-rfi",
   "needs_human_strand_review": false,
   "why": "JET requested explicit mapping of DORA Article 6 to my internal ICT risk policy, with Azure and M365 product owner confirmation before submission. This is a hard deadline this Thursday.",
@@ -154,7 +176,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ```json
 {
   "memory_id": "mem_todo_sample_02",
-  "title": "NIS2 Article 21 to DORA Article 6 crosswalk deck",
+  "display_title": "NIS2 Article 21 to DORA Article 6 crosswalk deck",
   "suggested_strand": "nis2-mapping",
   "needs_human_strand_review": false,
   "why": "Building a two-column NIS2-to-DORA crosswalk for the next CISO GRC sync, reusing DORA evidence to minimize new asks on product teams.",
@@ -187,7 +209,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ```json
 {
   "memory_id": "mem_todo_sample_09",
-  "title": "Renew passport before October trip",
+  "display_title": "Renew passport before October trip",
   "suggested_strand": null,
   "needs_human_strand_review": true,
   "why": "Passport renewal needed before an October trip; expedite if the fee is cheaper than the flight-rebooking risk.",
@@ -220,7 +242,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ```json
 {
   "memory_id": "mem_todo_sample_05",
-  "title": "Foundry Agent Framework deep-dive evaluation",
+  "display_title": "Foundry Agent Framework deep-dive evaluation",
   "suggested_strand": "learning-ai",
   "needs_human_strand_review": false,
   "why": "45-minute BUILD 2026 session on Foundry Agent Framework. Specifically evaluating whether Foundry agents could replace Pensieve's hand-rolled prompt routing.",

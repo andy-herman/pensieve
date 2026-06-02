@@ -173,6 +173,7 @@ class ChromaMemoryStore:
             source_task_id=meta.get("source_task_id", mid),
             list_name=meta.get("list_name", ""),
             title=meta.get("title", ""),
+            display_title=(meta.get("display_title") or None),
             original_notes=meta.get("original_notes", ""),
             suggested_strand=(meta.get("suggested_strand") or None),
             strand_kind=(meta.get("strand_kind") or None),

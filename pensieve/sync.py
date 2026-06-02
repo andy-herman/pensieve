@@ -74,6 +74,7 @@ def _build_memory(task: RawTask, result) -> Memory:
         source_task_id=task.id,
         list_name=task.list_name,
         title=task.title,
+        display_title=(result.display_title or None),
         original_notes=task.notes,
         suggested_strand=result.suggested_strand,
         strand_kind=result.strand_kind,
@@ -112,6 +113,8 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     so the kanban reflects the source's completion state.
     """
     existing.title = task.title
+    if result.display_title:
+        existing.display_title = result.display_title
     existing.original_notes = task.notes
     if task.list_name:
         existing.list_name = task.list_name

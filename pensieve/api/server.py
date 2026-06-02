@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         editable_str = {
             "title",
+            "display_title",
             "why",
             "impact",
             "suggested_strand",

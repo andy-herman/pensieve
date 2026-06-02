@@ -335,7 +335,7 @@ function memoryMatchesFilter(m) {
   if (STATE.semanticResultIds && !STATE.semanticResultIds.has(m.id)) return false;
   if (STATE.filter.strand && m.suggested_strand !== STATE.filter.strand) return false;
   if (STATE.filter.search) {
-    const hay = `${m.title} ${m.why} ${m.impact}`.toLowerCase();
+    const hay = `${m.display_title || ""} ${m.title} ${m.why} ${m.impact}`.toLowerCase();
     if (!hay.includes(STATE.filter.search.toLowerCase())) return false;
   }
   return true;
@@ -748,7 +748,7 @@ function renderCard(m, idx) {
   }).join("");
 
   el.innerHTML = `
-    <h3 class="card-title">${escapeHtml(m.title)}</h3>
+    <h3 class="card-title">${escapeHtml(m.display_title || m.title)}</h3>
     ${review ? `<div class="card-status" title="Flagged for review">&gt; STATUS // REVIEW</div>` : ""}
     <div class="card-meta">
       <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
@@ -824,7 +824,8 @@ function openModal(m) {
   }).join("");
 
   body.innerHTML = `
-    <input id="edit-title" class="modal-title-edit" value="${escapeHtml(m.title)}" />
+    <input id="edit-title" class="modal-title-edit" value="${escapeHtml(m.display_title || m.title)}" placeholder="Card display title (5 to 12 words)" />
+    <p class="modal-source-title" title="Verbatim subject from Microsoft To-Do. Pensieve never edits this.">From To-Do: ${escapeHtml(m.title)}</p>
 
     <div class="modal-meta">
       <label class="inline-label">Strand
@@ -890,7 +891,7 @@ function readEditedFields() {
     .filter(cb => cb.checked)
     .map(cb => cb.dataset.goalId);
   return {
-    title: $("#edit-title").value.trim(),
+    display_title: $("#edit-title").value.trim(),
     suggested_strand: $("#edit-strand").value || null,
     column: $("#edit-column").value,
     needs_human_strand_review: $("#edit-review").checked,
@@ -904,8 +905,8 @@ function readEditedFields() {
 
 async function saveMemoryEdit(memoryId) {
   const patch = readEditedFields();
-  if (!patch.title) {
-    toast("Title cannot be empty");
+  if (!patch.display_title) {
+    toast("Display title cannot be empty");
     return;
   }
 

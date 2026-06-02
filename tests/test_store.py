@@ -140,6 +140,28 @@ def test_dashboard_dict_shape(tmp_store):
     assert d["connect_goal_ids"] == ["goal-1-dora-deep-dive"]
 
 
+def test_display_title_round_trip(tmp_store):
+    """display_title (LLM-curated card heading) must survive Chroma upsert + reload."""
+    m = _mk_memory()
+    m.display_title = "DORA RFI 0107 Article 6 mapping"
+    tmp_store.upsert_memory(m)
+
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.display_title == "DORA RFI 0107 Article 6 mapping"
+    assert fetched.title == "Hello world"  # source title preserved
+
+
+def test_display_title_defaults_to_none_when_absent(tmp_store):
+    """A memory upserted without a display_title (legacy / pre-feature) must
+    reconstruct with display_title=None so the frontend falls back to title.
+    """
+    tmp_store.upsert_memory(_mk_memory())
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.display_title is None
+
+
 def test_date_fields_round_trip(tmp_store):
     """Regression: enriched_at, source_last_modified, source_created_at, due_date,
     and completed_at must survive a Chroma upsert + reload.

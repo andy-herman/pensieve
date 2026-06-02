@@ -17,6 +17,7 @@ from pensieve.sources.base import RawTask
 class EnrichmentResult(BaseModel):
     """LLM output for a single task. Fields mirror the v2 prompt schema."""
 
+    display_title: str = ""
     suggested_strand: Optional[str] = None
     needs_human_strand_review: bool = False
     why: str = ""
@@ -86,6 +87,7 @@ def enrich_task(
     parsed = json.loads(content)
 
     return EnrichmentResult(
+        display_title=(parsed.get("display_title") or parsed.get("title") or "") or "",
         suggested_strand=parsed.get("suggested_strand"),
         needs_human_strand_review=bool(parsed.get("needs_human_strand_review", False)),
         why=parsed.get("why", "") or "",

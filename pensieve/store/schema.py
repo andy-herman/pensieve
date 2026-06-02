@@ -20,6 +20,7 @@ class Memory(BaseModel):
     source_task_id: str
     list_name: str = ""
     title: str
+    display_title: Optional[str] = None
     original_notes: str = ""
 
     # Enrichment outputs
@@ -59,6 +60,7 @@ class Memory(BaseModel):
             "source_task_id": self.source_task_id,
             "list_name": self.list_name,
             "title": self.title,
+            "display_title": self.display_title or "",
             "original_notes": self.original_notes,
             "suggested_strand": self.suggested_strand or "",
             "strand_kind": self.strand_kind or "",
@@ -92,6 +94,7 @@ class Memory(BaseModel):
         return {
             "id": f"mem_{self.id}",
             "title": self.title,
+            "display_title": self.display_title,
             "suggested_strand": self.suggested_strand,
             "needs_human_strand_review": self.needs_human_strand_review,
             "why": self.why,
