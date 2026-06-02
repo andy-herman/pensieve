@@ -152,16 +152,53 @@ If you run Pensieve on more than one PC against the same Microsoft To-Do account
 - Conflict policy: source-wins-on-newer. If you drag the same card on both PCs around the same time, the one whose Outlook write has the newer `LastModificationTime` wins.
 - Completion is still terminal: if the task is marked complete in To-Do, it lands in Closed regardless of the mirror tag.
 
-Turn it on by setting two values in your `.env`:
+### Quickstart for a second PC
 
-```
-PENSIEVE_MIRROR_TO_SOURCE=true
-PENSIEVE_MIRROR_TAG_PREFIX=pensieve/col:
-```
+1. **Install Pensieve on PC-B** the normal way (clone, `pip install -e .[outlook]`, sign in to the same Outlook desktop account, run `pensieve sync --source outlook_com` once so PC-B has its own Chroma store seeded).
+2. **On *both* PCs**, add these two lines to `.env` and restart `pensieve.cli serve`:
+   ```
+   PENSIEVE_MIRROR_TO_SOURCE=true
+   PENSIEVE_MIRROR_TAG_PREFIX=pensieve/col:
+   ```
+3. **Drag a card on PC-A.** Pensieve writes `pensieve/col:<col>` to that task's Categories field in Outlook (you can verify this in the Outlook desktop UI: open the task, look at the Categories field at the bottom).
+4. **On PC-B**, run `pensieve sync --source outlook_com` (or trigger a sync from the dashboard). The card lands in the column the tag specifies.
 
-Pensieve only ever touches categories that start with the prefix above. Every other Categories value is preserved byte for byte. Clearing the tag (via `OutlookCOMSink.clear_column_tag` or just removing it in Outlook) restores the source task exactly to its pre-Pensieve state.
+The first cross-PC round-trip is the only one that needs Andy-in-the-loop verification. From then on it's silent.
 
-The writer is in `pensieve/sources/outlook_com_sink.py`, isolated from the read-only `OutlookCOMSource` so the "sources are read-only" invariant in [AGENTS.md](./AGENTS.md) stays intact.
+### What you'll see in Outlook
+
+The tag shows up as a plain Outlook category named `pensieve/col:memory` (or `dive` / `review` / `closed`). It's human-readable so you can debug the round-trip just by looking at a task in Outlook. The category color defaults to whatever Outlook assigns to a new category; if the visual noise bothers you, set its color to "no color" in Outlook once and Pensieve won't touch the color again.
+
+### Turning it off cleanly
+
+To stop mirroring without leaving traces in Outlook:
+
+1. Set `PENSIEVE_MIRROR_TO_SOURCE=false` in `.env` on both PCs and restart.
+2. Optionally, remove the `pensieve/col:*` categories from any tasks you've already touched. You can do that in Outlook by hand, or programmatically by calling `OutlookCOMSink.clear_column_tag(task_id, prefix="pensieve/col:")` for each task.
+3. After the cleanup, the source tasks are exactly as they were before Pensieve ever touched them. User-authored categories were never modified.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| PC-B sync runs but the card stays in the wrong column | The mirror tag was written but PC-B's sync ran before Outlook on PC-B finished its cloud pull | Wait ~30s for Outlook to pull from Exchange, then re-run `pensieve sync` |
+| `mirror.reason` in the PATCH response is something other than `ok` | Outlook desktop is closed on the PC that's writing, or the task ID is stale | Open Outlook on the writing PC and re-trigger the drag |
+| Both PCs disagree on the column after simultaneous drags | Source-wins-on-newer kicked in; the loser is the older drag | Either accept the winner or drag again on whichever PC should hold the final state |
+| Mirror tag in Outlook but PC-B never lands the card there | `PENSIEVE_MIRROR_TO_SOURCE` not set on PC-B (the setting is symmetric — it controls reads too on a fresh memory) | Set it on PC-B and re-sync |
+
+### Privacy / visibility note
+
+The `pensieve/col:<col>` tag lives in the task's Outlook Categories field, which is **visible to anyone the task is shared with** (delegates, shared mailboxes, etc.). The tag only reveals your private kanban column for that task; it doesn't leak any of the enrichment (`why`, `impact`, Strand assignment, Connect-Goal alignment) — that all stays in your local ChromaDB. If you don't want even the column visible upstream, leave mirror mode off and use Phase 6 multi-machine sync (planned) instead.
+
+### Where it lives in the code
+
+- Writer: `pensieve/sources/outlook_com_sink.py` (only module under `pensieve.sources` that calls `.Save()`)
+- Read-side hooks: `pensieve/sync.py::_column_from_task`, `_build_memory`, and `overlay_regeneration`
+- API surface: `patch_column` and `patch_memory` in `pensieve/api/server.py` now return a `mirror: {mirrored, reason}` field on every response
+- Settings: `pensieve/config.py` (`mirror_to_source`, `mirror_tag_prefix`)
+- Tests: `tests/test_outlook_com_sink.py` + `tests/test_sync_mirror_tag.py` (26 tests, no live Outlook required)
+
+The writer is isolated from the read-only `OutlookCOMSource` so the "sources are read-only" invariant in [AGENTS.md](./AGENTS.md) stays intact.
 
 ## Architecture
 
