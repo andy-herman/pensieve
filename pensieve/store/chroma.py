@@ -167,7 +167,7 @@ class ChromaMemoryStore:
         }
         column = meta.get("column", "memory")
         column = _COL_MIGRATE.get(column, column)
-        return Memory(
+        kwargs: dict = dict(
             id=mid,
             source=meta.get("source", "unknown"),
             source_task_id=meta.get("source_task_id", mid),
@@ -187,12 +187,22 @@ class ChromaMemoryStore:
             notes_for_user=meta.get("notes_for_user", ""),
             categories=cats,
             column=column,
+            source_created_at=_parse_iso(meta.get("source_created_at")),
+            source_last_modified=_parse_iso(meta.get("source_last_modified")),
+            due_date=_parse_iso(meta.get("due_date")),
             completed=bool(meta.get("completed", False)),
             completed_at=_parse_iso(meta.get("completed_at")),
             enrichment_version=meta.get("enrichment_version", "v2"),
             tokens_used=int(meta.get("tokens_used", 0) or 0),
             embedding_text=doc,
         )
+        # Only override the default-factory enriched_at if Chroma actually has
+        # the persisted value. Pre-fix memories upserted before this field was
+        # round-tripped will fall back to the schema default (now()).
+        enriched = _parse_iso(meta.get("enriched_at"))
+        if enriched is not None:
+            kwargs["enriched_at"] = enriched
+        return Memory(**kwargs)
 
     def upsert_many(self, memories: Iterable[Memory]) -> int:
         n = 0

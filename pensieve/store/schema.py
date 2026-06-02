@@ -73,6 +73,9 @@ class Memory(BaseModel):
             "notes_for_user": self.notes_for_user,
             "categories_csv": ",".join(self.categories),
             "column": self.column,
+            "source_created_at": (
+                self.source_created_at.isoformat() if self.source_created_at else ""
+            ),
             "source_last_modified": (
                 self.source_last_modified.isoformat() if self.source_last_modified else ""
             ),
