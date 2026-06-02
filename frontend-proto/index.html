@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="hud" data-view="lifecycle">
+<html lang="en" data-theme="hud" data-view="lifecycle" data-page="board">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -12,7 +12,6 @@
 <body>
 
   <div class="starfield" aria-hidden="true"></div>
-  <div id="footprint-layer" class="footprint-layer" aria-hidden="true"></div>
 
   <header class="masthead">
     <div class="title-block">
@@ -20,8 +19,8 @@
       <p class="tagline">Memory archive / live capture</p>
     </div>
 
-    <div class="hedwig-block" title="Memories that need your review">
-      <span id="hedwig-count">CLEAR</span>
+    <div class="review-block" title="Memories that need your review">
+      <span id="review-count">CLEAR</span>
     </div>
 
     <div class="toolbar">
@@ -32,19 +31,105 @@
 
       <div class="view-toggle" role="group" aria-label="Board view">
         <button class="view-btn active" data-view="lifecycle" title="Group by lifecycle column">Lifecycle</button>
-        <button class="view-btn" data-view="houses" title="Group by Connect goal lane">Lanes</button>
+        <button class="view-btn" data-view="lanes" title="Group by Connect goal lane">Lanes</button>
       </div>
 
       <div id="strand-filter" class="strand-filter" aria-label="Filter by strand"></div>
 
+      <button id="weekly-filter-btn" class="ghost-button" title="Hide Closed tasks older than this week (Monday reset). Nothing is deleted.">This week</button>
       <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Fetch new tasks from Microsoft To-Do">Pull from To-Do</button>
       <button id="refresh-btn" class="ghost-button" title="Reload board from local Pensieve store">Refresh</button>
-      <button id="open-goals" class="ghost-button" title="Set your Connect goals">Set goals</button>
+      <button id="open-goals" class="ghost-button" title="Add or edit your Connect goal lanes">Set goals</button>
       <button id="clear-filters" class="ghost-button" title="Show every memory">Clear filters</button>
     </div>
   </header>
 
+  <nav class="page-tabs" role="tablist" aria-label="Pages">
+    <button class="page-tab active" data-page="board" role="tab" aria-selected="true">Board</button>
+    <button class="page-tab" data-page="recap" role="tab" aria-selected="false" title="Draft a Connect-format recap of your work">Recap</button>
+    <button class="page-tab" data-page="graph" role="tab" aria-selected="false" title="Constellation graph of your tasks">Graph</button>
+    <button class="page-tab" data-page="docs" role="tab" aria-selected="false" title="SOPs and tool documentation">Docs</button>
+  </nav>
+
   <main id="board" class="board" aria-label="Pensieve kanban board"></main>
+
+  <section id="recap-page" class="recap-page" aria-label="Connect recap">
+    <div class="recap-intro">
+      <h2 class="recap-title">Connect Recap</h2>
+      <p class="recap-subtitle">Draft a summary of what you accomplished and its impact, grouped by your committed Connect goals, in the Connect "Reflect on the past" format. Review and edit before pasting into Connect.</p>
+    </div>
+    <div class="recap-controls">
+      <div class="recap-field">
+        <label for="recap-scope">Include</label>
+        <select id="recap-scope">
+          <option value="all">All tasks</option>
+          <option value="completed">Completed &amp; Closed</option>
+          <option value="review">Needs review</option>
+        </select>
+      </div>
+      <div class="recap-field">
+        <label for="recap-period">Reflection period</label>
+        <input type="text" id="recap-period" placeholder="e.g. Oct 2025 - May 2026" />
+      </div>
+      <button id="recap-generate" class="primary-button">&#x2728; Generate recap</button>
+      <button id="recap-export" class="ghost-button" hidden>Export DOCX</button>
+      <button id="recap-copy-all" class="ghost-button" hidden>Copy all</button>
+      <button id="recap-history-btn" class="ghost-button">History</button>
+      <span id="recap-status" class="recap-status" aria-live="polite"></span>
+    </div>
+    <div id="recap-history" class="recap-history" hidden></div>
+    <div id="recap-output" class="recap-output">
+      <p class="recap-empty">Pick a scope and click <strong>Generate recap</strong> to draft your Connect summary from your tasks.</p>
+    </div>
+  </section>
+
+  <section id="graph-page" class="graph-page" aria-label="Constellation graph">
+    <div class="graph-intro">
+      <h2 class="graph-title">Constellation</h2>
+      <p class="graph-subtitle">Your tasks as a living graph. Large nodes are your Connect goals; small nodes are tasks, colored by lane. Solid lines link a task to its goal; faint lines connect tasks that are semantically related (computed from the same embeddings that power search). Drag to explore, click a node to open it.</p>
+    </div>
+    <div class="graph-stats" id="graph-stats"></div>
+    <div class="graph-toolbar">
+      <label>Link sensitivity
+        <input type="range" id="graph-threshold" min="0.3" max="0.9" step="0.05" value="0.45" />
+        <span id="graph-threshold-val">0.45</span>
+      </label>
+      <button id="graph-refresh" class="ghost-button">Rebuild</button>
+      <div class="graph-legend">
+        <span><span class="legend-dot" style="background:var(--cyan)"></span>Goal</span>
+        <span><span class="legend-edge" style="border-color:var(--cyan)"></span>Alignment</span>
+        <span><span class="legend-edge" style="border-color:rgba(184,120,255,0.7)"></span>Semantic link</span>
+      </div>
+    </div>
+    <div class="graph-stage-wrap">
+      <canvas id="graph-canvas" width="1200" height="620"></canvas>
+      <div id="graph-tooltip" class="graph-tooltip"></div>
+      <p id="graph-empty" class="graph-empty" hidden>No tasks to plot yet. Pull from To-Do on the Board first.</p>
+    </div>
+  </section>
+
+  <section id="docs-page" class="docs-page" aria-label="Documents">
+    <aside class="docs-sidebar">
+      <div class="docs-sidebar-head">
+        <h2 class="docs-title">Docs</h2>
+        <button id="docs-new" class="ghost-button" title="Create a new document">+ New</button>
+      </div>
+      <div id="docs-list" class="docs-list"></div>
+    </aside>
+    <div class="docs-main">
+      <div class="docs-main-head">
+        <span id="docs-current-title" class="docs-current-title">Select a document</span>
+        <span class="docs-actions">
+          <button id="docs-edit" class="ghost-button" hidden>Edit</button>
+          <button id="docs-save" class="primary-button" hidden>Save</button>
+          <button id="docs-cancel" class="ghost-button" hidden>Cancel</button>
+          <button id="docs-delete" class="ghost-button" hidden>Delete</button>
+        </span>
+      </div>
+      <div id="docs-view" class="docs-view markdown-body"></div>
+      <textarea id="docs-editor" class="docs-editor" hidden spellcheck="true"></textarea>
+    </div>
+  </section>
 
   <div id="card-modal" class="modal" hidden>
     <div class="modal-backdrop" data-close="1"></div>
@@ -59,8 +144,8 @@
     <article class="modal-card goals-modal-card" role="dialog" aria-modal="true" aria-labelledby="goals-title">
       <button class="modal-close" data-close="goals" aria-label="Close">x</button>
       <div class="modal-body">
-        <h2 id="goals-title" class="goals-title">Your Connect Houses</h2>
-        <p class="goals-subtitle">Each Connect goal becomes a House on the dashboard. Edit them by hand, or upload your Connect PDF and let the AI extract them for you.</p>
+        <h2 id="goals-title" class="goals-title">Your Connect Goals</h2>
+        <p class="goals-subtitle">Each Connect goal becomes a lane on the dashboard. Edit them by hand, or upload your Connect PDF and let the AI extract them for you.</p>
         <div class="goals-import">
           <label for="goals-pdf-input" class="goals-import-label">
             <span class="goals-import-icon" aria-hidden="true">&#x1F4C4;</span>

@@ -99,7 +99,7 @@ The circular arrow button in the masthead re-fetches memories from the API. Use 
 
 | You want to | Edit |
 | ----------- | ---- |
-| Change colors, fonts, theme palettes, House accents | `pensieve.css` |
+| Change colors, fonts, theme palettes, lane accents | `pensieve.css` |
 | Add a column, change Lifecycle labels, tweak strand badges | `pensieve.js` (look for `LIFECYCLE_COLUMNS` and `STRANDS`) |
 | Add a new toolbar button or footer element | `index.html` (markup) + `pensieve.js` (handler) |
 | Change how a card renders | `pensieve.js` `renderCard` |

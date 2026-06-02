@@ -43,3 +43,10 @@ data/enriched*.json
 data/chroma/
 data/notes-backups/
 
+# Recap run history + in-app docs (user content, may be sensitive)
+data/recaps/
+data/docs/
+
+# Local editor / preview config
+.claude/
+

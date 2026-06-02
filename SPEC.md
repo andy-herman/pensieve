@@ -69,7 +69,7 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 |---|---|---|
 | **Memory** | An enriched task record: original To-Do title + notes + LLM-extracted *why* / *impact* / *strand* / *Connect-goal alignment* / *closure context* | ChromaDB `memories` collection; (Phase 2) To-Do task `body` field mirrors `why` + `strand` |
 | **Strand** | A project / workstream a memory belongs to. Examples: `dora-rfi`, `inbox-copilot-build`, `1on1-prep`, `ic5-promo-evidence` | `data/samples.json` strand catalog; flattened into each Memory record; LLM-suggested with `needs_human_strand_review` flag for low-confidence cases |
-| **Connect Goal** | One of the user's semi-annual Connect commitments (House-aligned: 4 canonical Houses + 4 extension Houses for users with more goals). Memories carry `connect_goal_ids` (multi-select) + `connect_alignment_note` so the dashboard can group, filter, and at promo-time generate evidence per Connect goal. | `data/connect-goals.json` (populated via the dashboard's Connect PDF importer or edited by hand); flattened into Memory metadata |
+| **Connect Goal** | One of the user's semi-annual Connect commitments (lane-aligned: 4 primary lanes + 4 extension lanes for users with more goals). Memories carry `connect_goal_ids` (multi-select) + `connect_alignment_note` so the dashboard can group, filter, and at promo-time generate evidence per Connect goal. | `data/connect-goals.json` (populated via the dashboard's Connect PDF importer or edited by hand); flattened into Memory metadata |
 | **Dive** | A query against memories — time window + strand + status + semantic search | Ephemeral (UI state); semantic search uses Chroma `query()` over the document embedding |
 | **Reverie** | A calendar-blocked focus session scheduled to work on one or more memories (typically grouped by strand). Pensieve proposes; user confirms; on write, a tentative Outlook event is created with strand metadata in the body. Round-trip: when the Reverie fires, Pensieve prompts user for which memories were actually advanced. | Phase 2.5 — separate ChromaDB collection (`reveries`) + corresponding Outlook calendar event id |
 | **Reflection** | A synthesis of memories over a review period (week / month / H1 / H2) — narrative form, framed for the audience. Phase 3 reflections are Connect-Goal-aware: one section per Connect commitment. | Phase 3 — separate ChromaDB collection (`reflections`); exported as markdown for Synapse |
@@ -125,8 +125,7 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 | `number` | int (1–6) | Display order |
 | `name` | string | Full Connect-document phrasing |
 | `short_name` | string | Kanban chip label |
-| `house` | enum (`gryffindor` / `slytherin` / `ravenclaw` / `hufflepuff`) | Drives dashboard chip color |
-| `glyph` | string (1–2 chars) | Visual marker on chip |
+| `lane` | enum (`crimson` / `gold` / `emerald` / `azure` / ...) | Drives dashboard chip color |
 | `description` | string | What "good" looks like for this commitment |
 
 ### Reverie (Phase 2.5)
@@ -204,7 +203,7 @@ MVP attacks (1) and (3). (2) is attacked partially in Phase 2.
 3. **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+) requires admin consent for new corp Entra apps accessing `Tasks.*` / `Mail.*` / `Calendars.*` scopes; self-service registration for FTE accounts is locked down. See [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Phase 1 uses local Outlook COM interop instead — same data, zero auth surface, zero tenant-policy dependency.
 4. **All data is local.** ChromaDB persists to `data/chroma/`. No network egress except the LLM enrichment call. Nothing leaves the machine without an explicit Phase 3 export action.
 5. **Strand assignment is human-in-the-loop.** LLM suggests with `confidence_strand`; low-confidence rows are flagged `needs_human_strand_review = true` and the dashboard surfaces them with a review pill. User can override strand inline in the card-edit modal.
-6. **Connect-Goal alignment is first-class.** Every Memory carries `connect_goal_ids` + `connect_alignment_note`. Dashboard surfaces House-colored chips. Phase 3 Reflections will be Connect-Goal-grouped by default.
+6. **Connect-Goal alignment is first-class.** Every Memory carries `connect_goal_ids` + `connect_alignment_note`. Dashboard surfaces lane-colored chips. Phase 3 Reflections will be Connect-Goal-grouped by default.
 7. **Reversibility for any future writeback.** Phase 2 writeback (when added) must show a diff before write and use a sentinel comment so user-edited Notes are never overwritten.
 8. **Closed tasks remain immutable in Pensieve.** A Vial is a snapshot; if To-Do data later changes, the Vial doesn't.
 9. **Reverie write to calendar requires explicit user confirmation.** Pensieve never silently puts events on the user's calendar. Proposed Reveries appear in the UI as tentative cards; only after user clicks Accept does Pensieve create the calendar event. Reverie events are marked `showAs = "tentative"` on first write so they're visually distinct from meetings.

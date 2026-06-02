@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -439,6 +439,184 @@ def create_app() -> FastAPI:
             "tokens_used": result.tokens_used,
             "memory": merged.to_dashboard_dict(),
         }
+
+    @app.post("/api/recap")
+    def generate_recap_route(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Draft a Microsoft Connect-format recap from enriched memories.
+
+        Body (all optional):
+          scope:        "all" | "completed" | "review" (default "all")
+          goal_ids:     list[str] to restrict to specific Connect goals
+          period_label: free-text reflection period for the header
+        """
+        from pensieve.recap import generate_recap
+
+        body = body or {}
+        scope = (body.get("scope") or "all").strip()
+        goal_ids_raw = body.get("goal_ids") or None
+        goal_ids = (
+            [str(g) for g in goal_ids_raw if str(g).strip()]
+            if isinstance(goal_ids_raw, list)
+            else None
+        )
+        period_label = str(body.get("period_label") or "").strip()
+
+        memories = store.list_memories()
+        try:
+            recap = generate_recap(
+                memories,
+                scope=scope,
+                goal_ids=goal_ids,
+                period_label=period_label,
+                settings=settings,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Recap generation failed: {e}") from e
+
+        from pensieve.recap_history import save_recap
+
+        summary = None
+        try:
+            summary = save_recap(recap, settings=settings)
+        except Exception:
+            summary = None  # history is best-effort; never fail the recap on it
+        return {"ok": True, "recap": recap, "history": summary}
+
+    @app.post("/api/recap/export")
+    def export_recap(body: dict[str, Any]) -> Response:
+        """Render a recap payload to a downloadable .docx."""
+        from pensieve.recap_export import build_recap_docx
+
+        recap = (body or {}).get("recap")
+        if not isinstance(recap, dict) or not recap.get("sections"):
+            raise HTTPException(status_code=400, detail="Body.recap with sections is required")
+        try:
+            data = build_recap_docx(recap)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"DOCX export failed: {e}") from e
+        filename = "connect-recap.docx"
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/api/recap/history")
+    def recap_history() -> dict[str, Any]:
+        from pensieve.recap_history import list_history
+
+        return {"ok": True, "runs": list_history(settings)}
+
+    @app.get("/api/recap/history/{rid}")
+    def recap_history_one(rid: str) -> dict[str, Any]:
+        from pensieve.recap_history import load_recap
+
+        record = load_recap(rid, settings)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"Recap {rid} not found")
+        return {"ok": True, "record": record}
+
+    @app.post("/api/recap/revise")
+    def revise_recap(body: dict[str, Any]) -> dict[str, Any]:
+        """Re-draft one recap section using the user's correction (recap chat)."""
+        from pensieve.recap import revise_recap_section
+
+        body = body or {}
+        goal_id = (body.get("goal_id") or "").strip()
+        feedback = (body.get("feedback") or "").strip()
+        scope = (body.get("scope") or "all").strip()
+        if not goal_id:
+            raise HTTPException(status_code=400, detail="goal_id is required")
+        if not feedback:
+            raise HTTPException(status_code=400, detail="feedback is required")
+        memories = store.list_memories()
+        try:
+            section = revise_recap_section(
+                memories, goal_id, feedback, scope=scope, settings=settings
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Revision failed: {e}") from e
+        return {"ok": True, "section": section}
+
+    @app.get("/api/graph")
+    def graph(threshold: float = Query(0.6, ge=0.0, le=1.0), max_per_node: int = 3) -> dict[str, Any]:
+        """Constellation graph: goal hubs + task nodes + alignment/semantic edges.
+
+        Semantic edges are derived from the Chroma embeddings (the same vectors
+        that power search), so related tasks link up even when the user never
+        tagged them with the same goal.
+        """
+        from pensieve.graph import build_graph
+
+        memories = store.list_memories()
+        # Pull embeddings straight from the collection so we don't recompute them.
+        # Chroma returns embeddings as a numpy ndarray, so avoid truthiness on it
+        # (an `or []` fallback raises "truth value ambiguous") and convert per-row.
+        embeddings: dict[str, Any] = {}
+        try:
+            raw = store._memories.get(include=["embeddings"])  # noqa: SLF001
+            ids = raw.get("ids") or []
+            vecs = raw.get("embeddings")
+            if vecs is not None:
+                for mid, vec in zip(ids, vecs, strict=False):
+                    if vec is not None:
+                        embeddings[mid] = [float(x) for x in vec]
+        except Exception:
+            embeddings = {}
+
+        goals = load_connect_goals()
+        g = build_graph(
+            memories,
+            goals,
+            embeddings or None,
+            semantic_threshold=threshold,
+            max_semantic_per_node=max_per_node,
+        )
+        return {"ok": True, "graph": g}
+
+    @app.get("/api/docs")
+    def docs_list() -> dict[str, Any]:
+        from pensieve.docs_store import list_docs
+
+        return {"ok": True, "docs": list_docs(settings)}
+
+    @app.post("/api/docs")
+    def docs_create(body: dict[str, Any]) -> dict[str, Any]:
+        from pensieve.docs_store import create_doc
+
+        title = (body or {}).get("title", "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="title is required")
+        return {"ok": True, "doc": create_doc(title, settings)}
+
+    @app.get("/api/docs/{doc_id}")
+    def docs_get(doc_id: str) -> dict[str, Any]:
+        from pensieve.docs_store import read_doc
+
+        doc = read_doc(doc_id, settings)
+        if doc is None:
+            raise HTTPException(status_code=404, detail=f"Doc {doc_id} not found")
+        return {"ok": True, "doc": doc}
+
+    @app.put("/api/docs/{doc_id}")
+    def docs_save(doc_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        from pensieve.docs_store import save_doc
+
+        content = (body or {}).get("content")
+        if content is None:
+            raise HTTPException(status_code=400, detail="content is required")
+        return {"ok": True, "doc": save_doc(doc_id, content, settings)}
+
+    @app.delete("/api/docs/{doc_id}")
+    def docs_delete(doc_id: str) -> dict[str, Any]:
+        from pensieve.docs_store import delete_doc
+
+        ok = delete_doc(doc_id, settings)
+        if not ok:
+            raise HTTPException(status_code=404, detail=f"Doc {doc_id} not found")
+        return {"ok": True}
 
     # Serve the dashboard from /, if frontend-proto exists.
     frontend_dir: Path = REPO_ROOT / "frontend-proto"

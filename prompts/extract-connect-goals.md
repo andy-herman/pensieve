@@ -66,9 +66,9 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 7. **Skip non-goal content.** Skip the cover page, the "About Connect" preamble, the "Manager Comments" section, the rating histogram, anything that is not a goal description.
 8. **If the document is empty or contains no goals**, return `{"goals": [], "behaviors": {}, "extraction_notes": "no goals found in input"}`. Do not fabricate goals.
 
-## What about house assignment / numbering / IDs?
+## What about lane assignment / numbering / IDs?
 
-**Do not assign `house`, `number`, `id`, `color_primary`, or `color_accent`.** These are added by the Pensieve backend after your output, based on a fixed palette and the order you returned the goals. Just return them in the order they appear in the document.
+**Do not assign `lane`, `number`, `id`, `color_primary`, or `color_accent`.** These are added by the Pensieve backend after your output, based on a fixed palette and the order you returned the goals. Just return them in the order they appear in the document.
 
 ## Example
 

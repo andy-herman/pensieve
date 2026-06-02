@@ -107,16 +107,16 @@ The 8 lane slots are intentional but cosmetic:
 
 | Lane slug | Palette | Best fit for goals that are |
 | --------- | ------- | --------------------------- |
-| `gryffindor` | Scarlet and gold | Front-line, high-visibility, courage-required work |
-| `hufflepuff` | Yellow and black | Sustained, year-over-year, dependable delivery |
-| `slytherin` | Green and silver | Long-game strategic foundation, careful positioning |
-| `ravenclaw` | Blue and bronze | Innovation, learning, intellectual depth |
-| `internal` | Slate and gold | Internal-team-facing operational work |
-| `muggleborn` | Terracotta and parchment | Cross-organization coordination |
-| `centaur` | Forest and gold | Long-arc strategic foresight and judgment work |
-| `phoenix` | Ember and saffron | High-stakes recovery or transformation work |
+| `crimson` | Scarlet and gold | Front-line, high-visibility work |
+| `gold` | Yellow and black | Sustained, year-over-year, dependable delivery |
+| `emerald` | Green and silver | Long-game strategic foundation, careful positioning |
+| `azure` | Blue and bronze | Innovation, learning, intellectual depth |
+| `slate` | Slate and gold | Internal-team-facing operational work |
+| `ember` | Terracotta and parchment | Cross-organization coordination |
+| `sage` | Forest and gold | Long-arc strategic foresight and judgment work |
+| `rose` | Ember and saffron | High-stakes recovery or transformation work |
 
-The slug names are legacy from an earlier visual identity and persist as stable color-mapping keys (`data-house` in the DOM, the `HOUSE_PALETTE` constant in code, the `house` field in `connect-goals.json`). Renaming them would invalidate every existing user's goals file; the visual rebrand to HUD kept them in place on purpose. Goals beyond eight cycle through the palette again. You can rename or recolor any lane in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
+The slug names are stable color-mapping keys (`data-lane` in the DOM, the `LANE_PALETTE` constant in code, the `lane` field in `connect-goals.json`). Goals beyond eight cycle through the palette again. You can rename or recolor any lane in `pensieve/enrichment/goals_importer.py::LANE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
 
 ## Phased roadmap
 

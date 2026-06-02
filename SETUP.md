@@ -162,9 +162,9 @@ button — same result, no terminal needed.
 | Edit a card | Click any card → modal → edit title / why / impact / strand / goal alignment → Save. |
 | Regenerate with AI | Click ✨ **Regenerate** in the edit modal — re-runs the enrichment on demand. |
 | Move a card | Drag to another column, or set it in the edit modal. Your placement survives re-syncs. |
-| Filter by goal | Click a House chip in the goal sidebar. |
+| Filter by goal | Click a lane chip in the goal sidebar. |
 | Search | Use the search box (semantic — powered by Chroma). |
-| Switch view | Toggle between **Lifecycle** (Memory → Dive → Review → Closed) and **Houses** (one column per goal). |
+| Switch view | Toggle between **Lifecycle** (Memory → Dive → Review → Closed) and **Lanes** (one column per goal). |
 
 ---
 
@@ -208,8 +208,8 @@ add an opt-in writeback path; until then, your tasks are untouched.
 
 ## Customising
 
-- **Want different House names / colours?** Edit
-  `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and mirror it in
+- **Want different lane names / colours?** Edit
+  `pensieve/enrichment/goals_importer.py::LANE_PALETTE` and mirror it in
   `frontend-proto/pensieve.js`. Eight slots; goals beyond eight cycle.
 - **Want different column names?** Edit `frontend-proto/pensieve.js`
   `LIFECYCLE_COLUMNS`, the four valid-column tuples in

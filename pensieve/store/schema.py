@@ -78,6 +78,7 @@ class Memory(BaseModel):
             ),
             "due_date": self.due_date.isoformat() if self.due_date else "",
             "completed": bool(self.completed),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else "",
             "enrichment_version": self.enrichment_version,
             "enriched_at": self.enriched_at.isoformat(),
             "tokens_used": int(self.tokens_used),
@@ -105,6 +106,7 @@ class Memory(BaseModel):
             "notes_for_user": self.notes_for_user,
             "categories": self.categories,
             "completed": self.completed,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "due_date": self.due_date.isoformat() if self.due_date else None,
             "enriched_at": self.enriched_at.isoformat(),
         }

@@ -3,11 +3,10 @@
 Flow:
     pdf_bytes -> extract_pdf_text() -> raw text
               -> extract_goals_from_text(client) -> goals dict
-              -> assign_houses_and_ids() -> connect-goals.json-shaped dict
+              -> assign_lanes_and_ids() -> connect-goals.json-shaped dict
 
-Goal count is variable. Houses are assigned deterministically from a fixed
-palette of 8 HP-themed entries (the canonical four + four extensions). Goals
-beyond 8 cycle back through the canonical four.
+Goal count is variable. Lanes are assigned deterministically from a fixed
+palette of 8 color entries. Goals beyond 8 cycle back through the palette.
 """
 
 from __future__ import annotations
@@ -20,56 +19,48 @@ from typing import Any, Optional
 from pensieve.enrichment.llm_client import AzureOpenAIChatClient
 from pensieve.enrichment.prompt import load_system_prompt
 
-# 8-entry palette. First four are the canonical HP houses used by the
-# dashboard CSS; the next four are extensions for users with more than
-# 4 goals. Each entry must have a unique `house` slug so the dashboard
+# 8-entry color palette. The first four are the primary lane colors used by
+# the dashboard CSS; the next four are extensions for users with more than
+# 4 goals. Each entry must have a unique `lane` slug so the dashboard
 # CSS can target it.
-HOUSE_PALETTE: list[dict[str, str]] = [
+LANE_PALETTE: list[dict[str, str]] = [
     {
-        "house": "gryffindor",
-        "house_glyph": "\u26a1",
+        "lane": "crimson",
         "color_primary": "#7a2018",
         "color_accent": "#c9a655",
     },
     {
-        "house": "hufflepuff",
-        "house_glyph": "\u2698",
+        "lane": "gold",
         "color_primary": "#b08a26",
         "color_accent": "#2a1d10",
     },
     {
-        "house": "slytherin",
-        "house_glyph": "\u269c",
+        "lane": "emerald",
         "color_primary": "#2e5a3a",
         "color_accent": "#a8a8a8",
     },
     {
-        "house": "ravenclaw",
-        "house_glyph": "\u269b",
+        "lane": "azure",
         "color_primary": "#2c4670",
         "color_accent": "#c9a655",
     },
     {
-        "house": "internal",
-        "house_glyph": "\u2697",  # alembic - internal alchemy
+        "lane": "slate",
         "color_primary": "#5a5a5a",
         "color_accent": "#c9a655",
     },
     {
-        "house": "muggleborn",
-        "house_glyph": "\u270e",  # pencil - everyday work
+        "lane": "ember",
         "color_primary": "#8a4b1f",
         "color_accent": "#e0c690",
     },
     {
-        "house": "centaur",
-        "house_glyph": "\u2618",  # shamrock - forest-aligned
+        "lane": "sage",
         "color_primary": "#3c5e2c",
         "color_accent": "#c9a655",
     },
     {
-        "house": "phoenix",
-        "house_glyph": "\u2741",  # rotating asterisk - rebirth
+        "lane": "rose",
         "color_primary": "#a83a1f",
         "color_accent": "#f5d77b",
     },
@@ -122,8 +113,8 @@ def extract_goals_from_text(
     """Send PDF text to the LLM and parse the response into a goals dict.
 
     Returns the LLM's raw structured response (a dict with keys "goals",
-    "behaviors", "extraction_notes"). Does NOT yet add houses/ids. Call
-    `assign_houses_and_ids()` to finalize.
+    "behaviors", "extraction_notes"). Does NOT yet add lanes/ids. Call
+    `assign_lanes_and_ids()` to finalize.
     """
     if not text or not text.strip():
         raise ValueError("PDF text is empty. Nothing to extract.")
@@ -163,15 +154,15 @@ def extract_goals_from_text(
     return out
 
 
-def assign_houses_and_ids(
+def assign_lanes_and_ids(
     extracted: dict[str, Any],
     *,
     source_label: Optional[str] = None,
 ) -> dict[str, Any]:
     """Take the LLM's extracted goals and produce a connect-goals.json-shaped dict.
 
-    - Assigns deterministic `id`, `number`, and house palette entry to each goal.
-    - Builds `_meta` block with `source`, `last_synced`, `house_mapping_rationale`.
+    - Assigns deterministic `id`, `number`, and lane palette entry to each goal.
+    - Builds `_meta` block with `source`, `last_synced`, `lane_mapping_rationale`.
     - Preserves the LLM's `summary`, `success_criteria`, `impact_statement`,
       `keywords_for_alignment`, `short_name`, `name`.
     """
@@ -187,7 +178,7 @@ def assign_houses_and_ids(
         short_name = (g.get("short_name") or g.get("name") or f"Goal {idx + 1}").strip()
         name = (g.get("name") or short_name).strip()
         number = idx + 1
-        palette = HOUSE_PALETTE[idx % len(HOUSE_PALETTE)]
+        palette = LANE_PALETTE[idx % len(LANE_PALETTE)]
 
         # Deterministic, unique id (suffix on collision is rare but possible)
         base_id = f"goal-{number}-{_slugify(short_name)}"
@@ -204,8 +195,7 @@ def assign_houses_and_ids(
                 "number": number,
                 "short_name": short_name,
                 "name": name,
-                "house": palette["house"],
-                "house_glyph": palette["house_glyph"],
+                "lane": palette["lane"],
                 "color_primary": palette["color_primary"],
                 "color_accent": palette["color_accent"],
                 "summary": (g.get("summary") or "").strip(),
@@ -219,10 +209,10 @@ def assign_houses_and_ids(
     meta = {
         "source": source_label or f"Imported from Connect PDF on {today}",
         "last_synced": today,
-        "house_mapping_rationale": (
-            "Auto-assigned by import order from the Pensieve house palette "
-            "(gryffindor, hufflepuff, slytherin, ravenclaw, internal, muggleborn, "
-            "centaur, phoenix). Edit data/connect-goals.json to remap."
+        "lane_mapping_rationale": (
+            "Auto-assigned by import order from the Pensieve lane color palette "
+            "(crimson, gold, emerald, azure, slate, ember, sage, rose). "
+            "Edit data/connect-goals.json to remap."
         ),
     }
 
@@ -248,4 +238,4 @@ def import_pdf_to_goals(
     """High-level convenience: pdf bytes -> ready-to-save goals dict."""
     text = extract_pdf_text(pdf_bytes)
     extracted = extract_goals_from_text(text, client=client)
-    return assign_houses_and_ids(extracted, source_label=source_label)
+    return assign_lanes_and_ids(extracted, source_label=source_label)

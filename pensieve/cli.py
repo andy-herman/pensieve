@@ -218,7 +218,7 @@ def goals() -> None:
         console.print("[yellow]No Connect goals loaded.[/yellow]")
         return
     for g in gs:
-        console.print(f"  #{g.get('number')} {g.get('short_name')} ({g.get('house')}) - {g.get('id')}")
+        console.print(f"  #{g.get('number')} {g.get('short_name')} ({g.get('lane')}) - {g.get('id')}")
 
 
 @app.command()

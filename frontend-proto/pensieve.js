@@ -14,8 +14,7 @@ const DEFAULT_GOALS = [
     number: 1,
     short_name: "DORA Deep Dive",
     name: "DORA Deep Dive Compliance",
-    house: "gryffindor",
-    glyph: "\u26A1",
+    lane: "crimson",
     color_primary: "#7a2018",
     color_accent: "#c9a655",
     summary: "Lead CISO GRC role on DORA Core Team through deep dive examination. Deliver accurate JET responses, co-develop regulatory readiness playbook.",
@@ -25,8 +24,7 @@ const DEFAULT_GOALS = [
     number: 2,
     short_name: "UK CTP",
     name: "UK CTP Year 1 Complete + Year 2 Launch",
-    house: "hufflepuff",
-    glyph: "\u2698",
+    lane: "gold",
     color_primary: "#b08a26",
     color_accent: "#2a1d10",
     summary: "Deliver Year 1 obligations post-designation, submit Self-Assessment in 3-month window. Launch Year 2 roadmap (scenario testing, incident mgmt playbook).",
@@ -36,8 +34,7 @@ const DEFAULT_GOALS = [
     number: 3,
     short_name: "NIS2",
     name: "NIS2 Readiness Foundation",
-    house: "slytherin",
-    glyph: "\u269C",
+    lane: "emerald",
     color_primary: "#2e5a3a",
     color_accent: "#a8a8a8",
     summary: "Build NIS2 foundational posture during H1. Lead scoping + gap analysis, apply communication-first model day one, identify core team partners.",
@@ -47,8 +44,7 @@ const DEFAULT_GOALS = [
     number: 4,
     short_name: "AI Program + Argus",
     name: "AI Strategy, Innovation, and Transformation Program for CISO GRC",
-    house: "ravenclaw",
-    glyph: "\u269B",
+    lane: "azure",
     color_primary: "#2c4670",
     color_accent: "#c9a655",
     summary: "Operationalize AI transformation program. Scale Argus from MVP to wider-used regulatory compliance platform. Four capability areas, biweekly triage, quarterly pilots.",
@@ -64,17 +60,17 @@ const LIFECYCLE_COLUMNS = [
   { id: "closed", title: "Closed", subtitle: "Done, complete in your source list" },
 ];
 
-// Mirror of pensieve/enrichment/goals_importer.py HOUSE_PALETTE so the
-// frontend can auto-assign a house when the user adds a goal manually.
-const HOUSE_PALETTE = [
-  { house: "gryffindor", house_glyph: "\u26a1", color_primary: "#7a2018", color_accent: "#c9a655" },
-  { house: "hufflepuff", house_glyph: "\u2698", color_primary: "#b08a26", color_accent: "#2a1d10" },
-  { house: "slytherin",  house_glyph: "\u269c", color_primary: "#2e5a3a", color_accent: "#a8a8a8" },
-  { house: "ravenclaw",  house_glyph: "\u269b", color_primary: "#2c4670", color_accent: "#c9a655" },
-  { house: "internal",   house_glyph: "\u2697", color_primary: "#5a5a5a", color_accent: "#c9a655" },
-  { house: "muggleborn", house_glyph: "\u270e", color_primary: "#8a4b1f", color_accent: "#e0c690" },
-  { house: "centaur",    house_glyph: "\u2618", color_primary: "#3c5e2c", color_accent: "#c9a655" },
-  { house: "phoenix",    house_glyph: "\u2741", color_primary: "#a83a1f", color_accent: "#f5d77b" },
+// Mirror of pensieve/enrichment/goals_importer.py LANE_PALETTE so the
+// frontend can auto-assign a lane when the user adds a goal manually.
+const LANE_PALETTE = [
+  { lane: "crimson",    color_primary: "#7a2018", color_accent: "#c9a655" },
+  { lane: "gold",       color_primary: "#b08a26", color_accent: "#2a1d10" },
+  { lane: "emerald",    color_primary: "#2e5a3a", color_accent: "#a8a8a8" },
+  { lane: "azure",      color_primary: "#2c4670", color_accent: "#c9a655" },
+  { lane: "slate",      color_primary: "#5a5a5a", color_accent: "#c9a655" },
+  { lane: "ember",      color_primary: "#8a4b1f", color_accent: "#e0c690" },
+  { lane: "sage",       color_primary: "#3c5e2c", color_accent: "#c9a655" },
+  { lane: "rose",       color_primary: "#a83a1f", color_accent: "#f5d77b" },
 ];
 
 const STRANDS = [
@@ -284,7 +280,9 @@ const STATE = {
   goals: loadGoals(),
   goalsMeta: {},
   memories: SEED_MEMORIES.map(m => ({ ...m })),
-  view: "lifecycle",      // "lifecycle" | "houses"
+  view: "lifecycle",      // "lifecycle" | "lanes"
+  page: "board",          // "board" | "recap" | "graph"
+  weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
   theme: "hud",           // single theme; legacy state field kept for compatibility
   filter: { strand: null, search: "" },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
@@ -343,6 +341,41 @@ function memoryMatchesFilter(m) {
   return true;
 }
 
+// Most recent Monday at 00:00 local time.
+function mostRecentMonday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();              // 0=Sun..6=Sat
+  const diff = (day === 0 ? 6 : day - 1); // days since Monday
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+// Best available "closed on" date for a memory: source completion, else when
+// Pensieve enriched it (approximation for manually-closed cards).
+function closedDate(m) {
+  const iso = m.completed_at || m.enriched_at;
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Weekly filter only affects the Closed column: when on, hide closed cards
+// from before this week's Monday. Open columns and other views are unaffected.
+// Non-destructive: data stays in the store (Recap/graph/search still see it).
+function passesWeeklyFilter(m, colId) {
+  if (!STATE.weeklyFilter) return true;
+  if (colId !== "closed") return true;
+  const cd = closedDate(m);
+  if (!cd) return true;  // unknown date: keep visible rather than hide silently
+  return cd >= mostRecentMonday();
+}
+
+function applyWeeklyFilterState() {
+  const btn = $("#weekly-filter-btn");
+  if (btn) btn.classList.toggle("active", !!STATE.weeklyFilter);
+}
+
 // ----- 5b. API client + remote sync -----
 
 async function fetchJson(path, opts = {}) {
@@ -393,7 +426,7 @@ async function regenerateMemory(memoryId) {
   if (btn) {
     btn.disabled = true;
     btn.classList.add("is-regenerating");
-    btn.innerHTML = "&#x2728; Brewing...";
+    btn.innerHTML = "&#x2728; Working...";
   }
   try {
     const apiId = memoryId.replace(/^mem_/, "");
@@ -561,12 +594,13 @@ function renderBoard() {
   if (STATE.view === "lifecycle") {
     LIFECYCLE_COLUMNS.forEach(col => board.appendChild(renderLifecycleColumn(col)));
   } else {
-    STATE.goals.forEach(g => board.appendChild(renderHouseColumn(g)));
-    board.appendChild(renderUnhousedColumn());
+    STATE.goals.forEach(g => board.appendChild(renderLaneColumn(g)));
+    board.appendChild(renderUnassignedColumn());
+    board.appendChild(renderAddLaneTile());
   }
 
   updateMemoryCount();
-  updateHedwig();
+  updateReviewIndicator();
   attachDragHandlers();
 }
 
@@ -576,12 +610,17 @@ function renderLifecycleColumn(col) {
   wrap.dataset.column = col.id;
   wrap.dataset.view = "lifecycle";
 
-  const memos = STATE.memories.filter(m => m.column === col.id && memoryMatchesFilter(m));
+  const inColumn = STATE.memories.filter(m => m.column === col.id && memoryMatchesFilter(m));
+  const memos = inColumn.filter(m => passesWeeklyFilter(m, col.id));
+  const hidden = inColumn.length - memos.length;
+  const subtitle = (hidden > 0)
+    ? `${col.subtitle} &middot; ${hidden} earlier hidden`
+    : col.subtitle;
 
   wrap.innerHTML = `
     <div class="column-header">
       <h2 class="column-title">${col.title}</h2>
-      <p class="column-subtitle">${col.subtitle}</p>
+      <p class="column-subtitle">${subtitle}</p>
       <span class="column-count">${memos.length} ${memos.length === 1 ? "memory" : "memories"}</span>
     </div>
     <div class="column-cards"></div>
@@ -599,12 +638,12 @@ function renderLifecycleColumn(col) {
   return wrap;
 }
 
-function renderHouseColumn(goal) {
+function renderLaneColumn(goal) {
   const wrap = document.createElement("section");
   wrap.className = "column";
   wrap.dataset.column = goal.id;
-  wrap.dataset.house = goal.house;
-  wrap.dataset.view = "houses";
+  wrap.dataset.lane = goal.lane;
+  wrap.dataset.view = "lanes";
 
   const memos = STATE.memories.filter(m =>
     Array.isArray(m.connect_goal_ids) &&
@@ -615,7 +654,6 @@ function renderHouseColumn(goal) {
   wrap.innerHTML = `
     <div class="column-header">
       <h2 class="column-title">#${goal.number} ${goal.short_name}</h2>
-      <p class="column-subtitle">${goal.house}</p>
       <span class="column-count">${memos.length} aligned</span>
     </div>
     <div class="column-cards"></div>
@@ -625,7 +663,7 @@ function renderHouseColumn(goal) {
   if (memos.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-column";
-    empty.textContent = "No memories yet for this House.";
+    empty.textContent = "No memories yet for this lane.";
     cards.appendChild(empty);
   } else {
     memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
@@ -633,12 +671,12 @@ function renderHouseColumn(goal) {
   return wrap;
 }
 
-function renderUnhousedColumn() {
+function renderUnassignedColumn() {
   const wrap = document.createElement("section");
   wrap.className = "column";
-  wrap.dataset.column = "unhoused";
-  wrap.dataset.house = "unhoused";
-  wrap.dataset.view = "houses";
+  wrap.dataset.column = "unassigned";
+  wrap.dataset.lane = "unassigned";
+  wrap.dataset.view = "lanes";
 
   const memos = STATE.memories.filter(m =>
     (!Array.isArray(m.connect_goal_ids) || m.connect_goal_ids.length === 0) &&
@@ -647,7 +685,7 @@ function renderUnhousedColumn() {
 
   wrap.innerHTML = `
     <div class="column-header">
-      <h2 class="column-title">Unhoused</h2>
+      <h2 class="column-title">Unassigned</h2>
       <p class="column-subtitle">Work not yet tied to a Connect goal</p>
       <span class="column-count">${memos.length} drifting</span>
     </div>
@@ -663,6 +701,24 @@ function renderUnhousedColumn() {
   } else {
     memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
   }
+  return wrap;
+}
+
+// A lightweight "+ Add lane" tile shown at the end of the Lanes view. Opens
+// the goals editor (which adds/edits/deletes lanes), so unclear work can get
+// its own lane when a Connect goal doesn't fit.
+function renderAddLaneTile() {
+  const wrap = document.createElement("section");
+  wrap.className = "column add-lane-tile";
+  wrap.dataset.view = "lanes";
+  wrap.innerHTML = `
+    <button class="add-lane-btn" title="Add or edit your lanes">
+      <span class="add-lane-plus">+</span>
+      <span>Add lane</span>
+      <span class="add-lane-hint">Edit lanes too</span>
+    </button>
+  `;
+  wrap.querySelector(".add-lane-btn").addEventListener("click", openGoalsEditor);
   return wrap;
 }
 
@@ -688,7 +744,7 @@ function renderCard(m, idx) {
   const goalsHtml = (m.connect_goal_ids || []).map(gid => {
     const g = getGoal(gid);
     if (!g) return "";
-    return `<span class="goal-chip" data-house="${g.house}" title="${g.name}"><span class="goal-chip-glyph">${g.glyph}</span>#${g.number} ${g.short_name}</span>`;
+    return `<span class="goal-chip" data-lane="${g.lane}" title="${g.name}">#${g.number} ${g.short_name}</span>`;
   }).join("");
 
   el.innerHTML = `
@@ -724,10 +780,10 @@ function updateMemoryCount() {
   $("#memory-count").textContent = visible === total ? `${total} memories` : `${visible} of ${total} memories`;
 }
 
-function updateHedwig() {
+function updateReviewIndicator() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
-  const text = $("#hedwig-count");
-  const block = $(".hedwig-block");
+  const text = $("#review-count");
+  const block = $(".review-block");
   if (text) {
     text.textContent = reviewing === 0 ? "CLEAR" : String(reviewing).padStart(2, "0");
   }
@@ -759,10 +815,10 @@ function openModal(m) {
   const goalCheckboxes = STATE.goals.map(g => {
     const checked = (m.connect_goal_ids || []).includes(g.id);
     return `
-      <label class="goal-check" data-house="${g.house}">
+      <label class="goal-check" data-lane="${g.lane}">
         <input type="checkbox" data-goal-id="${escapeHtml(g.id)}" ${checked ? "checked" : ""} />
-        <span class="goal-chip" data-house="${g.house}" title="${escapeHtml(g.name)}">
-          <span class="goal-chip-glyph">${g.glyph}</span>#${g.number} ${escapeHtml(g.short_name)}
+        <span class="goal-chip" data-lane="${g.lane}" title="${escapeHtml(g.name)}">
+          #${g.number} ${escapeHtml(g.short_name)}
         </span>
       </label>`;
   }).join("");
@@ -902,7 +958,7 @@ function openGoalsEditor() {
     card.innerHTML = `
       <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
-        <span class="goal-house-pill" data-house="${g.house}" style="--goal-color:${g.color_primary}">${escapeHtml(g.house || "house")}</span>
+        <span class="goal-lane-pill" data-lane="${g.lane}" style="--goal-color:${g.color_primary}">${escapeHtml(g.lane || "lane")}</span>
         <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number || idx + 1}</strong>
       </div>
       <label class="goal-input-label">Short name</label>
@@ -975,7 +1031,7 @@ function resetGoals() {
 
 function addGoalToState() {
   const number = (STATE.goals.length || 0) + 1;
-  const palette = HOUSE_PALETTE[(number - 1) % HOUSE_PALETTE.length];
+  const palette = LANE_PALETTE[(number - 1) % LANE_PALETTE.length];
   const stamp = Date.now().toString(36);
   STATE.goals.push({
     id: `goal-${number}-new-${stamp}`,
@@ -983,8 +1039,7 @@ function addGoalToState() {
     short_name: "",
     name: "",
     summary: "",
-    house: palette.house,
-    house_glyph: palette.house_glyph,
+    lane: palette.lane,
     color_primary: palette.color_primary,
     color_accent: palette.color_accent,
     success_criteria: [],
@@ -998,7 +1053,7 @@ function deleteGoalAt(idx) {
   collectEditorIntoState();
   if (idx < 0 || idx >= STATE.goals.length) return;
   STATE.goals.splice(idx, 1);
-  // Re-number so the editor + saved JSON stay in order. House assignments
+  // Re-number so the editor + saved JSON stay in order. Lane assignments
   // are left as-is so existing memories aligned to a goal id keep their color.
   STATE.goals.forEach((g, i) => { g.number = i + 1; });
   openGoalsEditor();
@@ -1086,7 +1141,7 @@ function attachDragHandlers() {
         persistColumnChange(m.id, m.column);
       } else {
         const targetGoalId = col.dataset.column;
-        if (targetGoalId === "unhoused") {
+        if (targetGoalId === "unassigned") {
           m.connect_goal_ids = [];
         } else {
           if (!Array.isArray(m.connect_goal_ids)) m.connect_goal_ids = [];
@@ -1122,6 +1177,7 @@ function init() {
   applyTheme();
   renderStrandFilter();
   applyView();
+  applyWeeklyFilterState();
 
   // Load from API (falls back to seed data on failure), then re-render
   loadMemoriesFromApi().then(ok => {
@@ -1166,6 +1222,18 @@ function init() {
     renderBoard();
   });
 
+  // Weekly filter toggle (Closed column rolls over each Monday)
+  const weeklyBtn = $("#weekly-filter-btn");
+  if (weeklyBtn) {
+    weeklyBtn.addEventListener("click", () => {
+      STATE.weeklyFilter = !STATE.weeklyFilter;
+      try { localStorage.setItem("pensieve-weekly", STATE.weeklyFilter ? "1" : "0"); } catch (e) { /* ignore */ }
+      applyWeeklyFilterState();
+      renderBoard();
+      toast(STATE.weeklyFilter ? "Showing Closed from this week only" : "Showing all Closed tasks");
+    });
+  }
+
   // Refresh from API
   const refreshBtn = $("#refresh-btn");
   if (refreshBtn) {
@@ -1187,7 +1255,7 @@ function init() {
       if (pullTodoBtn.disabled) return;
       pullTodoBtn.disabled = true;
       const original = pullTodoBtn.innerHTML;
-      pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
+      pullTodoBtn.innerHTML = "Pulling from To-Do...";
       pullTodoBtn.classList.add("is-pulling");
       try {
         const res = await fetch(`${API_BASE}/api/sync`, {
@@ -1254,6 +1322,43 @@ function init() {
     });
   }
 
+  // Page tabs (Board / Recap)
+  $$(".page-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchPage(btn.dataset.page));
+  });
+  const recapGen = $("#recap-generate");
+  if (recapGen) recapGen.addEventListener("click", generateRecap);
+  const recapExport = $("#recap-export");
+  if (recapExport) recapExport.addEventListener("click", exportRecapDocx);
+  const recapHistBtn = $("#recap-history-btn");
+  if (recapHistBtn) recapHistBtn.addEventListener("click", toggleRecapHistory);
+
+  // Graph page controls
+  wireGraphInteraction();
+  const gThresh = $("#graph-threshold");
+  if (gThresh) {
+    gThresh.addEventListener("input", () => {
+      const v = parseFloat(gThresh.value).toFixed(2);
+      const label = $("#graph-threshold-val");
+      if (label) label.textContent = v;
+    });
+    gThresh.addEventListener("change", () => { if (STATE.page === "graph") loadGraph(); });
+  }
+  const gRefresh = $("#graph-refresh");
+  if (gRefresh) gRefresh.addEventListener("click", loadGraph);
+
+  // Docs page controls
+  const docsNew = $("#docs-new");
+  if (docsNew) docsNew.addEventListener("click", newDoc);
+  const docsEdit = $("#docs-edit");
+  if (docsEdit) docsEdit.addEventListener("click", () => { setDocsMode(true); $("#docs-editor").focus(); });
+  const docsSave = $("#docs-save");
+  if (docsSave) docsSave.addEventListener("click", saveDoc);
+  const docsCancel = $("#docs-cancel");
+  if (docsCancel) docsCancel.addEventListener("click", () => { if (DOCS.current) openDoc(DOCS.current); });
+  const docsDelete = $("#docs-delete");
+  if (docsDelete) docsDelete.addEventListener("click", deleteDoc);
+
   // Modal close
   $("#card-modal").addEventListener("click", e => {
     if (e.target.dataset.close === "1") closeModal();
@@ -1267,6 +1372,760 @@ function init() {
       $("#goals-modal").hidden = true;
     }
   });
+}
+
+// ----- Recap page (Phase 3: Connect recap) -----
+
+function switchPage(page) {
+  const known = ["recap", "graph", "docs"];
+  STATE.page = known.includes(page) ? page : "board";
+  document.documentElement.setAttribute("data-page", STATE.page);
+  $$(".page-tab").forEach(btn => {
+    const on = btn.dataset.page === STATE.page;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if (STATE.page === "graph") loadGraph();
+  else stopGraphAnim();
+  if (STATE.page === "docs") loadDocs();
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function blockToText(b) {
+  const lines = [];
+  if (b.heading) lines.push(b.heading);
+  if (b.narrative) lines.push(b.narrative);
+  if (b.impact) lines.push(`Impact: ${b.impact}`);
+  return lines.join("\n\n");
+}
+
+function recapToText(recap) {
+  const out = [];
+  if (recap.period_label) out.push(`Reflection Period: ${recap.period_label}\n`);
+  (recap.sections || []).forEach(s => {
+    out.push(`=== ${s.short_name || s.name} ===`);
+    (s.accomplishments || []).forEach(b => out.push(blockToText(b)));
+    out.push("");
+  });
+  return out.join("\n\n").trim();
+}
+
+async function generateRecap() {
+  const btn = $("#recap-generate");
+  const status = $("#recap-status");
+  const output = $("#recap-output");
+  if (!STATE.apiConnected) {
+    toast("Recap needs the Pensieve API. Start `pensieve serve` and refresh.");
+    return;
+  }
+  const scope = $("#recap-scope").value || "all";
+  const period = $("#recap-period").value.trim();
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = "Drafting...";
+  if (status) status.textContent = "Calling the model, this can take a moment...";
+  try {
+    const res = await fetch(`${API_BASE}/api/recap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, period_label: period }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+    STATE.lastRecap = data.recap;
+    STATE.lastScope = scope;
+    renderRecap(data.recap);
+    const r = data.recap || {};
+    if (status) {
+      status.textContent =
+        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s). ` +
+        `${r.tokens_used || 0} tokens.`;
+    }
+    refreshRecapHistory();
+  } catch (e) {
+    if (status) status.textContent = "";
+    output.innerHTML = `<p class="recap-empty">Recap failed: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+function recapBlocksHtml(s) {
+  return (s.accomplishments || [])
+    .map((b, i) => `
+      <article class="recap-block" data-block="${i}">
+        <div class="recap-block-head">
+          <h3>${escapeHtml(b.heading || "Accomplishment")}</h3>
+          <button class="ghost-button recap-copy" data-block="${i}" title="Copy this block">Copy</button>
+        </div>
+        <p class="recap-narrative">${escapeHtml(b.narrative || "")}</p>
+        ${b.impact ? `<p class="recap-impact"><strong>Impact:</strong> ${escapeHtml(b.impact)}</p>` : ""}
+      </article>`)
+    .join("") || '<p class="recap-impact">No accomplishment drafted.</p>';
+}
+
+function wireRecapSectionCopies(section, s) {
+  section.querySelectorAll(".recap-copy").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const idx = parseInt(btn.dataset.block, 10);
+      const block = (s.accomplishments || [])[idx];
+      if (!block) return;
+      const ok = await copyToClipboard(blockToText(block));
+      toast(ok ? "Block copied" : "Copy failed");
+    });
+  });
+}
+
+async function reviseSection(section, s) {
+  const fb = section.querySelector(".recap-revise-input");
+  const btn = section.querySelector(".recap-revise-send");
+  const feedback = (fb.value || "").trim();
+  if (!feedback) { toast("Type what should change first."); return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Rewriting...";
+  try {
+    const res = await fetch(`${API_BASE}/api/recap/revise`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal_id: s.goal_id, feedback, scope: STATE.lastScope || "all" }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+    const newSection = data.section;
+    // update in-memory recap + re-render this section's blocks
+    s.accomplishments = newSection.accomplishments || [];
+    if (STATE.lastRecap && STATE.lastRecap.sections) {
+      const idx = STATE.lastRecap.sections.findIndex(x => x.goal_id === s.goal_id);
+      if (idx >= 0) STATE.lastRecap.sections[idx] = s;
+    }
+    section.querySelector(".recap-blocks").innerHTML = recapBlocksHtml(s);
+    wireRecapSectionCopies(section, s);
+    section.querySelector(".recap-revise").hidden = true;
+    fb.value = "";
+    toast("Section rewritten");
+  } catch (e) {
+    toast(`Revise failed: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function renderRecap(recap) {
+  const output = $("#recap-output");
+  const copyAll = $("#recap-copy-all");
+  const exportBtn = $("#recap-export");
+  STATE.lastRecap = recap;
+  output.innerHTML = "";
+  const sections = (recap && recap.sections) || [];
+  if (sections.length === 0) {
+    output.innerHTML =
+      `<p class="recap-empty">No tasks matched this scope. Try "All tasks", or sync more from To-Do.</p>`;
+    if (copyAll) copyAll.hidden = true;
+    if (exportBtn) exportBtn.hidden = true;
+    return;
+  }
+
+  sections.forEach(s => {
+    const section = document.createElement("section");
+    section.className = "recap-section";
+    if (s.lane) section.dataset.lane = s.lane;
+
+    const sourcesHtml = (s.task_titles && s.task_titles.length)
+      ? `<details class="recap-sources">
+           <summary>Source tasks (${s.task_titles.length})</summary>
+           <ul>${s.task_titles.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+         </details>`
+      : "";
+
+    section.innerHTML = `
+      <div class="recap-section-head">
+        <h2>${escapeHtml(s.short_name || s.name || "Goal")}</h2>
+        <span class="recap-goal-name">${escapeHtml(s.name || "")}</span>
+        <span class="recap-task-count">${s.task_count || 0} task(s)</span>
+        <button class="ghost-button recap-revise-toggle" title="Tell the agent it misread something and rewrite">Revise</button>
+      </div>
+      <div class="recap-blocks">${recapBlocksHtml(s)}</div>
+      <div class="recap-revise" hidden>
+        <textarea class="recap-revise-input" rows="2" placeholder="e.g. 'The Touchstone task was about NIS2 testing for Rob, not a status report' - then Rewrite."></textarea>
+        <button class="primary-button recap-revise-send">Rewrite this section</button>
+      </div>
+      ${sourcesHtml}`;
+
+    wireRecapSectionCopies(section, s);
+
+    const toggle = section.querySelector(".recap-revise-toggle");
+    const reviseBox = section.querySelector(".recap-revise");
+    const openRevise = () => {
+      reviseBox.hidden = !reviseBox.hidden;
+      if (!reviseBox.hidden) section.querySelector(".recap-revise-input").focus();
+    };
+    toggle.addEventListener("click", openRevise);
+    section.addEventListener("dblclick", e => {
+      if (e.target.closest("button, textarea, a, details")) return;
+      reviseBox.hidden = false;
+      section.querySelector(".recap-revise-input").focus();
+    });
+    section.querySelector(".recap-revise-send").addEventListener("click", () => reviseSection(section, s));
+
+    output.appendChild(section);
+  });
+
+  if (copyAll) {
+    copyAll.hidden = false;
+    copyAll.onclick = async () => {
+      const ok = await copyToClipboard(recapToText(recap));
+      toast(ok ? "Full recap copied" : "Copy failed");
+    };
+  }
+  if (exportBtn) exportBtn.hidden = false;
+}
+
+async function exportRecapDocx() {
+  if (!STATE.lastRecap || !(STATE.lastRecap.sections || []).length) {
+    toast("Generate a recap first."); return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/recap/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recap: STATE.lastRecap }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "connect-recap.docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("DOCX downloaded");
+  } catch (e) {
+    toast(`Export failed: ${e.message}`);
+  }
+}
+
+async function refreshRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel || panel.hidden) return;  // only refresh when visible
+  await renderRecapHistory();
+}
+
+async function renderRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel) return;
+  try {
+    const data = await fetchJson("/api/recap/history");
+    const runs = data.runs || [];
+    if (!runs.length) {
+      panel.innerHTML = `<p class="recap-empty" style="padding:12px">No saved recaps yet.</p>`;
+      return;
+    }
+    panel.innerHTML = `<div class="recap-history-list">` + runs.map(r => `
+      <button class="recap-history-item" data-id="${r.id}">
+        <span class="rh-date">${escapeHtml((r.created_at || "").replace("T", " ").slice(0, 16))}</span>
+        <span class="rh-meta">${escapeHtml(r.scope || "all")} &middot; ${r.section_count || 0} sections &middot; ${r.memories_considered || 0} tasks</span>
+        ${r.period_label ? `<span class="rh-period">${escapeHtml(r.period_label)}</span>` : ""}
+      </button>`).join("") + `</div>`;
+    panel.querySelectorAll(".recap-history-item").forEach(btn => {
+      btn.addEventListener("click", () => loadHistoryRun(btn.dataset.id));
+    });
+  } catch (e) {
+    panel.innerHTML = `<p class="recap-empty" style="padding:12px">History failed: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+async function loadHistoryRun(id) {
+  try {
+    const data = await fetchJson(`/api/recap/history/${encodeURIComponent(id)}`);
+    const recap = data.record && data.record.recap;
+    if (!recap) { toast("Could not load that run."); return; }
+    STATE.lastScope = recap.scope || "all";
+    renderRecap(recap);
+    const status = $("#recap-status");
+    if (status) status.textContent = `Loaded saved recap from ${(data.record.created_at || "").replace("T", " ").slice(0, 16)}.`;
+    $("#recap-history").hidden = true;
+  } catch (e) {
+    toast(`Load failed: ${e.message}`);
+  }
+}
+
+function toggleRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel) return;
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) renderRecapHistory();
+}
+
+// ----- Constellation graph page -----
+
+const GRAPH = {
+  nodes: [], edges: [], byId: {},
+  raf: null, dragging: null, hover: null, downAt: null, moved: false,
+  width: 1200, height: 620, dpr: 1,
+};
+
+function stopGraphAnim() {
+  if (GRAPH.raf) { cancelAnimationFrame(GRAPH.raf); GRAPH.raf = null; }
+}
+
+async function loadGraph() {
+  const canvas = $("#graph-canvas");
+  const empty = $("#graph-empty");
+  if (!canvas) return;
+  // If the user opens Graph before the initial API load finished, try once.
+  if (!STATE.apiConnected) await loadMemoriesFromApi();
+  if (!STATE.apiConnected) {
+    empty.hidden = false;
+    empty.textContent = "Graph needs the Pensieve API. Start `pensieve serve` and refresh.";
+    return;
+  }
+  const threshold = parseFloat(($("#graph-threshold") || {}).value || "0.6");
+  try {
+    const data = await fetchJson(`/api/graph?threshold=${threshold}`);
+    const g = data.graph || { nodes: [], edges: [], stats: {} };
+    renderGraphStats(g.stats || {});
+    if (!g.nodes.length) {
+      empty.hidden = false;
+      empty.textContent = "No tasks to plot yet. Pull from To-Do on the Board first.";
+      stopGraphAnim();
+      return;
+    }
+    empty.hidden = true;
+    initGraphLayout(g);
+    startGraph();
+  } catch (e) {
+    empty.hidden = false;
+    empty.textContent = `Graph failed: ${e.message}`;
+  }
+}
+
+function sizeGraphCanvas() {
+  const canvas = $("#graph-canvas");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  GRAPH.width = Math.max(320, Math.floor(rect.width));
+  GRAPH.height = 620;
+  GRAPH.dpr = dpr;
+  canvas.width = GRAPH.width * dpr;
+  canvas.height = GRAPH.height * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function initGraphLayout(g) {
+  sizeGraphCanvas();
+  const cx = GRAPH.width / 2, cy = GRAPH.height / 2;
+  const goals = g.nodes.filter(n => n.type === "goal");
+  const ringR = Math.min(GRAPH.width, GRAPH.height) * 0.32;
+  const placed = {};
+  goals.forEach((n, i) => {
+    const a = (i / Math.max(1, goals.length)) * Math.PI * 2 - Math.PI / 2;
+    n.ax = cx + ringR * Math.cos(a);
+    n.ay = cy + ringR * Math.sin(a);
+    n.x = n.ax; n.y = n.ay; n.vx = 0; n.vy = 0;
+    placed[n.id] = n;
+  });
+  // tasks: start near their first goal (or center), with jitter
+  g.nodes.filter(n => n.type === "task").forEach((n, i) => {
+    const home = (n.goal_ids || []).map(id => placed[id]).find(Boolean);
+    const jx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const jy = (Math.sin(i * 78.233) * 12345.6789) % 1;
+    n.x = (home ? home.x : cx) + (jx - 0.5) * 120;
+    n.y = (home ? home.y : cy) + (jy - 0.5) * 120;
+    n.vx = 0; n.vy = 0;
+    placed[n.id] = n;
+  });
+  GRAPH.nodes = g.nodes;
+  GRAPH.edges = g.edges;
+  GRAPH.byId = placed;
+}
+
+function tickGraph() {
+  const nodes = GRAPH.nodes, edges = GRAPH.edges;
+  const cx = GRAPH.width / 2, cy = GRAPH.height / 2;
+  const REP = 1400, DAMP = 0.84;
+  // repulsion (O(n^2); fine for the dozens of nodes we have)
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { d2 = 1; dx = (i - j) || 1; }
+      const dist = Math.sqrt(d2);
+      const f = REP / d2;
+      const ux = dx / dist, uy = dy / dist;
+      a.vx += ux * f; a.vy += uy * f;
+      b.vx -= ux * f; b.vy -= uy * f;
+    }
+  }
+  // springs along edges
+  for (const e of edges) {
+    const a = GRAPH.byId[e.source], b = GRAPH.byId[e.target];
+    if (!a || !b) continue;
+    const isAlign = e.kind === "alignment";
+    const target = isAlign ? 95 : 165;
+    const k = isAlign ? 0.018 : 0.006 * (e.weight || 0.5);
+    let dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (dist - target) * k;
+    const ux = dx / dist, uy = dy / dist;
+    a.vx += ux * f; a.vy += uy * f;
+    b.vx -= ux * f; b.vy -= uy * f;
+  }
+  // gravity + goal anchors + integrate
+  for (const n of nodes) {
+    if (n === GRAPH.dragging) { n.vx = 0; n.vy = 0; continue; }
+    n.vx += (cx - n.x) * 0.0016;
+    n.vy += (cy - n.y) * 0.0016;
+    if (n.type === "goal" && n.ax != null) {
+      n.vx += (n.ax - n.x) * 0.06;
+      n.vy += (n.ay - n.y) * 0.06;
+    }
+    n.vx *= DAMP; n.vy *= DAMP;
+    n.x += n.vx; n.y += n.vy;
+    n.x = Math.max(20, Math.min(GRAPH.width - 20, n.x));
+    n.y = Math.max(20, Math.min(GRAPH.height - 20, n.y));
+  }
+}
+
+function nodeRadius(n) {
+  if (n.type === "goal") return 15;
+  return 6 + (n.completed ? 2 : 0);
+}
+
+function drawGraph() {
+  const canvas = $("#graph-canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, GRAPH.width, GRAPH.height);
+  // edges
+  for (const e of GRAPH.edges) {
+    const a = GRAPH.byId[e.source], b = GRAPH.byId[e.target];
+    if (!a || !b) continue;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    if (e.kind === "alignment") {
+      ctx.strokeStyle = "rgba(66,200,245,0.28)";
+      ctx.lineWidth = 1.2;
+    } else {
+      const w = Math.max(0.4, (e.weight || 0.5));
+      ctx.strokeStyle = `rgba(184,120,255,${0.12 + w * 0.35})`;
+      ctx.lineWidth = 0.8 + w;
+    }
+    ctx.stroke();
+  }
+  // nodes
+  for (const n of GRAPH.nodes) {
+    const r = nodeRadius(n);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.color || "#42c8f5";
+    ctx.shadowColor = n.color || "#42c8f5";
+    ctx.shadowBlur = n === GRAPH.hover ? 18 : (n.type === "goal" ? 12 : 6);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    if (n.type === "goal" || n === GRAPH.hover) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(230,243,255,0.85)";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    // goal labels always; task labels on hover
+    if (n.type === "goal" || n === GRAPH.hover) {
+      ctx.font = n.type === "goal" ? "600 12px 'Rajdhani', sans-serif" : "500 11px 'Rajdhani', sans-serif";
+      ctx.fillStyle = "#e6f3ff";
+      ctx.textAlign = "center";
+      const label = n.label.length > 34 ? n.label.slice(0, 33) + "…" : n.label;
+      ctx.fillText(label, n.x, n.y - r - 6);
+    }
+  }
+}
+
+function graphLoop() {
+  tickGraph();
+  drawGraph();
+  GRAPH.ticksLeft--;
+  if (GRAPH.ticksLeft > 0 || GRAPH.dragging) {
+    GRAPH.raf = requestAnimationFrame(graphLoop);
+  } else {
+    GRAPH.raf = null;  // settled; stop burning frames until reheated
+  }
+}
+
+function startGraph() {
+  stopGraphAnim();
+  GRAPH.ticksLeft = 600;
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) {
+    for (let i = 0; i < 400; i++) tickGraph();
+    drawGraph();
+    return;
+  }
+  GRAPH.raf = requestAnimationFrame(graphLoop);
+}
+
+function reheatGraph(ticks = 180) {
+  GRAPH.ticksLeft = Math.max(GRAPH.ticksLeft || 0, ticks);
+  if (!GRAPH.raf) GRAPH.raf = requestAnimationFrame(graphLoop);
+}
+
+function graphNodeAt(mx, my) {
+  // topmost (last drawn) first
+  for (let i = GRAPH.nodes.length - 1; i >= 0; i--) {
+    const n = GRAPH.nodes[i];
+    const r = nodeRadius(n) + 4;
+    if ((mx - n.x) ** 2 + (my - n.y) ** 2 <= r * r) return n;
+  }
+  return null;
+}
+
+function graphMousePos(evt) {
+  const canvas = $("#graph-canvas");
+  const rect = canvas.getBoundingClientRect();
+  return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+}
+
+function renderGraphStats(stats) {
+  const root = $("#graph-stats");
+  if (!root) return;
+  const col = stats.by_column || {};
+  const tiles = [
+    { label: "Tasks", value: stats.total_tasks || 0 },
+    { label: "Completed", value: stats.completed || 0 },
+    { label: "Goals", value: stats.goal_count || 0 },
+    { label: "Unaligned", value: stats.unaligned || 0 },
+    { label: "Semantic links", value: stats.semantic_edges || 0 },
+    { label: "Memory", value: col.memory || 0 },
+    { label: "Dive", value: col.dive || 0 },
+    { label: "Review", value: col.review || 0 },
+    { label: "Closed", value: col.closed || 0 },
+  ];
+  root.innerHTML = tiles.map(t =>
+    `<div class="stat-tile"><div class="stat-value">${t.value}</div><div class="stat-label">${t.label}</div></div>`
+  ).join("");
+}
+
+function openNodeModal(node) {
+  if (!node || node.type !== "task") return;
+  const m = STATE.memories.find(x =>
+    x.id === `mem_${node.id}` || x.id === node.id || x.source_task_id === node.id);
+  if (m) openModal(m);
+}
+
+function wireGraphInteraction() {
+  const canvas = $("#graph-canvas");
+  const tip = $("#graph-tooltip");
+  if (!canvas) return;
+  canvas.addEventListener("mousedown", e => {
+    const p = graphMousePos(e);
+    GRAPH.dragging = graphNodeAt(p.x, p.y);
+    GRAPH.downAt = p; GRAPH.moved = false;
+    if (GRAPH.dragging) reheatGraph();
+  });
+  window.addEventListener("mouseup", () => {
+    if (GRAPH.dragging && !GRAPH.moved) openNodeModal(GRAPH.dragging);
+    GRAPH.dragging = null;
+  });
+  canvas.addEventListener("mousemove", e => {
+    const p = graphMousePos(e);
+    if (GRAPH.dragging) {
+      GRAPH.dragging.x = p.x; GRAPH.dragging.y = p.y;
+      if (GRAPH.downAt && ((p.x - GRAPH.downAt.x) ** 2 + (p.y - GRAPH.downAt.y) ** 2) > 16) GRAPH.moved = true;
+      return;
+    }
+    const n = graphNodeAt(p.x, p.y);
+    const changed = n !== GRAPH.hover;
+    GRAPH.hover = n;
+    canvas.style.cursor = n ? "pointer" : "grab";
+    if (changed && !GRAPH.raf) drawGraph();  // reflect hover when sim is settled
+    if (n && tip) {
+      tip.style.display = "block";
+      tip.style.left = `${p.x + 14}px`;
+      tip.style.top = `${p.y + 14}px`;
+      const meta = n.type === "goal" ? "Connect goal" :
+        `${n.column || ""}${n.completed ? " / done" : ""}`;
+      tip.innerHTML = `<strong>${escapeHtml(n.label)}</strong><br><span style="color:var(--muted)">${escapeHtml(meta)}</span>`;
+    } else if (tip) {
+      tip.style.display = "none";
+    }
+  });
+  canvas.addEventListener("mouseleave", () => {
+    if (tip) tip.style.display = "none";
+    GRAPH.hover = null;
+    if (!GRAPH.raf) drawGraph();
+  });
+  window.addEventListener("resize", () => {
+    if (STATE.page === "graph" && GRAPH.nodes.length) {
+      sizeGraphCanvas();
+      reheatGraph(60);
+    }
+  });
+}
+
+// ----- Documents page (SOPs + tool docs) -----
+
+const DOCS = { current: null, list: [] };
+
+// Tiny, safe markdown renderer (escapes first, then applies a subset).
+function renderMarkdown(md) {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
+  let html = "";
+  let inUl = false, inOl = false, inCode = false;
+  const closeLists = () => {
+    if (inUl) { html += "</ul>"; inUl = false; }
+    if (inOl) { html += "</ol>"; inOl = false; }
+  };
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  for (const raw of lines) {
+    if (/^```/.test(raw)) {
+      if (inCode) { html += "</code></pre>"; inCode = false; }
+      else { closeLists(); html += "<pre><code>"; inCode = true; }
+      continue;
+    }
+    if (inCode) { html += esc(raw) + "\n"; continue; }
+    const h = raw.match(/^(#{1,3})\s+(.+)$/);
+    if (h) { closeLists(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
+    const ul = raw.match(/^\s*[-*]\s+(.+)$/);
+    if (ul) { if (!inUl) { closeLists(); html += "<ul>"; inUl = true; } html += `<li>${inline(ul[1])}</li>`; continue; }
+    const ol = raw.match(/^\s*\d+\.\s+(.+)$/);
+    if (ol) { if (!inOl) { closeLists(); html += "<ol>"; inOl = true; } html += `<li>${inline(ol[1])}</li>`; continue; }
+    if (raw.trim() === "") { closeLists(); continue; }
+    closeLists();
+    html += `<p>${inline(raw)}</p>`;
+  }
+  if (inCode) html += "</code></pre>";
+  closeLists();
+  return html;
+}
+
+async function loadDocs() {
+  const listEl = $("#docs-list");
+  if (!STATE.apiConnected) await loadMemoriesFromApi();
+  if (!STATE.apiConnected) {
+    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs need the Pensieve API.</p>`;
+    return;
+  }
+  try {
+    const data = await fetchJson("/api/docs");
+    DOCS.list = data.docs || [];
+    renderDocsList();
+    if (DOCS.list.length && !DOCS.current) openDoc(DOCS.list[0].id);
+  } catch (e) {
+    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs failed: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderDocsList() {
+  const listEl = $("#docs-list");
+  if (!listEl) return;
+  if (!DOCS.list.length) {
+    listEl.innerHTML = `<p class="docs-empty">No documents yet.</p>`;
+    return;
+  }
+  listEl.innerHTML = DOCS.list.map(d =>
+    `<button class="docs-list-item${DOCS.current === d.id ? " active" : ""}" data-id="${escapeHtml(d.id)}">${escapeHtml(d.title)}</button>`
+  ).join("");
+  listEl.querySelectorAll(".docs-list-item").forEach(btn => {
+    btn.addEventListener("click", () => openDoc(btn.dataset.id));
+  });
+}
+
+function setDocsMode(editing) {
+  $("#docs-view").hidden = editing;
+  $("#docs-editor").hidden = !editing;
+  $("#docs-edit").hidden = editing || !DOCS.current;
+  $("#docs-save").hidden = !editing;
+  $("#docs-cancel").hidden = !editing;
+  $("#docs-delete").hidden = editing || !DOCS.current;
+}
+
+async function openDoc(id) {
+  try {
+    const data = await fetchJson(`/api/docs/${encodeURIComponent(id)}`);
+    DOCS.current = data.doc.id;
+    $("#docs-current-title").textContent = data.doc.title;
+    $("#docs-view").innerHTML = renderMarkdown(data.doc.content);
+    $("#docs-editor").value = data.doc.content;
+    setDocsMode(false);
+    renderDocsList();
+  } catch (e) {
+    toast(`Open failed: ${e.message}`);
+  }
+}
+
+async function saveDoc() {
+  if (!DOCS.current) return;
+  const content = $("#docs-editor").value;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(DOCS.current)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    await loadDocs();
+    await openDoc(DOCS.current);
+    toast("Document saved");
+  } catch (e) {
+    toast(`Save failed: ${e.message}`);
+  }
+}
+
+async function newDoc() {
+  const title = prompt("New document title:");
+  if (!title || !title.trim()) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    DOCS.current = data.doc.id;
+    await loadDocs();
+    await openDoc(data.doc.id);
+    setDocsMode(true);
+    $("#docs-editor").focus();
+  } catch (e) {
+    toast(`Create failed: ${e.message}`);
+  }
+}
+
+async function deleteDoc() {
+  if (!DOCS.current) return;
+  if (!confirm("Delete this document? This cannot be undone.")) return;
+  const id = DOCS.current;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    DOCS.current = null;
+    $("#docs-current-title").textContent = "Select a document";
+    $("#docs-view").innerHTML = "";
+    setDocsMode(false);
+    await loadDocs();
+    toast("Document deleted");
+  } catch (e) {
+    toast(`Delete failed: ${e.message}`);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

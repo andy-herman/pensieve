@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Iterable, Optional
 
 import chromadb
@@ -9,6 +10,16 @@ from chromadb.config import Settings as ChromaSettings
 
 from pensieve.config import Settings, get_settings
 from pensieve.store.schema import Memory
+
+
+def _parse_iso(value: object) -> Optional[datetime]:
+    """Parse an ISO datetime string from Chroma metadata; None if blank/invalid."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _build_document(m: Memory) -> str:
@@ -177,6 +188,7 @@ class ChromaMemoryStore:
             categories=cats,
             column=column,
             completed=bool(meta.get("completed", False)),
+            completed_at=_parse_iso(meta.get("completed_at")),
             enrichment_version=meta.get("enrichment_version", "v2"),
             tokens_used=int(meta.get("tokens_used", 0) or 0),
             embedding_text=doc,
