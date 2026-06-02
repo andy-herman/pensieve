@@ -69,7 +69,7 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
 | LLM (all phases) | Azure OpenAI `gpt-5.4-2` via Cortex hub, keyless via `DefaultAzureCredential` | Same auth path as other internal projects |
 | Phase 1 task source | Local Outlook desktop via `pywin32` COM interop, **read-only** | SFI bypass — see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Zero Graph dependency, zero Entra app reg, zero admin consent. |
 | Memory store | **ChromaDB** `PersistentClient` at `data/chroma/` (cosine HNSW) | Local-only, semantic search out of the box, replaces earlier "SQLite" plan |
-| Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, HP-themed, served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
+| Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, HUD-themed (single dark holographic theme), served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
 | Phase 4 polish (post-MVP) | Tauri v2 desktop shell | Matches sibling packaging strategy |
 | Telemetry | App Insights via `logger` MCP / SDK | Inherited from baseline |
 
@@ -103,7 +103,7 @@ Pensieve/
 │   │   ├── llm_client.py  # Azure OpenAI REST wrapper
 │   │   ├── prompt.py      # loads prompts/enrich-memory-prompt.md
 │   │   ├── connect_goals.py
-│   │   ├── goals_importer.py  # PDF → goals via Azure OpenAI + 8-House palette
+│   │   ├── goals_importer.py  # PDF → goals via Azure OpenAI + 8-lane palette
 │   │   └── enricher.py
 │   ├── store/
 │   │   ├── schema.py      # Memory + Vial Pydantic models
@@ -111,10 +111,10 @@ Pensieve/
 │   └── api/
 │       └── server.py      # FastAPI + StaticFiles mount for the dashboard
 │
-├── frontend-proto/        # HP-themed kanban dashboard
+├── frontend-proto/        # HUD kanban dashboard (single dark theme)
 │   ├── index.html
 │   ├── pensieve.js        # vanilla JS; fetches from API; in-card edit modal; PDF importer
-│   ├── pensieve.css       # 3 themes (parchment / night / marauder), Houses, polish
+│   ├── pensieve.css       # HUD theme tokens + lane color palette
 │   └── README.md
 │
 ├── data/                  # local-only data
@@ -142,7 +142,7 @@ Pensieve/
     ├── test_store.py      # Chroma upsert/idempotent/search/column-update/orphan-sweep
     ├── test_enrichment.py # prompt + goals + payload shape
     ├── test_sync_overlay.py  # column preservation across re-enrichment + auto-close
-    └── test_goals_importer.py  # PDF extraction + House assignment
+    └── test_goals_importer.py  # PDF extraction + lane palette assignment
 ```
 
 Phase 0 PowerShell scripts are kept under `scripts/` as legacy. The Python

@@ -2,7 +2,7 @@
 
 > *Stir the surface and look within.*
 
-Pensieve is a local, single-user productivity tool that pulls your Microsoft To-Do tasks, enriches each one with an LLM, stores them in a local vector database, and lays them out on a Harry Potter-themed kanban dashboard organized around your annual goals.
+Pensieve is a local, single-user productivity tool that pulls your Microsoft To-Do tasks, enriches each one with an LLM, stores them in a local vector database, and lays them out on a HUD-style kanban dashboard organized around your annual goals.
 
 It runs entirely on your machine. Your To-Do data is read-only. Your enrichments live in a local ChromaDB. The dashboard is a static page served from a local FastAPI server.
 
@@ -15,7 +15,7 @@ It runs entirely on your machine. Your To-Do data is read-only. Your enrichments
 1. [Why this exists](#why-this-exists)
 2. [What it does](#what-it-does)
 3. [Core concepts](#core-concepts)
-4. [Connect Goals and the Houses](#connect-goals-and-the-houses)
+4. [Connect Goals and lanes](#connect-goals-and-lanes)
 5. [Phased roadmap](#phased-roadmap)
 6. [Architecture](#architecture)
 7. [Quickstart](#quickstart)
@@ -51,7 +51,7 @@ In its current state, Pensieve:
 - **Enriches** each task with an Azure OpenAI call that asks: which Strand is this part of, what is its real why and impact, which of your annual Connect Goals does it serve, and how confident are we about each of those?
 - **Stores** the enriched result in a local ChromaDB. Each task gets an embedding so you can semantically search the whole corpus.
 - **Serves** a local FastAPI on `http://localhost:8765` that exposes the enrichments and powers the dashboard.
-- **Renders** a Harry Potter-themed kanban dashboard with two views (Lifecycle and Houses), three themes (day, night, marauder), a drag-and-drop column model, semantic search, and an in-app editor for your Connect Goals.
+- **Renders** a single dark HUD-style kanban dashboard with two views (Lifecycle and Lanes), a drag-and-drop column model, semantic search, and an in-app editor for your Connect Goals.
 
 What it deliberately does **not** do (yet):
 
@@ -77,14 +77,14 @@ below.
 | **Review** | A Memory you want a second look at — manually flagged for follow-up (this is user-driven; the "needs review" badge that the LLM raises is independent and can appear in any column) |
 | **Closed** | A Memory that is done. Tasks completed in To-Do auto-route here on the next sync. |
 | **Connect Goal** | One of your annual top-level goals. Pensieve maps each Memory to zero, one, or several. Count is up to you — import your Connect PDF and any number of goals works. | `data/connect-goals.json` |
-| **House** | A Hogwarts house each Connect Goal is mapped to (purely a visual identity for the Houses view). 8 House slots available (4 canonical + Internal / Muggleborn / Centaur / Phoenix); goals beyond 8 cycle. | Set inside each goal's record |
+| **Lane** | A color slot each Connect Goal is mapped to (purely a visual identity for the Lanes view). 8 lane slots available; goals beyond 8 cycle. The slug names that live in `connect-goals.json` and the CSS are legacy from an earlier visual identity and are preserved as stable color-mapping keys. | Set inside each goal's record |
 
 Future-stage concepts still in the codebase but not exposed as columns today:
 
 - **Reverie** — a scheduled focus block (Phase 2.5). The proposal and debrief prompts are pre-staged in `prompts/`; calendar integration is deferred.
 - **Vial** — a single closed task's distilled impact statement, exported to Synapse Promo Coach (Phase 3). The Pydantic model exists; the export pipeline does not yet.
 
-## Connect Goals and the Houses
+## Connect Goals and lanes
 
 Connect Goals are the annual top-level goals you set with your manager (the Microsoft Connect process is the inspiration; the concept works with any annual goal framework — OKRs, V2MOM, MBOs).
 
@@ -93,30 +93,30 @@ Pensieve treats them as first-class. Every Memory gets aligned (or explicitly no
 The dashboard supports two views:
 
 - **Lifecycle view**: 4 columns (Memory → Dive → Review → Closed), the classic kanban
-- **Houses view**: one column per Connect Goal, themed as a Hogwarts house, plus an "Unhoused" column for work that doesn't directly map to any annual goal. Columns auto-fit, so any number of goals lays out cleanly.
+- **Lanes view**: one column per Connect Goal, color-coded by lane, plus an "Unaligned" column for work that doesn't directly map to any annual goal. Columns auto-fit, so any number of goals lays out cleanly.
 
 You can populate your goals in three ways:
 
-1. **Upload your Connect PDF** (recommended). Click **Set Goals** in the dashboard, choose your Connect PDF, click ✨ Parse with AI. The backend extracts each goal and deterministically assigns a House from an 8-entry palette.
+1. **Upload your Connect PDF** (recommended). Click **Set Goals** in the dashboard, choose your Connect PDF, click ✨ Parse with AI. The backend extracts each goal and deterministically assigns a lane from an 8-entry color palette.
 2. **Hand-edit** them with the in-modal editor (+ Add goal / × delete on each card).
 3. **Edit `data/connect-goals.json`** directly if you prefer your text editor.
 
 All three paths persist to the same file via `POST /api/goals`. The dashboard hydrates from `GET /api/goals` on load.
 
-The 8 House slots are intentional but cosmetic:
+The 8 lane slots are intentional but cosmetic:
 
-| House | Best fit for goals that are |
-| ----- | --------------------------- |
-| Gryffindor (scarlet and gold) | Front-line, high-visibility, courage-required work |
-| Hufflepuff (yellow and black) | Sustained, year-over-year, dependable delivery |
-| Slytherin (green and silver) | Long-game strategic foundation, careful positioning |
-| Ravenclaw (blue and bronze) | Innovation, learning, intellectual depth |
-| Internal (slate and gold) | Internal-team-facing operational work |
-| Muggleborn (terracotta and parchment) | Cross-organization muggle-side coordination |
-| Centaur (forest and gold) | Long-arc strategic foresight and judgment work |
-| Phoenix (ember and saffron) | High-stakes recovery or transformation work |
+| Lane slug | Palette | Best fit for goals that are |
+| --------- | ------- | --------------------------- |
+| `gryffindor` | Scarlet and gold | Front-line, high-visibility, courage-required work |
+| `hufflepuff` | Yellow and black | Sustained, year-over-year, dependable delivery |
+| `slytherin` | Green and silver | Long-game strategic foundation, careful positioning |
+| `ravenclaw` | Blue and bronze | Innovation, learning, intellectual depth |
+| `internal` | Slate and gold | Internal-team-facing operational work |
+| `muggleborn` | Terracotta and parchment | Cross-organization coordination |
+| `centaur` | Forest and gold | Long-arc strategic foresight and judgment work |
+| `phoenix` | Ember and saffron | High-stakes recovery or transformation work |
 
-Goals beyond eight cycle through the palette again. You can rename or recolor any House in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
+The slug names are legacy from an earlier visual identity and persist as stable color-mapping keys (`data-lane` in the DOM, the `HOUSE_PALETTE` constant in code, the `house` field in `connect-goals.json`). Renaming them would invalidate every existing user's goals file; the visual rebrand to HUD kept them in place on purpose. Goals beyond eight cycle through the palette again. You can rename or recolor any lane in `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and the mirror in `frontend-proto/pensieve.js`.
 
 ## Phased roadmap
 
@@ -207,19 +207,19 @@ Pensieve's architecture is presented in three layered diagrams — a high-level 
 ### 1 / Context — what talks to what
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#2c4670','primaryTextColor':'#f3e7c4','primaryBorderColor':'#c9a655','lineColor':'#c9a655','fontFamily':'Cinzel, Georgia, serif'}}}%%
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#0b1418','primaryTextColor':'#d6f1ff','primaryBorderColor':'#22d3ee','lineColor':'#22d3ee','fontFamily':'Rajdhani, Share Tech Mono, monospace'}}}%%
 flowchart LR
-    subgraph YOU["🧙 You"]
+    subgraph YOU["You"]
         ANDY["You at the keyboard"]
         TODO["Microsoft To-Do<br/>(your real lists)"]
     end
-    subgraph PENS["🪄 Pensieve (local, Windows)"]
+    subgraph PENS["Pensieve (local, Windows)"]
         OUTLOOK["Outlook desktop<br/>+ COM (pywin32)"]
         CORE["Pensieve core<br/>sources · sync · enrichment · store · api"]
         CHROMA[("ChromaDB<br/>local vector store")]
-        DASH["HP-themed dashboard<br/>localhost:8765"]
+        DASH["HUD dashboard<br/>localhost:8765"]
     end
-    AOAI["✨ Azure OpenAI<br/>gpt-5.x · AAD bearer"]
+    AOAI["Azure OpenAI<br/>gpt-5.x · AAD bearer"]
 
     ANDY --> TODO
     ANDY --> DASH
@@ -230,24 +230,24 @@ flowchart LR
     CORE -->|"chat completions"| AOAI
     AOAI -.->|"enriched fields"| CORE
 
-    classDef gryffindor fill:#7a2018,stroke:#c9a655,color:#f3e7c4
-    classDef hufflepuff fill:#b08a26,stroke:#2a1d10,color:#2a1d10
-    classDef slytherin  fill:#2e5a3a,stroke:#a8a8a8,color:#f3e7c4
-    classDef ravenclaw  fill:#2c4670,stroke:#c9a655,color:#f3e7c4
-    class TODO,ANDY,OUTLOOK gryffindor
-    class CORE,CHROMA ravenclaw
-    class DASH hufflepuff
-    class AOAI slytherin
+    classDef userRole fill:#1a2128,stroke:#fbbf24,color:#fde68a
+    classDef coreRole fill:#0e1a22,stroke:#22d3ee,color:#d6f1ff
+    classDef dashRole fill:#0e1a22,stroke:#fbbf24,color:#d6f1ff
+    classDef llmRole  fill:#0e2418,stroke:#34d399,color:#d6f1ff
+    class TODO,ANDY,OUTLOOK userRole
+    class CORE,CHROMA coreRole
+    class DASH dashRole
+    class AOAI llmRole
 ```
 
 **Read it as:** you live in two places (Microsoft To-Do for capturing, the Pensieve dashboard for thinking). Pensieve only reads from To-Do (via Outlook COM), enriches with Azure OpenAI, and persists everything in a local ChromaDB. The dashboard never writes to To-Do.
 
-### 2 / Sync flow — 🦉 Pull from To-Do
+### 2 / Sync flow — Pull from To-Do
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#2c4670','primaryTextColor':'#f3e7c4','primaryBorderColor':'#c9a655','lineColor':'#c9a655','fontFamily':'Cinzel, Georgia, serif'}}}%%
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#0b1418','primaryTextColor':'#d6f1ff','primaryBorderColor':'#22d3ee','lineColor':'#22d3ee','fontFamily':'Rajdhani, Share Tech Mono, monospace'}}}%%
 flowchart TD
-    HEDWIG["🦉 Pull from To-Do<br/>(dashboard button)"]
+    SYNCBTN["Pull from To-Do<br/>(dashboard button)"]
     POST["POST /api/sync"]
     TRACKER["sync_state tracker<br/>(thread-safe, single-job)"]
     THREAD["background thread<br/>pythoncom.CoInitialize()"]
@@ -261,7 +261,7 @@ flowchart TD
     POLL["GET /api/sync/status<br/>(polled by dashboard)"]
     REDRAW["board re-renders<br/>with new memories"]
 
-    HEDWIG --> POST --> TRACKER --> THREAD
+    SYNCBTN --> POST --> TRACKER --> THREAD
     THREAD --> SRC --> ORCH
     ORCH -->|"completed in source"| AUTOCLOSE --> CHROMA
     ORCH -->|"new / modified / drift"| ENRICH
@@ -270,12 +270,12 @@ flowchart TD
     SRC --> SWEEP --> CHROMA
     TRACKER --> POLL --> REDRAW
 
-    classDef hufflepuff fill:#b08a26,stroke:#2a1d10,color:#2a1d10
-    classDef ravenclaw  fill:#2c4670,stroke:#c9a655,color:#f3e7c4
-    classDef slytherin  fill:#2e5a3a,stroke:#a8a8a8,color:#f3e7c4
-    class HEDWIG,REDRAW,POLL hufflepuff
-    class POST,TRACKER,THREAD,SRC,ORCH,AUTOCLOSE,OVERLAY,SWEEP,CHROMA ravenclaw
-    class ENRICH slytherin
+    classDef dashRole fill:#0e1a22,stroke:#fbbf24,color:#d6f1ff
+    classDef coreRole fill:#0e1a22,stroke:#22d3ee,color:#d6f1ff
+    classDef llmRole  fill:#0e2418,stroke:#34d399,color:#d6f1ff
+    class SYNCBTN,REDRAW,POLL dashRole
+    class POST,TRACKER,THREAD,SRC,ORCH,AUTOCLOSE,OVERLAY,SWEEP,CHROMA coreRole
+    class ENRICH llmRole
 ```
 
 **Key invariants on this path:**
@@ -286,12 +286,12 @@ flowchart TD
 - **`overlay_regeneration` is what makes the workflow "edit title in To-Do → click 🦉" safe.** Your lifecycle column placement and private notes survive the re-enrichment.
 - **Orphan sweep is scoped, not global.** A narrow sync (e.g. only the "Agentic AI work" list) can only delete memories from lists *that sync was actually responsible for observing*. This is mandatory — a naive "delete anything not in the live pull" would erase every memory from every other list.
 
-### 3 / Regenerate flow — ✨ Regenerate with AI (per card)
+### 3 / Regenerate flow — Regenerate with AI (per card)
 
 ```mermaid
-%%{init: {'theme':'base','themeVariables':{'primaryColor':'#2c4670','primaryTextColor':'#f3e7c4','primaryBorderColor':'#c9a655','lineColor':'#c9a655','fontFamily':'Cinzel, Georgia, serif'}}}%%
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#0b1418','primaryTextColor':'#d6f1ff','primaryBorderColor':'#22d3ee','lineColor':'#22d3ee','fontFamily':'Rajdhani, Share Tech Mono, monospace'}}}%%
 flowchart TD
-    BTN["✨ Regenerate with AI<br/>(card modal button)"]
+    BTN["Regenerate with AI<br/>(card modal button)"]
     POST["POST /api/memories/{id}/regenerate"]
     LOAD["load existing Memory<br/>from ChromaDB"]
     RAW["reconstruct RawTask<br/>(title, notes, dates, list)"]
@@ -305,12 +305,12 @@ flowchart TD
     BTN --> POST --> LOAD --> RAW --> CTX --> ENRICH
     ENRICH --> OVERLAY --> CHROMA --> BACK --> REOPEN
 
-    classDef hufflepuff fill:#b08a26,stroke:#2a1d10,color:#2a1d10
-    classDef ravenclaw  fill:#2c4670,stroke:#c9a655,color:#f3e7c4
-    classDef slytherin  fill:#2e5a3a,stroke:#a8a8a8,color:#f3e7c4
-    class BTN,REOPEN hufflepuff
-    class POST,LOAD,RAW,CTX,OVERLAY,CHROMA,BACK ravenclaw
-    class ENRICH slytherin
+    classDef dashRole fill:#0e1a22,stroke:#fbbf24,color:#d6f1ff
+    classDef coreRole fill:#0e1a22,stroke:#22d3ee,color:#d6f1ff
+    classDef llmRole  fill:#0e2418,stroke:#34d399,color:#d6f1ff
+    class BTN,REOPEN dashRole
+    class POST,LOAD,RAW,CTX,OVERLAY,CHROMA,BACK coreRole
+    class ENRICH llmRole
 ```
 
 **What gets regenerated:** title (refreshed from source), `why`, `impact`, `suggested_strand`, `strand_kind`, confidences, `connect_goal_ids`, `connect_alignment_note`, `needs_human_strand_review`. **What's preserved:** `column` (where you dragged the card) and `notes_for_user` (your private note).
@@ -328,21 +328,21 @@ To regenerate as Pensieve evolves, feed any LLM one of these targeted prompts (e
 <details>
 <summary><b>Context diagram prompt</b></summary>
 
-> Generate a Mermaid `flowchart LR` **context diagram** for **Pensieve**: a Harry Potter–themed personal kanban + AI enrichment layer over Microsoft To-Do, read via local Outlook COM (pywin32). Show three subgraphs: "🧙 You" (the user + Microsoft To-Do), "🪄 Pensieve (local, Windows)" (Outlook desktop + COM, Pensieve core, local ChromaDB, HP-themed dashboard on localhost:8765), and a single "✨ Azure OpenAI gpt-5.x" node outside both. Solid arrows for runtime flow, dashed arrows for read-only / async / config flow. The dashboard never writes to To-Do (no arrow that direction). Apply HP house `classDef`s: Gryffindor red/gold for user/source-of-truth, Ravenclaw blue/bronze for Pensieve core + storage, Hufflepuff yellow/black for the dashboard, Slytherin green/silver for Azure OpenAI. Use Mermaid theme `base` with the gold/navy variable overrides.
+> Generate a Mermaid `flowchart LR` **context diagram** for **Pensieve**: a HUD-styled personal kanban + AI enrichment layer over Microsoft To-Do, read via local Outlook COM (pywin32). Show three subgraphs: "You" (the user + Microsoft To-Do), "Pensieve (local, Windows)" (Outlook desktop + COM, Pensieve core, local ChromaDB, HUD dashboard on localhost:8765), and a single "Azure OpenAI gpt-5.x" node outside both. Solid arrows for runtime flow, dashed arrows for read-only / async / config flow. The dashboard never writes to To-Do (no arrow that direction). Apply HUD-style `classDef`s: amber stroke for user/source-of-truth, cyan stroke for Pensieve core + storage, amber stroke + dark fill for the dashboard, green stroke for Azure OpenAI. Use Mermaid theme `base` with the cyan/amber HUD variable overrides (`primaryColor:#0b1418`, `primaryTextColor:#d6f1ff`, `primaryBorderColor:#22d3ee`, `lineColor:#22d3ee`, `fontFamily:Rajdhani, Share Tech Mono, monospace`).
 
 </details>
 
 <details>
 <summary><b>Sync flow prompt</b></summary>
 
-> Generate a Mermaid `flowchart TD` **sync-flow diagram** for **Pensieve**'s 🦉 "Pull from To-Do" button. Trace: button click → `POST /api/sync` → thread-safe `sync_state` tracker → background thread (calls `pythoncom.CoInitialize()`) → `pensieve.sources.outlook_com` walks all task folders and records which lists were covered → `pensieve.sync` orchestrator diffs by both `last_modification_time` and **content drift** (title/notes changes that didn't bump mtime). Branch into THREE paths: (1) tasks **completed** in source → auto-route to the **Closed** column with no LLM call, (2) **new / modified / drift** → Azure OpenAI enrichment → `overlay_regeneration` (preserves user column + private notes), (3) **unchanged** → idempotent upsert. Also show a separate **orphan sweep** branch off the source: memories whose source task vanished get deleted from Chroma, *scoped to `source + covered_lists` only* (so a narrow sync can never erase memories from lists it didn't pull). All three branches and the sweep terminate at ChromaDB upsert/delete. Separately show the polling loop: dashboard polls `GET /api/sync/status` → re-renders the board. Hufflepuff colors for UI nodes, Ravenclaw for backend, Slytherin for the LLM.
+> Generate a Mermaid `flowchart TD` **sync-flow diagram** for **Pensieve**'s "Pull from To-Do" button. Trace: button click → `POST /api/sync` → thread-safe `sync_state` tracker → background thread (calls `pythoncom.CoInitialize()`) → `pensieve.sources.outlook_com` walks all task folders and records which lists were covered → `pensieve.sync` orchestrator diffs by both `last_modification_time` and **content drift** (title/notes changes that didn't bump mtime). Branch into THREE paths: (1) tasks **completed** in source → auto-route to the **Closed** column with no LLM call, (2) **new / modified / drift** → Azure OpenAI enrichment → `overlay_regeneration` (preserves user column + private notes), (3) **unchanged** → idempotent upsert. Also show a separate **orphan sweep** branch off the source: memories whose source task vanished get deleted from Chroma, *scoped to `source + covered_lists` only* (so a narrow sync can never erase memories from lists it didn't pull). All three branches and the sweep terminate at ChromaDB upsert/delete. Separately show the polling loop: dashboard polls `GET /api/sync/status` → re-renders the board. Use the HUD `classDef`s: amber stroke for UI nodes (`dashRole`), cyan stroke for backend (`coreRole`), green stroke for the LLM (`llmRole`).
 
 </details>
 
 <details>
 <summary><b>Regenerate flow prompt</b></summary>
 
-> Generate a Mermaid `flowchart TD` **per-card regenerate-flow diagram** for **Pensieve**'s ✨ "Regenerate with AI" button. Trace: button in card modal → `POST /api/memories/{id}/regenerate` → load existing Memory from ChromaDB → reconstruct a `RawTask` from the persisted fields → build `recent_context` from current Chroma state → `enrich_task` calls Azure OpenAI → `overlay_regeneration` merges fresh enrichment onto existing Memory (preserves column + private notes) → upsert → return JSON with new memory + tokens_used → dashboard re-opens the modal with regenerated text. Hufflepuff for UI, Ravenclaw for backend, Slytherin for the LLM.
+> Generate a Mermaid `flowchart TD` **per-card regenerate-flow diagram** for **Pensieve**'s "Regenerate with AI" button. Trace: button in card modal → `POST /api/memories/{id}/regenerate` → load existing Memory from ChromaDB → reconstruct a `RawTask` from the persisted fields → build `recent_context` from current Chroma state → `enrich_task` calls Azure OpenAI → `overlay_regeneration` merges fresh enrichment onto existing Memory (preserves column + private notes) → upsert → return JSON with new memory + tokens_used → dashboard re-opens the modal with regenerated text. Use the HUD `classDef`s: amber stroke for UI (`dashRole`), cyan stroke for backend (`coreRole`), green stroke for the LLM (`llmRole`).
 
 </details>
 
@@ -416,15 +416,11 @@ The dashboard is a single static page served by the FastAPI app at the root URL.
 Features:
 
 - **Lifecycle view** with 4 columns (Memory, Dive, Review, Closed). Drag cards between columns; the change persists to Chroma via PATCH. Tasks completed in To-Do auto-route to Closed on the next sync (no LLM tokens spent).
-- **Houses view** with one column per Connect Goal plus an Unhoused column. Columns auto-fit, so any number of goals lays out cleanly. Drag a card to a House to mark that Memory as aligned to that goal.
-- **Three themes**:
-  - *Day*: parchment and ink, sunlit
-  - *Night*: candle-lit, deep blues, gentle star field
-  - *Marauder*: revealed by typing "i solemnly swear that i am up to no good" with the page focused (revert with "mischief managed")
+- **Lanes view** with one column per Connect Goal plus an Unaligned column. Columns auto-fit, so any number of goals lays out cleanly. Drag a card to a lane to mark that Memory as aligned to that goal.
+- **Single HUD theme**: a dark holographic readout with cyan and amber accents, corner-bracket clip-path panels, scanline overlay, and per-lane color mapping. There is no theme toggle — one theme, one identity.
 - **Text filter**: type in the search box to filter by title, why, or impact across the loaded memories.
 - **Semantic search**: press Enter in the search box (or click the magnifier) to query Chroma. The board filters to the semantic top-K.
-- **Hedwig review counter**: top-right, shows how many memories are currently in the review queue (low confidence or explicitly flagged by the LLM).
-- **Footprint trail**: while dragging a card, faint footprints follow your cursor and fade out.
+- **Review readout**: top-right of the masthead, reads `[ REVIEW · NN ]` (mono, amber underline when non-zero) for the count of memories currently in the review queue (low confidence or explicitly flagged by the LLM). Flagged cards also carry a `> STATUS // REVIEW` rule under their title.
 - **Goals editor**: the **Set Goals** button opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals. Saves to `data/connect-goals.json` via the API.
 
 The dashboard remains functional without the API server: if `/api/healthz` is unreachable, it falls back to the bundled seed memories and shows "offline (seed data)" in the footer.
@@ -473,7 +469,7 @@ pensieve/
 |   |-- config.py              pydantic-settings, .env loader
 |   |-- sync.py                Sync orchestrator: pull -> enrich -> upsert
 |
-|-- frontend-proto/            Local-first HP-themed kanban dashboard (HTML/CSS/JS)
+|-- frontend-proto/            Local-first HUD kanban dashboard (HTML/CSS/JS)
 |   |-- index.html
 |   |-- pensieve.css
 |   |-- pensieve.js
@@ -536,6 +532,6 @@ A few opinionated choices worth calling out:
 
 MIT.
 
-The Harry Potter visual language (Hogwarts houses, Marauder's Map vibes, the Pensieve metaphor) is used affectionately for personal-productivity styling and is not affiliated with or endorsed by Warner Bros. or J. K. Rowling. The houses are simple color palettes and labels in this codebase; no copyrighted assets are included.
+The dashboard's HUD visual identity (corner-bracket panels, scanline overlay, cyan/amber palette) is an original take on the genre of "futuristic operator console" interfaces; no third-party assets are included. The project name *Pensieve* is a common noun for a memory bowl; its use here is a generic metaphor, not affiliation with any particular fictional universe.
 
-The architectural pattern (pull-only source, local ChromaDB, FastAPI shell, static HP dashboard) is original to this project but obviously stands on the shoulders of Microsoft Graph, ChromaDB, FastAPI, Azure OpenAI, and Microsoft To-Do/Outlook teams whose tools make the whole thing possible.
+The architectural pattern (pull-only source, local ChromaDB, FastAPI shell, static HUD dashboard) is original to this project but obviously stands on the shoulders of Microsoft Graph, ChromaDB, FastAPI, Azure OpenAI, and Microsoft To-Do/Outlook teams whose tools make the whole thing possible.

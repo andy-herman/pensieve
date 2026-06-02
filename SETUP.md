@@ -116,9 +116,8 @@ in by uploading your Connect PDF.
 2. Open the dashboard, click **Set Goals** (top-right).
 3. Click **Upload your Connect PDF** → pick the file.
 4. Click **✨ Parse with AI**. After a few seconds you'll see your goals
-   rendered as House cards. The AI assigns each goal a Harry Potter House
-   colour (Gryffindor, Slytherin, Hufflepuff, Ravenclaw, plus four extras for
-   teams with more than four goals).
+   rendered as lane cards. The AI assigns each goal a lane color from an
+   8-slot palette (goals beyond 8 cycle through the palette again).
 5. Review the short names, tweak anything that looks off, click **Save goals**.
 
 That's it. Your goals are saved to `data/connect-goals.json` (local to your
