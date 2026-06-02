@@ -150,9 +150,9 @@ class ChromaMemoryStore:
         # memory in the old columns rehydrates into its closest successor; the
         # next upsert writes the migrated column back to Chroma.
         _COL_MIGRATE = {
-            "reverie": "memory",      # Phase 2.5 concept; deferred
-            "reflection": "closed",   # closure-debrief collapsed into closed
-            "vial": "review",         # vial-as-column became user-driven review
+            "reverie": "memory",  # Phase 2.5 concept; deferred
+            "reflection": "closed",  # closure-debrief collapsed into closed
+            "vial": "review",  # vial-as-column became user-driven review
         }
         column = meta.get("column", "memory")
         column = _COL_MIGRATE.get(column, column)

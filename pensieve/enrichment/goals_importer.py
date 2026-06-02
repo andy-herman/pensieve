@@ -88,9 +88,7 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as e:  # pragma: no cover - dependency-install path
-        raise RuntimeError(
-            "pypdf is not installed. Run `pip install -e .` to refresh dependencies."
-        ) from e
+        raise RuntimeError("pypdf is not installed. Run `pip install -e .` to refresh dependencies.") from e
 
     from io import BytesIO
 
@@ -142,9 +140,7 @@ def extract_goals_from_text(
         {"role": "system", "content": system_prompt},
         {
             "role": "user",
-            "content": (
-                "Extract the user's Connect goals from this PDF text.\n\nINPUT:\n" + user_payload
-            ),
+            "content": ("Extract the user's Connect goals from this PDF text.\n\nINPUT:\n" + user_payload),
         },
     ]
 
