@@ -306,15 +306,40 @@ def create_app() -> FastAPI:
 
     @app.get("/api/lists")
     def lists() -> dict[str, Any]:
-        """Enumerate Outlook task folders / Microsoft To-Do lists."""
+        """Enumerate Outlook task folders / Microsoft To-Do lists.
+
+        FastAPI dispatches sync routes onto worker threads from a pool, and
+        COM apartments must be initialized per-thread on Windows. Without
+        the explicit CoInitialize/CoUninitialize bracket below, win32com
+        raises ``(-2147221008, 'CoInitialize has not been called.')`` on
+        any worker thread that hasn't been used for a COM call before.
+        """
         from pensieve.sources.outlook_com import OutlookCOMSource, OutlookCOMUnavailable
 
+        _com_inited = False
         try:
-            src = OutlookCOMSource()
-            folders = src.discover_lists()
-        except OutlookCOMUnavailable as e:
-            raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
-        return {"count": len(folders), "lists": folders}
+            try:
+                import pythoncom  # type: ignore[import-not-found]
+
+                pythoncom.CoInitialize()
+                _com_inited = True
+            except Exception:
+                pass
+
+            try:
+                src = OutlookCOMSource()
+                folders = src.discover_lists()
+            except OutlookCOMUnavailable as e:
+                raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
+            return {"count": len(folders), "lists": folders}
+        finally:
+            if _com_inited:
+                try:
+                    import pythoncom  # type: ignore[import-not-found]
+
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     @app.post("/api/memories/{memory_id}/regenerate")
     def regenerate_memory(memory_id: str) -> dict[str, Any]:
