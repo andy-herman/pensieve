@@ -1411,6 +1411,9 @@ function blockToText(b) {
 function recapToText(recap) {
   const out = [];
   if (recap.period_label) out.push(`Reflection Period: ${recap.period_label}\n`);
+  if (Array.isArray(recap.list_names_applied) && recap.list_names_applied.length) {
+    out.push(`Included lists: ${recap.list_names_applied.join(", ")}\n`);
+  }
   (recap.sections || []).forEach(s => {
     out.push(`=== ${s.short_name || s.name} ===`);
     (s.accomplishments || []).forEach(b => out.push(blockToText(b)));
@@ -1446,8 +1449,11 @@ async function generateRecap() {
     renderRecap(data.recap);
     const r = data.recap || {};
     if (status) {
+      const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
+        ? ` Lists: ${r.list_names_applied.join(", ")}.`
+        : "";
       status.textContent =
-        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s). ` +
+        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
         `${r.tokens_used || 0} tokens.`;
     }
     refreshRecapHistory();

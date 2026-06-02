@@ -28,8 +28,12 @@ def build_recap_docx(recap: dict[str, Any]) -> bytes:
 
     scope = recap.get("scope", "all")
     considered = recap.get("memories_considered", 0)
+    lists_applied = recap.get("list_names_applied") or []
     meta = doc.add_paragraph()
-    meta_run = meta.add_run(f"Scope: {scope}  |  Tasks considered: {considered}")
+    meta_line = f"Scope: {scope}  |  Tasks considered: {considered}"
+    if lists_applied:
+        meta_line += f"  |  Lists: {', '.join(lists_applied)}"
+    meta_run = meta.add_run(meta_line)
     meta_run.font.size = Pt(9)
     meta_run.font.color.rgb = RGBColor(0x80, 0x80, 0x80)
 

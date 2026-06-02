@@ -57,6 +57,15 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   delete memories whose `source + list_name` was actually covered by that
   sync. Never globally orphan-prune across all sources / lists.
   See `pensieve/store/chroma.py::ChromaMemoryStore.find_orphan_ids`.
+- **Connect recaps are list-scoped by default.** Only tasks whose source
+  `list_name` is in `PENSIEVE_RECAP_LIST_NAMES` (default `CISO GRC`)
+  feed into `POST /api/recap`. Personal lists (e.g. `home`, `UW
+  Lectures`) never end up in a work recap unless the operator
+  explicitly overrides via the env var or per-call `list_names` body
+  field. The filter is applied in `pensieve/recap.py::filter_by_list_names`
+  before scope / goal grouping; the resolved allowlist is echoed back
+  on the response as `list_names_applied` and written into the docx
+  meta line so the user can see what fed in.
 
 ---
 

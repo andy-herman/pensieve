@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     )
     default_list_name: str = Field(default="Tasks", alias="PENSIEVE_DEFAULT_LIST_NAME")
 
+    # Comma-separated list of source list_name values to INCLUDE when
+    # generating Connect recaps. Tasks in other lists (e.g. "home", "UW
+    # Lectures") are excluded from recap input. Empty string = no filter
+    # (include every memory). Default = "CISO GRC" (Andy's work list).
+    recap_list_names: str = Field(default="CISO GRC", alias="PENSIEVE_RECAP_LIST_NAMES")
+
     # --- Chroma ---
     chroma_dir_name: str = Field(default="chroma", alias="PENSIEVE_CHROMA_DIR_NAME")
     chroma_collection_memories: str = Field(default="memories")
@@ -98,6 +104,9 @@ class Settings(BaseSettings):
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
+
+    def recap_list_names_list(self) -> list[str]:
+        return [n.strip() for n in self.recap_list_names.split(",") if n.strip()]
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)

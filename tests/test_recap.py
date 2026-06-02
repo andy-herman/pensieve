@@ -62,11 +62,21 @@ class FakeChatClient:
         }
 
 
-def _mem(mid: str, *, goals=None, completed=False, column="memory", cs=0.9, ci=0.9) -> Memory:
+def _mem(
+    mid: str,
+    *,
+    goals=None,
+    completed=False,
+    column="memory",
+    cs=0.9,
+    ci=0.9,
+    list_name="CISO GRC",
+) -> Memory:
     return Memory(
         id=mid,
         source="test",
         source_task_id=mid,
+        list_name=list_name,
         title=f"task {mid}",
         why="why",
         impact="impact",
@@ -146,3 +156,119 @@ def test_generate_recap_empty_when_no_items():
     assert recap["sections"] == []
     assert recap["tokens_used"] == 0
     assert client.calls == []
+
+
+# --- list_names filter --------------------------------------------------------
+# These tests cover the "Connect recaps must only pull CISO GRC tasks" guard:
+# tasks living in other Microsoft To-Do lists (e.g. "home", "UW Lectures")
+# must not leak into the recap input.
+
+
+def test_filter_by_list_names_basic():
+    from pensieve.recap import filter_by_list_names
+
+    mems = [
+        _mem("1", list_name="CISO GRC", goals=["goal-a"]),
+        _mem("2", list_name="home", goals=["goal-a"]),
+        _mem("3", list_name="UW Lectures", goals=["goal-b"]),
+    ]
+    kept = filter_by_list_names(mems, ["CISO GRC"])
+    assert {m.id for m in kept} == {"1"}
+
+
+def test_filter_by_list_names_case_insensitive_and_whitespace():
+    from pensieve.recap import filter_by_list_names
+
+    mems = [
+        _mem("1", list_name=" ciso grc ", goals=["goal-a"]),
+        _mem("2", list_name="HOME", goals=["goal-a"]),
+    ]
+    kept = filter_by_list_names(mems, ["CISO GRC", "uw lectures"])
+    assert {m.id for m in kept} == {"1"}
+
+
+def test_filter_by_list_names_empty_returns_everything():
+    from pensieve.recap import filter_by_list_names
+
+    mems = [
+        _mem("1", list_name="CISO GRC", goals=["goal-a"]),
+        _mem("2", list_name="home", goals=["goal-a"]),
+    ]
+    assert len(filter_by_list_names(mems, [])) == 2
+
+
+def test_generate_recap_settings_default_filters_out_non_ciso_grc_tasks():
+    """Default Settings.recap_list_names = 'CISO GRC' — tasks in other lists
+    must not appear in the recap input."""
+    from pensieve.config import Settings
+
+    mems = [
+        _mem("1", list_name="CISO GRC", goals=["goal-a"]),
+        _mem("2", list_name="home", goals=["goal-a"]),  # excluded
+        _mem("3", list_name="UW Lectures", goals=["goal-b"]),  # excluded
+    ]
+    client = FakeChatClient()
+    settings = Settings()  # default recap_list_names = "CISO GRC"
+    recap = generate_recap(
+        mems, scope="all", goals=GOALS, client=client, settings=settings
+    )
+    assert recap["memories_considered"] == 1
+    assert recap["list_names_applied"] == ["CISO GRC"]
+    sections_by_id = {s["goal_id"]: s for s in recap["sections"]}
+    assert "goal-a" in sections_by_id
+    assert sections_by_id["goal-a"]["task_titles"] == ["task 1"]
+    assert "goal-b" not in sections_by_id  # the only goal-b task was in UW Lectures
+
+
+def test_generate_recap_explicit_list_names_overrides_settings_default():
+    from pensieve.config import Settings
+
+    mems = [
+        _mem("1", list_name="CISO GRC", goals=["goal-a"]),
+        _mem("2", list_name="home", goals=["goal-a"]),
+    ]
+    client = FakeChatClient()
+    settings = Settings()  # default would exclude "home"
+    recap = generate_recap(
+        mems,
+        scope="all",
+        goals=GOALS,
+        client=client,
+        settings=settings,
+        list_names=["home"],
+    )
+    assert recap["memories_considered"] == 1
+    assert recap["list_names_applied"] == ["home"]
+    assert recap["sections"][0]["task_titles"] == ["task 2"]
+
+
+def test_generate_recap_empty_list_names_disables_filter():
+    """Passing list_names=[] explicitly disables the default filter, so
+    every memory is considered regardless of its list_name."""
+    from pensieve.config import Settings
+
+    mems = [
+        _mem("1", list_name="CISO GRC", goals=["goal-a"]),
+        _mem("2", list_name="home", goals=["goal-a"]),
+    ]
+    client = FakeChatClient()
+    settings = Settings()
+    recap = generate_recap(
+        mems,
+        scope="all",
+        goals=GOALS,
+        client=client,
+        settings=settings,
+        list_names=[],
+    )
+    assert recap["memories_considered"] == 2
+    assert recap["list_names_applied"] == []
+    assert recap["sections"][0]["task_count"] == 2
+
+
+def test_settings_recap_list_names_list_parses_comma_separated():
+    from pensieve.config import Settings
+
+    s = Settings(PENSIEVE_RECAP_LIST_NAMES="CISO GRC, Work Backlog ,  ")
+    assert s.recap_list_names_list() == ["CISO GRC", "Work Backlog"]
+

@@ -88,8 +88,15 @@ class _FakeClient:
         return {"choices": [{"message": {"content": json.dumps(payload)}}], "usage": {"total_tokens": 50}}
 
 
-def _mem(mid, goals):
-    return Memory(id=mid, source="t", source_task_id=mid, title=f"task {mid}", connect_goal_ids=goals)
+def _mem(mid, goals, *, list_name="CISO GRC"):
+    return Memory(
+        id=mid,
+        source="t",
+        source_task_id=mid,
+        list_name=list_name,
+        title=f"task {mid}",
+        connect_goal_ids=goals,
+    )
 
 
 def test_revise_section_includes_feedback_and_rewrites():

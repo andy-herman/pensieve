@@ -48,6 +48,35 @@ def filter_by_scope(memories: list[Memory], scope: str) -> list[Memory]:
     return list(memories)  # "all"
 
 
+def filter_by_list_names(memories: list[Memory], list_names: list[str]) -> list[Memory]:
+    """Restrict to memories whose source list_name is in the allowlist.
+
+    Empty list_names = no filter (return all memories unchanged). Match is
+    case-insensitive and trims whitespace so a list_name of "ciso grc" or
+    " CISO GRC " in either side still matches "CISO GRC".
+    """
+    if not list_names:
+        return list(memories)
+    wanted = {n.strip().lower() for n in list_names if n and n.strip()}
+    if not wanted:
+        return list(memories)
+    return [m for m in memories if (m.list_name or "").strip().lower() in wanted]
+
+
+def _resolve_list_names(
+    list_names: Optional[list[str]], settings: Settings
+) -> list[str]:
+    """Treat ``None`` as 'use settings default'; pass-through any explicit list.
+
+    A caller passing ``list_names=[]`` is explicitly disabling the filter
+    (include every list); ``list_names=None`` means 'use whatever the env
+    config says', which defaults to ``["CISO GRC"]``.
+    """
+    if list_names is None:
+        return settings.recap_list_names_list()
+    return [n for n in list_names if isinstance(n, str) and n.strip()]
+
+
 def _status_label(m: Memory) -> str:
     if m.completed:
         return "completed"
@@ -185,6 +214,7 @@ def generate_recap(
     *,
     scope: str = "all",
     goal_ids: Optional[list[str]] = None,
+    list_names: Optional[list[str]] = None,
     period_label: str = "",
     goals: Optional[list[dict[str, Any]]] = None,
     client: Optional[AzureOpenAIChatClient] = None,
@@ -195,6 +225,10 @@ def generate_recap(
     :param memories: all Memory records to consider (already loaded from store).
     :param scope: "all" | "completed" | "review" — which memories to include.
     :param goal_ids: optional restriction to specific Connect goal ids.
+    :param list_names: optional restriction to specific source list_name values
+        (e.g. ``["CISO GRC"]``). ``None`` = use the configured default from
+        ``PENSIEVE_RECAP_LIST_NAMES`` (which defaults to ``CISO GRC``). Empty
+        list ``[]`` = no list filter (include every memory).
     :param period_label: free-text reflection period (e.g. "Oct 2025 - May 2026").
     :param goals: Connect goal catalog; loaded from data/ if omitted.
     :param client: chat client; constructed from settings if omitted.
@@ -210,7 +244,9 @@ def generate_recap(
 
     prompt_template = load_system_prompt("connect-recap-prompt.md")
 
-    scoped = filter_by_scope(memories, scope)
+    resolved_lists = _resolve_list_names(list_names, settings)
+    list_scoped = filter_by_list_names(memories, resolved_lists)
+    scoped = filter_by_scope(list_scoped, scope)
     grouped = _group_by_goal(scoped, goals, goal_ids)
 
     sections: list[dict[str, Any]] = []
@@ -239,6 +275,7 @@ def generate_recap(
     return {
         "period_label": period_label,
         "scope": scope,
+        "list_names_applied": resolved_lists,
         "memories_considered": len(scoped),
         "section_count": len(sections),
         "sections": sections,
@@ -267,6 +304,7 @@ def revise_recap_section(
     feedback: str,
     *,
     scope: str = "all",
+    list_names: Optional[list[str]] = None,
     goals: Optional[list[dict[str, Any]]] = None,
     client: Optional[AzureOpenAIChatClient] = None,
     settings: Optional[Settings] = None,
@@ -274,7 +312,9 @@ def revise_recap_section(
     """Re-draft a single recap section, incorporating the user's correction.
 
     Used by the recap chat: the user tells the agent it misread a task, and the
-    section's accomplishments are regenerated for that one goal.
+    section's accomplishments are regenerated for that one goal. ``list_names``
+    follows the same semantics as :func:`generate_recap` so a revision sees the
+    same memory cohort the original draft saw.
     """
     settings = settings or get_settings()
     goals = goals if goals is not None else load_connect_goals()
@@ -284,7 +324,9 @@ def revise_recap_section(
         scope = "all"
 
     prompt_template = load_system_prompt("connect-recap-prompt.md")
-    scoped = filter_by_scope(memories, scope)
+    resolved_lists = _resolve_list_names(list_names, settings)
+    list_scoped = filter_by_list_names(memories, resolved_lists)
+    scoped = filter_by_scope(list_scoped, scope)
     goal, items = _resolve_goal_and_items(scoped, goal_id, goals)
 
     accomplishments, tokens = _accomplishments_for_goal(
@@ -300,6 +342,7 @@ def revise_recap_section(
         "short_name": goal.get("short_name", ""),
         "name": goal.get("name", ""),
         "lane": goal.get("lane", ""),
+        "list_names_applied": resolved_lists,
         "task_count": len(items),
         "task_titles": [m.title for m in items],
         "accomplishments": accomplishments,

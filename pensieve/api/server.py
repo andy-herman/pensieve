@@ -448,6 +448,10 @@ def create_app() -> FastAPI:
         Body (all optional):
           scope:        "all" | "completed" | "review" (default "all")
           goal_ids:     list[str] to restrict to specific Connect goals
+          list_names:   list[str] to restrict to specific source list names
+                        (e.g. ["CISO GRC"]). Omit to use the configured
+                        default (PENSIEVE_RECAP_LIST_NAMES, default
+                        "CISO GRC"). Pass [] to disable the list filter.
           period_label: free-text reflection period for the header
         """
         from pensieve.recap import generate_recap
@@ -460,6 +464,12 @@ def create_app() -> FastAPI:
             if isinstance(goal_ids_raw, list)
             else None
         )
+        list_names_raw = body.get("list_names", None)
+        list_names = (
+            [str(n) for n in list_names_raw if str(n).strip()]
+            if isinstance(list_names_raw, list)
+            else None
+        )
         period_label = str(body.get("period_label") or "").strip()
 
         memories = store.list_memories()
@@ -468,6 +478,7 @@ def create_app() -> FastAPI:
                 memories,
                 scope=scope,
                 goal_ids=goal_ids,
+                list_names=list_names,
                 period_label=period_label,
                 settings=settings,
             )
@@ -526,6 +537,12 @@ def create_app() -> FastAPI:
         goal_id = (body.get("goal_id") or "").strip()
         feedback = (body.get("feedback") or "").strip()
         scope = (body.get("scope") or "all").strip()
+        list_names_raw = body.get("list_names", None)
+        list_names = (
+            [str(n) for n in list_names_raw if str(n).strip()]
+            if isinstance(list_names_raw, list)
+            else None
+        )
         if not goal_id:
             raise HTTPException(status_code=400, detail="goal_id is required")
         if not feedback:
@@ -533,7 +550,12 @@ def create_app() -> FastAPI:
         memories = store.list_memories()
         try:
             section = revise_recap_section(
-                memories, goal_id, feedback, scope=scope, settings=settings
+                memories,
+                goal_id,
+                feedback,
+                scope=scope,
+                list_names=list_names,
+                settings=settings,
             )
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
