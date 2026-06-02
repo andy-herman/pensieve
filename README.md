@@ -55,10 +55,15 @@ In its current state, Pensieve:
 
 What it deliberately does **not** do (yet):
 
-- Write anything back to To-Do (no Notes patching, no category writes, nothing)
 - Touch your calendar, mail, Teams, or any other Microsoft Graph surface
 - Run anywhere except your machine
 - Require any custom Entra app registration
+
+It can optionally mirror your kanban column back to To-Do as a single
+`pensieve/col:<col>` tag on the source task. That tag is the only thing
+Pensieve ever writes upstream; user-authored categories are preserved byte
+for byte. Off by default. See [Cross-PC mirror mode](#cross-pc-mirror-mode-optional)
+below.
 
 ## Core concepts
 
@@ -136,7 +141,27 @@ Pensieve proposes focus blocks for Reverie based on your stated weekly deep-work
 Pull tasks from multiple sources at once (To-Do, GitHub issues you own, action items extracted from meeting notes, etc.). Same Chroma, same dashboard, same Connect Goal alignment.
 
 **Phase 6 — Multi-machine sync**
-A small sync layer so your Chroma store is consistent across machines without losing the "local first, no cloud needed" property.
+A small sync layer so your Chroma store is consistent across machines without losing the "local first, no cloud needed" property. Until then, the much lighter [mirror mode](#cross-pc-mirror-mode-optional) below keeps the kanban view consistent across PCs.
+
+## Cross-PC mirror mode (optional)
+
+If you run Pensieve on more than one PC against the same Microsoft To-Do account, you can have your kanban column travel with the task itself. When mirror mode is on:
+
+- Every time you drag a card to a new column, Pensieve writes a single tag to that task's Outlook Categories field: `pensieve/col:<column>` (e.g. `pensieve/col:dive`).
+- On the next sync from your other PC, Pensieve reads that tag and lands the card in the matching column.
+- Conflict policy: source-wins-on-newer. If you drag the same card on both PCs around the same time, the one whose Outlook write has the newer `LastModificationTime` wins.
+- Completion is still terminal: if the task is marked complete in To-Do, it lands in Closed regardless of the mirror tag.
+
+Turn it on by setting two values in your `.env`:
+
+```
+PENSIEVE_MIRROR_TO_SOURCE=true
+PENSIEVE_MIRROR_TAG_PREFIX=pensieve/col:
+```
+
+Pensieve only ever touches categories that start with the prefix above. Every other Categories value is preserved byte for byte. Clearing the tag (via `OutlookCOMSink.clear_column_tag` or just removing it in Outlook) restores the source task exactly to its pre-Pensieve state.
+
+The writer is in `pensieve/sources/outlook_com_sink.py`, isolated from the read-only `OutlookCOMSource` so the "sources are read-only" invariant in [AGENTS.md](./AGENTS.md) stays intact.
 
 ## Architecture
 

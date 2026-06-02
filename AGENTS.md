@@ -29,11 +29,22 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   a unit test (`tests/test_sources.py::test_sources_are_read_only_no_write_methods`)
   that asserts forbidden method names (`save`, `update_task`, `patch`,
   `delete_task`, `set_notes`, `create_task`) don't exist on any source
-  class. Phase 2 writeback, when added, will live behind a separate
-  `TaskSink` interface that is opt-in.
-- **Reversibility for any future writeback.** When Phase 2 lands, no task
-  is modified without a user-visible diff and a sentinel-comment scheme
-  that preserves user-edited Notes outside the Pensieve-managed section.
+  class. The Phase 2 writeback lives behind a separate `TaskSink` interface
+  in `pensieve/sources/sink.py` (opt-in via `PENSIEVE_MIRROR_TO_SOURCE`).
+- **TaskSink writeback is namespace-scoped.** The only writeback Pensieve
+  performs is tagging the source task's `Categories` field with
+  `pensieve/col:<column>` so a second PC syncing from the same Microsoft
+  To-Do account sees the same kanban view. `OutlookCOMSink` in
+  `pensieve/sources/outlook_com_sink.py` only touches categories whose
+  string starts with the configured prefix. User-authored categories are
+  preserved byte for byte. Conflict policy: source wins when the upstream
+  `LastModificationTime` is newer than the local `enriched_at`. Completion
+  remains terminal (a completed task lands in `closed` even if a remote
+  mirror tag says otherwise).
+- **Reversibility for any writeback.** Clearing the mirror tag (e.g.
+  via `OutlookCOMSink.clear_column_tag`) restores the source task exactly
+  to its pre-Pensieve state. No Notes / Body / Subject mutation is
+  performed by any sink.
 - **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+)
   requires admin consent for new corp Entra apps accessing `Tasks.*` /
   `Mail.*` / `Calendars.*` scopes; FTE self-service is locked down. See

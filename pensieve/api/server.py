@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
+from pensieve.sources.outlook_com_sink import get_sink_for_source
+from pensieve.sources.sink import TaskSink
 from pensieve.store import ChromaMemoryStore
 from pensieve.sync_state import get_tracker
 
@@ -30,6 +32,35 @@ def create_app() -> FastAPI:
     )
 
     store = ChromaMemoryStore(settings)
+
+    def _mirror_column_to_source(memory_id: str, column: str) -> dict[str, Any]:
+        """Best-effort writeback of `pensieve/col:<col>` to the upstream task.
+
+        Returns a small status dict the API surfaces back to the dashboard so
+        the user knows whether the mirror tag landed. Failure is non-fatal:
+        the local column change has already been persisted to Chroma and the
+        next successful sync will reconcile from the user's drag.
+        """
+        if not settings.mirror_to_source:
+            return {"mirrored": False, "reason": "disabled"}
+        mem = store.get_memory(memory_id)
+        if mem is None:
+            return {"mirrored": False, "reason": "memory-missing"}
+        sink: Optional[TaskSink] = get_sink_for_source(mem.source)
+        if sink is None:
+            return {"mirrored": False, "reason": f"no-sink-for-{mem.source}"}
+        try:
+            ok = sink.set_column_tag(
+                mem.source_task_id,
+                column,
+                prefix=settings.mirror_tag_prefix,
+            )
+            return {
+                "mirrored": bool(ok),
+                "reason": "ok" if ok else "task-not-found-at-source",
+            }
+        except Exception as e:
+            return {"mirrored": False, "reason": f"sink-error: {e}"}
 
     @app.get("/api/healthz")
     def healthz() -> dict[str, Any]:
@@ -63,7 +94,8 @@ def create_app() -> FastAPI:
         ok = store.update_column(memory_id, col)
         if not ok:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
-        return {"ok": True, "id": memory_id, "column": col}
+        mirror_result = _mirror_column_to_source(memory_id, col)
+        return {"ok": True, "id": memory_id, "column": col, "mirror": mirror_result}
 
     @app.patch("/api/memories/{memory_id}")
     def patch_memory(memory_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -96,7 +128,10 @@ def create_app() -> FastAPI:
         if mem.column not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {mem.column}")
         store.upsert_memory(mem)
-        return {"ok": True, "memory": mem.to_dashboard_dict()}
+        mirror_result = None
+        if "column" in body and body["column"] is not None:
+            mirror_result = _mirror_column_to_source(memory_id, mem.column)
+        return {"ok": True, "memory": mem.to_dashboard_dict(), "mirror": mirror_result}
 
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1), top_k: int = 12) -> dict[str, Any]:
@@ -110,6 +145,7 @@ def create_app() -> FastAPI:
     @app.get("/api/goals")
     def goals() -> dict[str, Any]:
         import json as _json
+
         meta: dict[str, Any] = {}
         path = settings.connect_goals_path
         if path.exists():
@@ -135,16 +171,12 @@ def create_app() -> FastAPI:
         if not pdf_bytes:
             raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
         if len(pdf_bytes) > 5 * 1024 * 1024:
-            raise HTTPException(
-                status_code=413, detail="PDF must be smaller than 5 MB"
-            )
+            raise HTTPException(status_code=413, detail="PDF must be smaller than 5 MB")
 
         from pensieve.enrichment.goals_importer import import_pdf_to_goals
 
         try:
-            payload = import_pdf_to_goals(
-                pdf_bytes, source_label=f"Imported from {file.filename}"
-            )
+            payload = import_pdf_to_goals(pdf_bytes, source_label=f"Imported from {file.filename}")
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
         except Exception as e:
@@ -179,9 +211,7 @@ def create_app() -> FastAPI:
             gid = (g.get("id") or "").strip()
             short = (g.get("short_name") or "").strip()
             if not gid or not short:
-                raise HTTPException(
-                    status_code=400, detail=f"goals[{i}] requires id and short_name"
-                )
+                raise HTTPException(status_code=400, detail=f"goals[{i}] requires id and short_name")
             if gid in seen_ids:
                 raise HTTPException(status_code=400, detail=f"Duplicate goal id: {gid}")
             seen_ids.add(gid)

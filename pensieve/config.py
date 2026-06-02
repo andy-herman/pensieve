@@ -62,6 +62,14 @@ class Settings(BaseSettings):
         default=30, alias="PENSIEVE_OUTLOOK_SKIP_COMPLETED_OLDER_DAYS"
     )
 
+    # --- Mirror tag (Phase 2 TaskSink writeback) ---
+    # When True, every column drag in Pensieve writes a `pensieve/col:<col>`
+    # tag back to the source task's Categories field so a second PC syncing
+    # from the same Microsoft To-Do account sees the same kanban view.
+    # Default OFF until the user has verified on at least one machine.
+    mirror_to_source: bool = Field(default=False, alias="PENSIEVE_MIRROR_TO_SOURCE")
+    mirror_tag_prefix: str = Field(default="pensieve/col:", alias="PENSIEVE_MIRROR_TAG_PREFIX")
+
     # --- API ---
     api_cors_origins: str = Field(
         default="http://localhost:8765,http://127.0.0.1:8765,null",
