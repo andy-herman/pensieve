@@ -416,6 +416,57 @@ async function loadMemoriesFromApi() {
   }
 }
 
+// --- Auto-refresh poll ---------------------------------------------------
+// The backend has an auto-sync scheduler (PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS,
+// default 120s) that pulls fresh Microsoft To-Do data and writes enrichments
+// to Chroma. To surface those updates without a manual page reload, the
+// dashboard polls /api/memories every AUTO_REFRESH_MS. The poll bails out
+// in any situation where a re-render would clobber unsaved UI state:
+//   - the user is editing a card (`#card-modal` open)
+//   - the user is editing Connect goals (`#goals-modal` open)
+//   - a card is mid-drag (DRAG.id set)
+//   - a PATCH from the dashboard is in flight (patchInFlight > 0)
+//   - the document is hidden (Page Visibility API) — saves API calls when the tab is in the background
+// `pollInFlight` prevents stacked refreshes if the network call takes longer than the interval.
+const AUTO_REFRESH_MS = 30000;
+let pollInFlight = false;
+window.__pensievePatchInFlight = 0;
+
+function _isModalOpen(id) {
+  const el = document.getElementById(id);
+  return !!(el && !el.hidden);
+}
+
+async function refreshMemoriesIfSafe() {
+  if (document.hidden) return;
+  if (pollInFlight) return;
+  if (window.__pensievePatchInFlight > 0) return;
+  if (typeof DRAG !== "undefined" && DRAG && DRAG.id) return;
+  if (_isModalOpen("card-modal") || _isModalOpen("goals-modal")) return;
+  pollInFlight = true;
+  try {
+    const ok = await loadMemoriesFromApi();
+    if (ok) {
+      renderStrandFilter();
+      renderBoard();
+    }
+  } catch (_) {
+    // soft-fail; the next tick will try again. loadMemoriesFromApi already
+    // logs its own warning to the console.
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+function startAutoRefreshLoop() {
+  setInterval(refreshMemoriesIfSafe, AUTO_REFRESH_MS);
+  // Refresh as soon as the tab comes back into focus so the user sees fresh
+  // data immediately instead of waiting up to AUTO_REFRESH_MS for the next tick.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshMemoriesIfSafe();
+  });
+}
+
 async function regenerateMemory(memoryId) {
   if (!STATE.apiConnected) {
     toast("Regenerate needs the API server (run `pensieve serve`)");
@@ -499,6 +550,7 @@ async function persistColumnChange(memoryId, column) {
   // stuck on false), the user later dragged cards, and then Pull-from-To-Do
   // succeeded and triggered loadMemoriesFromApi which overwrote the un-saved
   // local drags with Chroma's columns.
+  window.__pensievePatchInFlight++;
   try {
     // memoryId in dashboard is "mem_<source_id>"; API expects bare source id.
     const apiId = memoryId.replace(/^mem_/, "");
@@ -511,6 +563,20 @@ async function persistColumnChange(memoryId, column) {
       const text = await res.text().catch(() => "");
       throw new Error(`${res.status}: ${text.slice(0, 120)}`);
     }
+    // Surface the completion-mirror outcome so the user knows whether the
+    // close also propagated to Microsoft To-Do (only fires when dragging to
+    // 'closed' AND PENSIEVE_MIRROR_COMPLETION=true).
+    try {
+      const payload = await res.json();
+      const cm = payload && payload.completion_mirror;
+      if (cm && cm.reason === "ok") {
+        toast("Marked complete in To-Do");
+      } else if (cm && cm.reason && cm.reason.startsWith("sink-error")) {
+        toast(`Closed locally but To-Do writeback failed: ${cm.reason}`);
+      } else if (cm && cm.reason === "task-not-found-at-source") {
+        toast("Closed locally - upstream task not found in To-Do");
+      }
+    } catch (_) { /* response body parsing is best-effort */ }
     // If we got here, the API is up. Flip the flag so the next render of UI
     // affordances that gate on apiConnected (e.g. semantic search) starts
     // working without forcing a page reload.
@@ -526,6 +592,8 @@ async function persistColumnChange(memoryId, column) {
     // Loud toast so the user knows the drag did NOT persist and the next
     // Pull-from-To-Do or Refresh will revert this card.
     toast(`Move not saved (${e.message}) - card will revert on next refresh`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
   }
 }
 
@@ -925,6 +993,7 @@ async function saveMemoryEdit(memoryId) {
   }
 
   try {
+    window.__pensievePatchInFlight++;
     const apiId = memoryId.replace(/^mem_/, "");
     const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}`, {
       method: "PATCH",
@@ -942,6 +1011,8 @@ async function saveMemoryEdit(memoryId) {
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
   }
 }
 
@@ -1190,6 +1261,9 @@ function init() {
       toast(`API offline, using seed data. Start with: pensieve serve`);
     }
   });
+
+  // Begin the auto-refresh loop (see refreshMemoriesIfSafe for guards).
+  startAutoRefreshLoop();
 
   // Text filter (fast in-memory match)
   $("#search").addEventListener("input", e => {

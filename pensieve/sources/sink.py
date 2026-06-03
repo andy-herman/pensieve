@@ -57,12 +57,27 @@ def extract_pensieve_column(
 
 
 class TaskSink(ABC):
-    """Strictly opt-in write surface for the column-mirror feature.
+    """Strictly opt-in write surface for kanban mirror features.
 
-    Implementations MUST limit themselves to the single tag namespace passed
-    via `prefix`. They MUST NOT modify task titles, bodies, due dates,
-    completion state, or any other field. Any change to a task MUST be
-    reversible (remove the tag returns the task to its pre-Pensieve state).
+    Two writeback channels are supported, each governed by its own opt-in
+    setting in :class:`pensieve.config.Settings`:
+
+    1. **Column-tag mirror** (``PENSIEVE_MIRROR_TO_SOURCE``):
+       :meth:`set_column_tag` / :meth:`clear_column_tag` only touch a single
+       tag namespace inside the source task's category list (e.g. a
+       ``pensieve/col:dive`` entry in Outlook's ``Categories``). User-authored
+       categories are preserved byte-for-byte. Removing the tag returns the
+       task exactly to its pre-Pensieve state.
+
+    2. **Completion mirror** (``PENSIEVE_MIRROR_COMPLETION``, default off):
+       :meth:`set_completion` flips the source task's completed flag (e.g.
+       Outlook ``TaskItem.MarkComplete()``). v1 is one-way close-only —
+       dragging out of the ``closed`` column does NOT call ``set_completion(False)``
+       on the source. A user who wants to reopen does it in the source app,
+       and the next sync moves the card back to ``memory`` via the existing
+       completion-drift handling in :mod:`pensieve.sync`. Implementations
+       MUST still leave every other field untouched (no Subject / Body /
+       Notes / Due Date mutation).
     """
 
     name: str = "unknown"
@@ -79,3 +94,15 @@ class TaskSink(ABC):
     @abstractmethod
     def clear_column_tag(self, task_id: str, *, prefix: str) -> bool:
         """Strip every Pensieve column tag from the task. Returns True on write."""
+
+    @abstractmethod
+    def set_completion(self, task_id: str, completed: bool) -> bool:
+        """Mark the source task complete (``True``) or open (``False``).
+
+        Returns True on a write, False if the task could not be found.
+        Raises on transport failures so callers can decide whether to retry
+        or roll back the local change. Implementations should use the
+        canonical "mark complete" call of the host system (e.g. Outlook
+        ``TaskItem.MarkComplete()``) rather than poking individual fields,
+        so timestamp / percent-complete bookkeeping stays consistent.
+        """

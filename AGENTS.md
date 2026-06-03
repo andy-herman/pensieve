@@ -32,7 +32,7 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   class. The Phase 2 writeback lives behind a separate `TaskSink` interface
   in `pensieve/sources/sink.py` (opt-in via `PENSIEVE_MIRROR_TO_SOURCE`).
 - **TaskSink writeback is namespace-scoped.** The only writeback Pensieve
-  performs is tagging the source task's `Categories` field with
+  performs by default is tagging the source task's `Categories` field with
   `pensieve/col:<column>` so a second PC syncing from the same Microsoft
   To-Do account sees the same kanban view. `OutlookCOMSink` in
   `pensieve/sources/outlook_com_sink.py` only touches categories whose
@@ -41,10 +41,31 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   `LastModificationTime` is newer than the local `enriched_at`. Completion
   remains terminal (a completed task lands in `closed` even if a remote
   mirror tag says otherwise).
+- **Completion-mirror is a separately gated carve-out.** When
+  `PENSIEVE_MIRROR_COMPLETION=true` (default off), dragging a card to the
+  `closed` column ALSO calls `TaskItem.MarkComplete()` on the source. v1
+  is one-way (close only): dragging out of `closed` does NOT call
+  `set_completion(False)` on the source, because an accidental drag could
+  silently un-complete a real task. The user reopens in Outlook; the next
+  auto-sync moves the card back via the existing completion-drift handler
+  in `pensieve.sync`. The flag is intentionally separate from
+  `PENSIEVE_MIRROR_TO_SOURCE` because completion is higher-impact than a
+  category tag (visible to delegates, propagates to shared lists).
 - **Reversibility for any writeback.** Clearing the mirror tag (e.g.
   via `OutlookCOMSink.clear_column_tag`) restores the source task exactly
-  to its pre-Pensieve state. No Notes / Body / Subject mutation is
-  performed by any sink.
+  to its pre-Pensieve state. Un-completing a task via the completion
+  mirror (`set_completion(False)`) is also supported by the sink layer,
+  even though v1 of the close writeback doesn't call it. No Notes / Body
+  / Subject / Due Date mutation is performed by any sink.
+- **Auto-sync is local and lock-coordinated.** The FastAPI app starts an
+  `AutoSyncScheduler` (`pensieve/scheduler.py`) on `lifespan` that fires
+  every `PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS` (default 120, set to 0 to
+  disable). The scheduler funnels through the same `start_sync_job`
+  helper as `POST /api/sync` and the same `SyncJobTracker.try_begin`
+  atomic gate, so manual and scheduled syncs never collide on Chroma's
+  single-writer constraint. The scheduler silently skips ticks whose
+  resolved source is `sample_file` (set `PENSIEVE_AUTO_SYNC_SOURCE=outlook_com`
+  to make it pull from Outlook when your default source is sample_file).
 - **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+)
   requires admin consent for new corp Entra apps accessing `Tasks.*` /
   `Mail.*` / `Calendars.*` scopes; FTE self-service is locked down. See

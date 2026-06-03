@@ -76,6 +76,30 @@ class Settings(BaseSettings):
     mirror_to_source: bool = Field(default=False, alias="PENSIEVE_MIRROR_TO_SOURCE")
     mirror_tag_prefix: str = Field(default="pensieve/col:", alias="PENSIEVE_MIRROR_TAG_PREFIX")
 
+    # When True, dragging a card to the `closed` column marks the source task
+    # complete in its upstream system (Outlook COM → MarkComplete()). This is
+    # a SEPARATE opt-in from the column-tag mirror above because completion
+    # is a higher-impact write than a category tag: a colleague sharing the
+    # task would see it as "done" in Microsoft To-Do, not just see a Pensieve
+    # category. v1 is one-way (close only) — dragging OUT of `closed` does
+    # NOT reopen the source task; users who want to reopen do it in Outlook
+    # and the next sync moves the card out of closed automatically.
+    mirror_completion: bool = Field(default=False, alias="PENSIEVE_MIRROR_COMPLETION")
+
+    # --- Auto-sync scheduler ---
+    # Backend periodically calls the same code path as `POST /api/sync` so
+    # the kanban stays current without manual "Pull from To-Do" clicks. Set
+    # to 0 to disable. The scheduler uses the same single-job tracker the
+    # manual route uses, so manual and scheduled syncs never collide.
+    auto_sync_interval_seconds: int = Field(
+        default=120, alias="PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS"
+    )
+    # Source the scheduler should sync from. Empty string = use
+    # `default_source`. Set to `outlook_com` here if your `default_source` is
+    # `sample_file` (running auto-sync against a static fixture is pointless,
+    # so the scheduler silently skips sample_file ticks).
+    auto_sync_source: str = Field(default="", alias="PENSIEVE_AUTO_SYNC_SOURCE")
+
     # --- API ---
     api_cors_origins: str = Field(
         default="http://localhost:8765,http://127.0.0.1:8765,null",

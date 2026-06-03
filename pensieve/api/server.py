@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
+from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sources.outlook_com_sink import get_sink_for_source
 from pensieve.sources.sink import TaskSink
 from pensieve.store import ChromaMemoryStore
@@ -20,7 +21,20 @@ from pensieve.sync_state import get_tracker
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Pensieve API", version="0.1.0")
+    scheduler_holder: dict[str, AutoSyncScheduler] = {}
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        scheduler = AutoSyncScheduler(settings, get_tracker())
+        scheduler.start()
+        scheduler_holder["scheduler"] = scheduler
+        try:
+            yield
+        finally:
+            scheduler.stop(timeout=5.0)
+            scheduler_holder.pop("scheduler", None)
+
+    app = FastAPI(title="Pensieve API", version="0.1.0", lifespan=_lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -62,6 +76,40 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"mirrored": False, "reason": f"sink-error: {e}"}
 
+    def _mirror_completion_to_source(memory_id: str, column: str) -> dict[str, Any]:
+        """Best-effort write of completion state to the upstream task.
+
+        v1 is **close-only**: when the user drags a card to ``closed``, we
+        call ``sink.set_completion(task_id, True)`` on the upstream system
+        (e.g. Outlook ``MarkComplete()``). Dragging OUT of ``closed`` does
+        NOT reopen the task — the user reopens in Outlook, and the next
+        sync flips the card back to ``memory`` via the existing
+        completion-drift handling in ``pensieve.sync``. This is a deliberate
+        safety cut to avoid a stray drag silently un-completing a real task.
+
+        Returns ``{"mirrored": bool, "reason": str}`` so the dashboard can
+        surface what happened. All failures are non-fatal at the HTTP layer
+        (the local column move is already persisted to Chroma).
+        """
+        if not settings.mirror_completion:
+            return {"mirrored": False, "reason": "disabled"}
+        if column != "closed":
+            return {"mirrored": False, "reason": "not-closing"}
+        mem = store.get_memory(memory_id)
+        if mem is None:
+            return {"mirrored": False, "reason": "memory-missing"}
+        sink: Optional[TaskSink] = get_sink_for_source(mem.source)
+        if sink is None:
+            return {"mirrored": False, "reason": f"no-sink-for-{mem.source}"}
+        try:
+            ok = sink.set_completion(mem.source_task_id, True)
+            return {
+                "mirrored": bool(ok),
+                "reason": "ok" if ok else "task-not-found-at-source",
+            }
+        except Exception as e:
+            return {"mirrored": False, "reason": f"sink-error: {e}"}
+
     @app.get("/api/healthz")
     def healthz() -> dict[str, Any]:
         return {
@@ -95,7 +143,14 @@ def create_app() -> FastAPI:
         if not ok:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         mirror_result = _mirror_column_to_source(memory_id, col)
-        return {"ok": True, "id": memory_id, "column": col, "mirror": mirror_result}
+        completion_mirror = _mirror_completion_to_source(memory_id, col)
+        return {
+            "ok": True,
+            "id": memory_id,
+            "column": col,
+            "mirror": mirror_result,
+            "completion_mirror": completion_mirror,
+        }
 
     @app.patch("/api/memories/{memory_id}")
     def patch_memory(memory_id: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -130,9 +185,16 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=f"Invalid column: {mem.column}")
         store.upsert_memory(mem)
         mirror_result = None
+        completion_mirror = None
         if "column" in body and body["column"] is not None:
             mirror_result = _mirror_column_to_source(memory_id, mem.column)
-        return {"ok": True, "memory": mem.to_dashboard_dict(), "mirror": mirror_result}
+            completion_mirror = _mirror_completion_to_source(memory_id, mem.column)
+        return {
+            "ok": True,
+            "memory": mem.to_dashboard_dict(),
+            "mirror": mirror_result,
+            "completion_mirror": completion_mirror,
+        }
 
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1), top_k: int = 12) -> dict[str, Any]:
@@ -250,9 +312,6 @@ def create_app() -> FastAPI:
         """
         body = body or {}
         tracker = get_tracker()
-        if tracker.is_running():
-            snap = tracker.snapshot()
-            return {"ok": False, "already_running": True, "state": snap}
 
         src_name = (body.get("source") or settings.default_source or "outlook_com").strip()
         lists_raw = body.get("lists") or []
@@ -261,78 +320,19 @@ def create_app() -> FastAPI:
         list_names: list[str] = [str(x).strip() for x in lists_raw if str(x).strip()]
         force = bool(body.get("force", False))
 
-        tracker.begin(
-            source=src_name,
-            lists=list_names,
-            message="Connecting to source...",
+        t = start_sync_job(
+            settings=settings,
+            tracker=tracker,
+            src_name=src_name,
+            list_names=list_names,
+            force=force,
         )
-
-        def _runner() -> None:
-            # COM apartments must be initialized per-thread on Windows.
-            _com_inited = False
-            try:
-                try:
-                    import pythoncom  # type: ignore[import-not-found]
-
-                    pythoncom.CoInitialize()
-                    _com_inited = True
-                except Exception:
-                    pass
-
-                from pensieve.cli import _build_recent_context_from_chroma, _build_source
-                from pensieve.sync import run_sync
-
-                src = _build_source(src_name, list_names=list_names or None)
-                strand_catalog = None
-                recent_context = None
-                if src_name == "outlook_com":
-                    if settings.samples_path.exists():
-                        import json as _json
-
-                        with settings.samples_path.open("r", encoding="utf-8") as f:
-                            blob = _json.load(f)
-                        strand_catalog = blob.get("strand_catalog")
-                    recent_context = _build_recent_context_from_chroma()
-                tracker.update("Enriching new and changed tasks...")
-                stats = run_sync(
-                    src,
-                    strand_catalog=strand_catalog,
-                    recent_context=recent_context,
-                    dry_run=False,
-                    force=force,
-                )
-                tracker.finish_ok(
-                    {
-                        "total_tasks": stats.total_tasks,
-                        "new_enriched": stats.new_enriched,
-                        "updated_enriched": stats.updated_enriched,
-                        "skipped_unchanged": stats.skipped_unchanged,
-                        "deleted": stats.deleted,
-                        "failed": stats.failed,
-                        "review_queue": stats.review_queue,
-                        "tokens_used": stats.tokens_used,
-                    },
-                    message=(
-                        f"Sync complete: {stats.new_enriched} new, "
-                        f"{stats.updated_enriched} updated, "
-                        f"{stats.deleted} deleted, "
-                        f"{stats.skipped_unchanged} unchanged."
-                    ),
-                )
-            except Exception as e:
-                tracker.finish_error(str(e))
-            finally:
-                if _com_inited:
-                    try:
-                        import pythoncom  # type: ignore[import-not-found]
-
-                        pythoncom.CoUninitialize()
-                    except Exception:
-                        pass
-
-        t = threading.Thread(target=_runner, daemon=True, name="pensieve-sync")
-        tracker.attach_thread(t)
-        t.start()
+        if t is None:
+            return {
+                "ok": False,
+                "already_running": True,
+                "state": tracker.snapshot(),
+            }
         return {"ok": True, "started": True, "state": tracker.snapshot()}
 
     @app.get("/api/lists")

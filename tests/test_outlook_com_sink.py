@@ -97,12 +97,18 @@ def test_extract_case_insensitive_on_prefix():
 class _FakeItem:
     """Minimal stand-in for a `MailItem` / `TaskItem` COM dispatch object."""
 
-    def __init__(self, categories: str = "") -> None:
+    def __init__(self, categories: str = "", complete: bool = False) -> None:
         self.Categories = categories
+        self.Complete = complete
         self.save_calls = 0
+        self.mark_complete_calls = 0
 
     def Save(self) -> None:
         self.save_calls += 1
+
+    def MarkComplete(self) -> None:
+        self.mark_complete_calls += 1
+        self.Complete = True
 
 
 class _SinkUnderTest(OutlookCOMSink):
@@ -160,6 +166,67 @@ def test_clear_column_tag_is_noop_when_no_pensieve_tag():
     sink = _SinkUnderTest({"abc": item})
     sink.clear_column_tag("abc", prefix=PREFIX)
     assert item.save_calls == 0
+
+
+# ---------- set_completion (PENSIEVE_MIRROR_COMPLETION writeback) ----------
+
+
+def test_set_completion_uses_MarkComplete_and_saves():
+    item = _FakeItem(complete=False)
+    sink = _SinkUnderTest({"abc": item})
+    assert sink.set_completion("abc", True) is True
+    assert item.mark_complete_calls == 1
+    assert item.Complete is True
+    assert item.save_calls == 1
+
+
+def test_set_completion_is_noop_when_already_complete():
+    """If the source is already complete, no MarkComplete / Save call is made.
+    This keeps auto-sync re-confirmations cheap and avoids touching
+    DateCompleted on tasks the user closed manually.
+    """
+    item = _FakeItem(complete=True)
+    sink = _SinkUnderTest({"abc": item})
+    assert sink.set_completion("abc", True) is True
+    assert item.mark_complete_calls == 0
+    assert item.save_calls == 0
+
+
+def test_set_completion_uses_property_fallback_when_marker_missing():
+    """If the COM object lacks MarkComplete (e.g. MailItem flagged as task),
+    fall back to ``item.Complete = True`` + Save."""
+
+    class _ItemNoMark:
+        def __init__(self) -> None:
+            self.Complete = False
+            self.save_calls = 0
+
+        def Save(self) -> None:
+            self.save_calls += 1
+
+    item = _ItemNoMark()
+    sink = _SinkUnderTest({"abc": item})  # type: ignore[arg-type]
+    assert sink.set_completion("abc", True) is True
+    assert item.Complete is True
+    assert item.save_calls == 1
+
+
+def test_set_completion_to_false_uses_property_assignment():
+    """v1 is one-way (close-only) so the API layer never calls
+    ``set_completion(False)``, but the sink still implements it for symmetry
+    and because Outlook has no inverse ``MarkIncomplete()``.
+    """
+    item = _FakeItem(complete=True)
+    sink = _SinkUnderTest({"abc": item})
+    assert sink.set_completion("abc", False) is True
+    assert item.mark_complete_calls == 0
+    assert item.Complete is False
+    assert item.save_calls == 1
+
+
+def test_set_completion_returns_false_when_task_missing():
+    sink = _SinkUnderTest({})
+    assert sink.set_completion("ghost", True) is False
 
 
 # ---------- get_sink_for_source ----------
