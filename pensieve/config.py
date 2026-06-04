@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     def audit_log_path(self) -> Path:
         return self.data_dir / "audit-log.jsonl"
 
+    @property
+    def garden_quests_path(self) -> Path:
+        """Garden v2 daily quests + clean-day history."""
+        return self.data_dir / "garden-quests.json"
+
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
 

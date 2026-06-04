@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from pensieve import garden
 from pensieve.store.schema import Memory
-
 
 UTC = timezone.utc
 NOW = datetime(2026, 6, 5, 12, 0, 0, tzinfo=UTC)

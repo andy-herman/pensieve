@@ -395,7 +395,87 @@ a:focus-visible {
 /* Hide Garden chrome on non-board pages (recap/graph/docs). */
 html[data-page="recap"] .board-health,
 html[data-page="graph"] .board-health,
-html[data-page="docs"]  .board-health { display: none; }
+html[data-page="docs"]  .board-health,
+html[data-page="recap"] .quest-panel,
+html[data-page="graph"] .quest-panel,
+html[data-page="docs"]  .quest-panel { display: none; }
+
+/* ---- Garden v2: daily quest panel -------------------------- */
+
+.quest-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(110, 220, 255, 0.20);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(20, 30, 45, 0.55), rgba(15, 22, 36, 0.55));
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+.quest-panel[hidden] { display: none; }
+.quest-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-transform: uppercase;
+  color: rgba(180, 220, 255, 0.78);
+}
+.quest-panel-streak {
+  color: var(--amber);
+  letter-spacing: 0.06em;
+}
+.quest-panel-streak[hidden] { display: none; }
+.quest-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid rgba(110, 220, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(15, 22, 36, 0.65);
+  color: rgba(220, 235, 255, 0.92);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.03em;
+  text-align: left;
+  max-width: 480px;
+}
+.quest-chip:hover,
+.quest-chip:focus-visible {
+  border-color: rgba(110, 220, 255, 0.55);
+  outline: none;
+  filter: brightness(1.10);
+}
+.quest-chip.is-complete {
+  color: rgba(180, 220, 255, 0.55);
+  text-decoration: line-through;
+  text-decoration-color: rgba(73, 245, 157, 0.6);
+  border-color: rgba(73, 245, 157, 0.30);
+}
+.quest-chip-icon { font-size: 0.85rem; }
+.quest-chip.is-complete .quest-chip-icon { color: var(--green); }
+.quest-chip-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quest-chip-progress { opacity: 0.65; }
+.quest-chip.filter-active {
+  outline: 1px solid var(--amber);
+  outline-offset: 1px;
+}
+.quest-panel-allDone {
+  color: var(--green);
+  letter-spacing: 0.05em;
+}
+.quest-panel-allDone[hidden] { display: none; }
+.quest-panel.is-collapsed .quest-panel-chips { display: none; }
 
 /* ---- Toolbar ------------------------------------------------ */
 

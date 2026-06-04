@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import replace
 
 from pensieve.config import Settings
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job

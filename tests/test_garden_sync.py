@@ -20,7 +20,6 @@ from pensieve.sources.sample_file import SampleFileSource
 from pensieve.store import ChromaMemoryStore, Memory
 from pensieve.sync import run_sync
 
-
 UTC = timezone.utc
 
 

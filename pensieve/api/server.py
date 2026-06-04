@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from pensieve import garden
+from pensieve import quest_state as quest_state_mod
+from pensieve import quests as quests_mod
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
@@ -85,6 +87,99 @@ def create_app() -> FastAPI:
 
     def _now_utc() -> datetime:
         return datetime.now(timezone.utc)
+
+    # ----- Garden v2 quest helpers ------------------------------------------
+
+    def _get_or_init_quest_state(now: datetime) -> quest_state_mod.QuestState:
+        """Load quest state and roll the day if needed.
+
+        On day rollover (first request of a new calendar day, UTC):
+        1. Snapshot whether the board is clean RIGHT NOW into the
+           previous day's history slot (best-available approximation of
+           "yesterday end-of-day"). Recomputes ``clean_streak_d``.
+        2. Generate today's quests based on the current board + the
+           freshly-computed clean_streak_d.
+        3. Persist atomically.
+
+        Same-day calls are read-only.
+        """
+        state = quest_state_mod.load_state(settings.garden_quests_path)
+        if quest_state_mod.is_today_row(state.today, now):
+            return state
+
+        # Day rollover — generate today.
+        mems = store.list_memories()
+        captured_counts = vial_store.captured_count_by_memory()
+        was_clean = quests_mod.is_board_clean(
+            mems, now, captured_counts=captured_counts
+        )
+        quest_state_mod.record_yesterday_clean(
+            state, was_clean=was_clean, now=now
+        )
+        # Pre-compute today's intrinsic health to drive the hit-95-health gate.
+        prelim = garden.compute_board_health(
+            mems,
+            now,
+            captured_counts=captured_counts,
+            clean_streak_d=state.clean_streak_d,
+            quest_bonus=0,
+        )
+        new_quests = quests_mod.generate_quests(
+            mems,
+            now,
+            captured_counts=captured_counts,
+            current_health=int(prelim["score"]),
+        )
+        state.today = quest_state_mod.TodayRow(
+            date=now.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+            generated_at=now,
+            quests=new_quests,
+            all_done_bonus_grants=0,
+        )
+        quest_state_mod.save_state(state, settings.garden_quests_path)
+        return state
+
+    def _maybe_complete_quests(memory_id: Optional[str] = None) -> None:
+        """Re-evaluate today's quests against current store state.
+
+        Called from every tending endpoint AFTER the ``last_tended_at``
+        bump succeeds. Idempotent — only persists when a quest actually
+        transitions pending → complete.
+
+        ``memory_id`` is unused today (we re-evaluate the full quest list
+        because completion may depend on cross-memory state like "all
+        targets tended"), but is kept as a hook for future per-quest
+        targeting if needed.
+        """
+        now = _now_utc()
+        state = quest_state_mod.load_state(settings.garden_quests_path)
+        if not quest_state_mod.is_today_row(state.today, now):
+            return  # today's row hasn't been generated yet
+        assert state.today is not None
+        if not state.today.quests:
+            return
+        prev_done = sum(1 for q in state.today.quests if q.is_complete)
+        mems = store.list_memories()
+        captured_counts = vial_store.captured_count_by_memory()
+        # Compute current intrinsic health for hit-95-health detection
+        # (without quest_bonus to avoid the bonus-completes-itself loop).
+        live = garden.compute_board_health(
+            mems,
+            now,
+            captured_counts=captured_counts,
+            clean_streak_d=state.clean_streak_d,
+            quest_bonus=0,
+        )
+        quests_mod.evaluate_pending(
+            state.today.quests,
+            now=now,
+            all_memories=mems,
+            captured_counts=captured_counts,
+            current_health=int(live["score"]),
+        )
+        now_done = sum(1 for q in state.today.quests if q.is_complete)
+        if now_done > prev_done:
+            quest_state_mod.save_state(state, settings.garden_quests_path)
 
     def _mirror_column_to_source(memory_id: str, column: str) -> dict[str, Any]:
         """Best-effort writeback of `pensieve/col:<col>` to the upstream task.
@@ -190,19 +285,101 @@ def create_app() -> FastAPI:
 
         Used by the masthead pill and the click-to-filter offenders view.
         Computed live from current memories + captured-vial counts.
-        ``clean_streak_d`` and ``quest_bonus`` are 0 in v1 (introduced in v2).
+        Garden v2 wires in ``clean_streak_d`` (from quest history) and
+        ``quest_bonus`` (+5 when today's quests are all complete).
         """
+        now = _now_utc()
         mems = store.list_memories()
         captured_counts = vial_store.captured_count_by_memory()
+        state = _get_or_init_quest_state(now)
+        # Auto-evaluate pending quests so the bonus reflects current state
+        # even if a tend happened outside an /api/* tending endpoint.
+        prev_done = (
+            sum(1 for q in state.today.quests if q.is_complete) if state.today else 0
+        )
+        if state.today is not None and state.today.quests:
+            prelim = garden.compute_board_health(
+                mems,
+                now,
+                captured_counts=captured_counts,
+                clean_streak_d=state.clean_streak_d,
+                quest_bonus=0,
+            )
+            quests_mod.evaluate_pending(
+                state.today.quests,
+                now=now,
+                all_memories=mems,
+                captured_counts=captured_counts,
+                current_health=int(prelim["score"]),
+            )
+            now_done = sum(1 for q in state.today.quests if q.is_complete)
+            if now_done > prev_done:
+                quest_state_mod.save_state(state, settings.garden_quests_path)
+        bonus = quest_state_mod.quest_bonus_today(state)
         result = garden.compute_board_health(
             mems,
-            _now_utc(),
+            now,
             captured_counts=captured_counts,
-            clean_streak_d=0,
-            quest_bonus=0,
+            clean_streak_d=state.clean_streak_d,
+            quest_bonus=bonus,
         )
         result["tier"] = garden.board_health_tier(result["score"])
         return result
+
+    @app.get("/api/quests")
+    def list_quests() -> dict[str, Any]:
+        """Garden v2: today's daily quests + clean-streak counter.
+
+        Generates today's quests on first call of a new calendar day (UTC).
+        Auto-evaluates pending completions on every call, so the response
+        always reflects current store state. Returns an empty list when
+        the board is in a state with no actionable quests (e.g. perfectly
+        clean board with no recent closures).
+        """
+        now = _now_utc()
+        state = _get_or_init_quest_state(now)
+        # Re-evaluate pending quests against current store state.
+        if state.today is not None and state.today.quests:
+            mems = store.list_memories()
+            captured_counts = vial_store.captured_count_by_memory()
+            prev_done = sum(1 for q in state.today.quests if q.is_complete)
+            prelim = garden.compute_board_health(
+                mems,
+                now,
+                captured_counts=captured_counts,
+                clean_streak_d=state.clean_streak_d,
+                quest_bonus=0,
+            )
+            quests_mod.evaluate_pending(
+                state.today.quests,
+                now=now,
+                all_memories=mems,
+                captured_counts=captured_counts,
+                current_health=int(prelim["score"]),
+            )
+            now_done = sum(1 for q in state.today.quests if q.is_complete)
+            if now_done > prev_done:
+                quest_state_mod.save_state(state, settings.garden_quests_path)
+
+        today_dict: dict[str, Any] = {
+            "date": state.today.date if state.today else None,
+            "generated_at": (
+                state.today.generated_at.astimezone(timezone.utc).isoformat()
+                if state.today
+                else None
+            ),
+            "quests": [q.to_dict() for q in (state.today.quests if state.today else [])],
+        }
+        return {
+            "today": today_dict,
+            "clean_streak_d": state.clean_streak_d,
+            "all_done": (
+                quests_mod.all_complete(state.today.quests)
+                if state.today and state.today.quests
+                else False
+            ),
+            "quest_bonus": quest_state_mod.quest_bonus_today(state),
+        }
 
     @app.patch("/api/memories/{memory_id}/column")
     def patch_column(memory_id: str, body: dict[str, str]) -> dict[str, Any]:
@@ -219,6 +396,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         mirror_result = _mirror_column_to_source(memory_id, col)
         completion_mirror = _mirror_completion_to_source(memory_id, col)
+        _maybe_complete_quests(memory_id)
         # Return the enriched memory so the frontend can update in place
         # (freshness dot must refresh, not just the board-health pill).
         mem = store.get_memory(memory_id)
@@ -274,6 +452,7 @@ def create_app() -> FastAPI:
         # the rewrite).
         mem.last_tended_at = _now_utc()
         store.upsert_memory(mem)
+        _maybe_complete_quests(memory_id)
         mirror_result = None
         completion_mirror = None
         if "column" in body and body["column"] is not None:
@@ -358,6 +537,7 @@ def create_app() -> FastAPI:
         # user care of the card. Bump independent of vial_store write so
         # we don't couple the two domains.
         store.bump_tended_at(memory_id, _now_utc())
+        _maybe_complete_quests(memory_id)
         return {"ok": True, "vial": vial.to_dashboard_dict()}
 
     @app.delete("/api/vials/{vial_id}")
@@ -622,6 +802,7 @@ def create_app() -> FastAPI:
         # Set BEFORE upsert (full-blob write would race with a post-bump).
         merged.last_tended_at = _now_utc()
         store.upsert_memory(merged)
+        _maybe_complete_quests(memory_id)
         captured_counts = vial_store.captured_count_by_memory()
         any_vial_ids = vial_store.has_any_vial_by_memory()
         d = merged.to_dashboard_dict()

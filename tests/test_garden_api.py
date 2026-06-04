@@ -11,7 +11,6 @@ from pensieve.api.server import create_app
 from pensieve.config import get_settings
 from pensieve.store import ChromaMemoryStore, Memory
 
-
 UTC = timezone.utc
 
 

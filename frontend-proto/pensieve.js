@@ -284,12 +284,13 @@ const STATE = {
   page: "board",          // "board" | "recap" | "graph"
   weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
   theme: "hud",           // single theme; legacy state field kept for compatibility
-  filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false },
+  filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
   apiConnected: false,
   apiSourceLabel: "seed",
   boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
+  quests: null,            // {today: {date, quests, generated_at}, clean_streak_d, all_done, quest_bonus} | null
 };
 
 function loadGoals() {
@@ -336,6 +337,7 @@ function memoryMatchesFilter(m) {
   if (STATE.semanticResultIds && !STATE.semanticResultIds.has(m.id)) return false;
   if (STATE.filter.reviewOnly && !isReviewNeeded(m)) return false;
   if (STATE.filter.boardHealthOffenders && !isBoardHealthOffender(m)) return false;
+  if (STATE.filter.questTargetIds && !STATE.filter.questTargetIds.has(m.id)) return false;
   if (STATE.filter.strand && m.suggested_strand !== STATE.filter.strand) return false;
   if (STATE.filter.search) {
     const hay = `${m.display_title || ""} ${m.title} ${m.why} ${m.impact}`.toLowerCase();
@@ -442,6 +444,8 @@ async function loadMemoriesFromApi() {
     // Garden v1: refresh the board-health pill alongside the memories so
     // the score reflects the same snapshot the user is looking at.
     await loadBoardHealth();
+    // Garden v2: refresh today's quest panel + completion state.
+    await loadQuests();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
@@ -480,6 +484,8 @@ function renderBoardHealth() {
   if (tipEl) {
     const t = h.terms || {};
     const c = h.counts || {};
+    const streakD = t.clean_streak_d || 0;
+    const questB = t.quest_bonus || 0;
     const lines = [
       `<strong>Board Health: ${h.score}/100</strong>`,
       `<ul>`,
@@ -488,16 +494,149 @@ function renderBoardHealth() {
       `<li>ghost: ${t.ghost_count ?? 0} (-${(t.ghost_count ?? 0) * 10} pts)</li>`,
       `<li>overdue: ${t.overdue_count ?? 0} (-${(t.overdue_count ?? 0) * 5} pts)</li>`,
       `<li>capture: ${Math.round((t.capture_pct ?? 0) * 100)}% (+${Math.round((t.capture_pct ?? 0) * 10)} pts)</li>`,
-      `</ul>`,
-      `<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`,
     ];
+    if (streakD > 0) {
+      lines.push(`<li>clean streak: ${streakD}d (+${Math.min(10, streakD)} pts)</li>`);
+    }
+    if (questB > 0) {
+      lines.push(`<li>quests: all done (+${questB} pts)</li>`);
+    }
+    lines.push(`</ul>`);
+    lines.push(`<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`);
     tipEl.innerHTML = lines.join("");
   }
 }
 
 function toggleBoardHealthFilter() {
   STATE.filter.boardHealthOffenders = !STATE.filter.boardHealthOffenders;
+  // Mutually exclusive with the quest filter (avoids confusing combined view).
+  if (STATE.filter.boardHealthOffenders) STATE.filter.questTargetIds = null;
   renderBoardHealth();
+  renderQuestPanel();
+  renderBoard();
+}
+
+// --- Garden v2: daily quests fetch + render -----------------------------
+async function loadQuests() {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.quests = await fetchJson("/api/quests");
+  } catch (e) {
+    STATE.quests = null;
+  }
+  renderQuestPanel();
+}
+
+function renderQuestPanel() {
+  const panel = document.getElementById("quest-panel");
+  if (!panel) return;
+  const chipsEl = document.getElementById("quest-panel-chips");
+  const streakEl = document.getElementById("quest-panel-streak");
+  const allDoneEl = document.getElementById("quest-panel-alldone");
+  const q = STATE.quests;
+  const list = q && q.today && Array.isArray(q.today.quests) ? q.today.quests : [];
+  if (!q || list.length === 0) {
+    panel.hidden = true;
+    if (chipsEl) chipsEl.innerHTML = "";
+    if (streakEl) { streakEl.hidden = true; streakEl.textContent = ""; }
+    if (allDoneEl) allDoneEl.hidden = true;
+    panel.classList.remove("is-collapsed");
+    return;
+  }
+  panel.hidden = false;
+
+  if (streakEl) {
+    const streak = Number(q.clean_streak_d || 0);
+    if (streak > 0) {
+      streakEl.hidden = false;
+      streakEl.textContent = `\u{1F525} ${streak}-day clean streak`;
+    } else {
+      streakEl.hidden = true;
+      streakEl.textContent = "";
+    }
+  }
+
+  const allDone = !!q.all_done;
+  if (allDoneEl) allDoneEl.hidden = !allDone;
+  panel.classList.toggle("is-collapsed", allDone);
+
+  if (chipsEl) {
+    chipsEl.innerHTML = "";
+    for (const quest of list) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "quest-chip" + (quest.completed_at ? " is-complete" : "");
+      chip.dataset.questId = quest.id;
+      chip.dataset.targetIds = (quest.target_memory_ids || []).join(",");
+      const progress = questProgressFor(quest);
+      const icon = quest.completed_at ? "\u2705" : "\u25A2";
+      chip.title = quest.description || quest.title || "";
+      chip.innerHTML =
+        `<span class="quest-chip-icon">${icon}</span>` +
+        `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
+        (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
+      // Filter board to this quest's targets when clicked (if it has targets
+      // and is not already complete — completed quests just show status).
+      const filterIds = (quest.target_memory_ids || []).filter(Boolean);
+      const isActiveFilter =
+        STATE.filter.questTargetIds &&
+        filterIds.length > 0 &&
+        filterIds.every(id => STATE.filter.questTargetIds.has(id)) &&
+        STATE.filter.questTargetIds.size === filterIds.length;
+      if (isActiveFilter) chip.classList.add("filter-active");
+      chip.addEventListener("click", () => {
+        if (filterIds.length === 0) return;
+        toggleQuestFilter(filterIds);
+      });
+      chipsEl.appendChild(chip);
+    }
+  }
+}
+
+function questProgressFor(quest) {
+  const targets = quest.target_memory_ids || [];
+  if (!targets.length) return "";
+  if (quest.completed_at) return `${targets.length}/${targets.length}`;
+  if (!STATE.memories) return `0/${targets.length}`;
+  const byId = new Map(STATE.memories.map(m => [m.id, m]));
+  let done = 0;
+  for (const id of targets) {
+    const m = byId.get(id);
+    if (!m) { done += 1; continue; }  // target gone => counts done
+    if (quest.kind === "capture-yesterday-closures") {
+      if ((m.vials_count || 0) > 0) done += 1;
+    } else if (quest.kind === "triage-inbox") {
+      if (m.column !== "memory") done += 1;
+      else if (isTendedToday(m)) done += 1;
+    } else {
+      if (isTendedToday(m)) done += 1;
+    }
+  }
+  return `${done}/${targets.length}`;
+}
+
+function isTendedToday(m) {
+  if (!m.last_tended_at) return false;
+  const t = new Date(m.last_tended_at);
+  if (isNaN(t.getTime())) return false;
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return t.getTime() >= todayStart.getTime();
+}
+
+function toggleQuestFilter(targetIds) {
+  if (!Array.isArray(targetIds) || targetIds.length === 0) return;
+  const setIds = new Set(targetIds);
+  const current = STATE.filter.questTargetIds;
+  const sameFilter =
+    current &&
+    current.size === setIds.size &&
+    Array.from(setIds).every(id => current.has(id));
+  STATE.filter.questTargetIds = sameFilter ? null : setIds;
+  // Mutually exclusive with the offenders filter.
+  if (STATE.filter.questTargetIds) STATE.filter.boardHealthOffenders = false;
+  renderBoardHealth();
+  renderQuestPanel();
   renderBoard();
 }
 
@@ -583,8 +722,9 @@ async function regenerateMemory(memoryId) {
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
-    // Garden v1: regenerate is a tend, so the health pill needs to refresh.
+    // Garden v1+v2: regenerate is a tend — refresh both pill AND quest panel.
     loadBoardHealth();
+    loadQuests();
     // Re-open the modal with the regenerated memory so the user sees the new text live.
     const refreshed = STATE.memories[idx] || fresh;
     openModal(refreshed);
@@ -672,8 +812,10 @@ async function persistColumnChange(memoryId, column) {
         }
       }
     } catch (_) { /* response body parsing is best-effort */ }
-    // Garden v1: refresh the board-health pill so the score reflects this tend.
+    // Garden v1+v2: refresh the board-health pill AND quest panel so the
+    // score and quest completion state reflect this tend.
     loadBoardHealth().then(() => renderBoard());
+    loadQuests();
     // If we got here, the API is up. Flip the flag so the next render of UI
     // affordances that gate on apiConnected (e.g. semantic search) starts
     // working without forcing a page reload.
@@ -1158,8 +1300,9 @@ async function saveMemoryEdit(memoryId) {
     }
     renderStrandFilter();
     renderBoard();
-    // Garden v1: editing tends the card, so refresh the health pill.
+    // Garden v1+v2: editing tends the card — refresh pill AND quest panel.
     loadBoardHealth();
+    loadQuests();
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
@@ -1515,12 +1658,13 @@ function init() {
 
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
-    STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false };
+    STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null };
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     $("#search").value = "";
     renderStrandFilter();
     renderBoardHealth();
+    renderQuestPanel();
     renderBoard();
   });
 
