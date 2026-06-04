@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
@@ -286,10 +287,17 @@ def create_app() -> FastAPI:
         if "behaviors" in body:
             payload["behaviors"] = body["behaviors"]
 
+        # Atomic write: tmp file + replace, so a crash mid-write can never
+        # leave an empty or half-JSON goals catalog (which would silently
+        # zero Connect alignment on every future enrichment).
         path = settings.connect_goals_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as f:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
             _json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp_path.replace(path)
 
         # Drop cached views so the next read picks up the new file.
         _cg_mod.load_connect_goals.cache_clear()  # type: ignore[attr-defined]

@@ -284,7 +284,7 @@ const STATE = {
   page: "board",          // "board" | "recap" | "graph"
   weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
   theme: "hud",           // single theme; legacy state field kept for compatibility
-  filter: { strand: null, search: "" },
+  filter: { strand: null, search: "", reviewOnly: false },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
   apiConnected: false,
@@ -333,12 +333,34 @@ function isReviewNeeded(m) {
 
 function memoryMatchesFilter(m) {
   if (STATE.semanticResultIds && !STATE.semanticResultIds.has(m.id)) return false;
+  if (STATE.filter.reviewOnly && !isReviewNeeded(m)) return false;
   if (STATE.filter.strand && m.suggested_strand !== STATE.filter.strand) return false;
   if (STATE.filter.search) {
     const hay = `${m.display_title || ""} ${m.title} ${m.why} ${m.impact}`.toLowerCase();
     if (!hay.includes(STATE.filter.search.toLowerCase())) return false;
   }
   return true;
+}
+
+// Format a due_date ISO string as a compact "DUE Mon 8" pill, or null if absent/invalid.
+// Returns { text, urgency } where urgency is "overdue" | "soon" | "later".
+function formatDueDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const midnightNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const midnightDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const daysOut = Math.round((midnightDue - midnightNow) / 86400000);
+  let urgency = "later";
+  if (daysOut < 0) urgency = "overdue";
+  else if (daysOut <= 3) urgency = "soon";
+  const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+  const dayNum = d.getDate();
+  const month = d.toLocaleDateString(undefined, { month: "short" });
+  // Within +/-7 days, show weekday; otherwise show month + day for context.
+  const text = (daysOut >= -7 && daysOut <= 7) ? `${weekday} ${dayNum}` : `${month} ${dayNum}`;
+  return { text, urgency };
 }
 
 // Most recent Monday at 00:00 local time.
@@ -815,11 +837,18 @@ function renderCard(m, idx) {
     return `<span class="goal-chip" data-lane="${g.lane}" title="${g.name}">#${g.number} ${g.short_name}</span>`;
   }).join("");
 
+  const due = formatDueDate(m.due_date);
+  const dueHtml = due
+    ? `<span class="card-due" data-urgency="${due.urgency}" title="Due ${escapeHtml(m.due_date)}">DUE ${escapeHtml(due.text)}</span>`
+    : "";
+
+  const fullTitle = m.display_title || m.title || "";
   el.innerHTML = `
-    <h3 class="card-title">${escapeHtml(m.display_title || m.title)}</h3>
+    <h3 class="card-title" title="${escapeHtml(fullTitle)}">${escapeHtml(fullTitle)}</h3>
     ${review ? `<div class="card-status" title="Flagged for review">&gt; STATUS // REVIEW</div>` : ""}
     <div class="card-meta">
       <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
+      ${dueHtml}
     </div>
     <p class="card-why">${escapeHtml(m.why)}</p>
     ${goalsHtml ? `<div class="card-goals">${goalsHtml}</div>` : ""}
@@ -855,7 +884,20 @@ function updateReviewIndicator() {
   if (text) {
     text.textContent = reviewing === 0 ? "CLEAR" : String(reviewing).padStart(2, "0");
   }
-  if (block) block.classList.toggle("has-review", reviewing > 0);
+  if (block) {
+    block.classList.toggle("has-review", reviewing > 0);
+    block.classList.toggle("filter-active", !!STATE.filter.reviewOnly);
+    block.style.cursor = reviewing > 0 || STATE.filter.reviewOnly ? "pointer" : "default";
+  }
+}
+
+// Click handler for the masthead REVIEW indicator: toggles a board-wide
+// "show only review-flagged cards" filter. Bound once during init().
+function toggleReviewOnlyFilter() {
+  const reviewing = STATE.memories.filter(isReviewNeeded).length;
+  if (reviewing === 0 && !STATE.filter.reviewOnly) return; // nothing to filter to
+  STATE.filter.reviewOnly = !STATE.filter.reviewOnly;
+  renderBoard();
 }
 
 // ----- 7. Modal -----
@@ -952,6 +994,17 @@ function openModal(m) {
   $("#edit-cancel").addEventListener("click", closeModal);
   const regenBtn = $("#edit-regen");
   if (regenBtn) regenBtn.addEventListener("click", () => regenerateMemory(m.id));
+
+  // Auto-focus the display-title field so the user can edit immediately
+  // without a mouse click. setTimeout lets the layout settle first so the
+  // focus ring renders against the visible modal.
+  setTimeout(() => {
+    const titleEl = document.getElementById("edit-title");
+    if (titleEl) {
+      titleEl.focus();
+      titleEl.select();
+    }
+  }, 0);
 }
 
 function readEditedFields() {
@@ -1289,13 +1342,17 @@ function init() {
 
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
-    STATE.filter = { strand: null, search: "" };
+    STATE.filter = { strand: null, search: "", reviewOnly: false };
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     $("#search").value = "";
     renderStrandFilter();
     renderBoard();
   });
+
+  // Click the masthead REVIEW indicator to filter board to review-flagged cards.
+  const reviewBlock = document.querySelector(".review-block");
+  if (reviewBlock) reviewBlock.addEventListener("click", toggleReviewOnlyFilter);
 
   // Weekly filter toggle (Closed column rolls over each Monday)
   const weeklyBtn = $("#weekly-filter-btn");

@@ -44,13 +44,6 @@ class SyncJobTracker:
         with self._lock:
             return self._state.status == "running"
 
-    def begin(self, *, source: str, lists: list[str], message: str = "Starting sync") -> dict:
-        """Backward-compatible wrapper around try_begin that ignores the
-        transition flag. New callers should prefer ``try_begin``.
-        """
-        _ok, snapshot = self.try_begin(source=source, lists=lists, message=message)
-        return snapshot
-
     def try_begin(
         self, *, source: str, lists: list[str], message: str = "Starting sync"
     ) -> tuple[bool, dict]:

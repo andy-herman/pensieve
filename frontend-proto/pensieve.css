@@ -282,6 +282,17 @@ a:focus-visible {
   text-shadow: 0 0 10px rgba(255, 170, 0, 0.55);
 }
 
+/* When the click-to-filter toggle is active, draw an inset amber rule so the
+   user can see which state the indicator is in. Hover lifts opacity. */
+.review-block.filter-active {
+  outline: 1px solid var(--amber);
+  outline-offset: 2px;
+}
+.review-block.has-review:hover,
+.review-block.filter-active:hover {
+  filter: brightness(1.12);
+}
+
 .review-label {
   font-family: var(--mono);
   letter-spacing: 0.14em;
@@ -651,6 +662,38 @@ body[data-view="lanes"] .board,
   letter-spacing: var(--ls-tight);
   color: var(--ice);
   line-height: var(--lh-tight);
+  /* Clamp to two lines so 200-char forwarded-email subjects don't blow card
+     height. Full text is in the title attribute (tooltip) and in the modal. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Due-date pill on cards. Amber when overdue, dim amber when within 3 days,
+   muted otherwise. Stays in the .card-meta row next to the strand chip. */
+.card-due {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  background: rgba(4, 12, 24, 0.5);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  clip-path: polygon(0 4px, 4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
+}
+.card-due[data-urgency="overdue"] {
+  color: #ff7575;
+  border-color: #ff7575;
+  text-shadow: 0 0 8px rgba(255, 117, 117, 0.45);
+}
+.card-due[data-urgency="soon"] {
+  color: var(--amber);
+  border-color: var(--amber);
 }
 
 .card-meta {
