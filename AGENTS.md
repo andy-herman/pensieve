@@ -125,6 +125,7 @@ Pensieve/
 │   ├── cli.py             # Typer CLI: init / sync / status / search / serve / goals
 │   ├── config.py          # pydantic-settings .env loading
 │   ├── sync.py            # orchestrator: sources → enrichment → ChromaDB
+│   ├── garden.py          # Garden v1: pure-function freshness + board-health derivation
 │   ├── sources/           # TaskSource implementations (READ-ONLY contract)
 │   │   ├── base.py
 │   │   ├── outlook_com.py # pywin32 Outlook COM source

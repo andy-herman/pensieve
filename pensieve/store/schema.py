@@ -54,6 +54,13 @@ class Memory(BaseModel):
     tokens_used: int = 0
     embedding_text: str = ""
 
+    # Garden v1: timestamp of the most recent deliberate user action on this
+    # card (column move, edit, vial post/skip, regenerate). Auto-sync must
+    # NEVER bump this — it represents user care, not source mutation. None on
+    # newly-created memories; ``_reconstruct`` backfills missing values from
+    # ``enriched_at`` so old rows have a sensible freshness signal.
+    last_tended_at: Optional[datetime] = None
+
     def to_chroma_metadata(self) -> dict[str, Any]:
         """Flatten to Chroma-friendly scalars (str/int/float/bool only)."""
         return {
@@ -88,6 +95,9 @@ class Memory(BaseModel):
             "enrichment_version": self.enrichment_version,
             "enriched_at": self.enriched_at.isoformat(),
             "tokens_used": int(self.tokens_used),
+            "last_tended_at": (
+                self.last_tended_at.isoformat() if self.last_tended_at else ""
+            ),
         }
 
     def to_dashboard_dict(self) -> dict[str, Any]:
@@ -116,6 +126,9 @@ class Memory(BaseModel):
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "due_date": self.due_date.isoformat() if self.due_date else None,
             "enriched_at": self.enriched_at.isoformat(),
+            "last_tended_at": (
+                self.last_tended_at.isoformat() if self.last_tended_at else None
+            ),
         }
 
 

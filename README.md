@@ -135,6 +135,9 @@ Read live To-Do tasks via Outlook COM (read-only), enrich them, persist to local
 **Phase 2 — Closure capture and Vials** *(v1 MVP shipped)*
 When a task lands in the Closed column, the card grows an amber **&#x1F4DC; CAPTURE** chevron prompting you for one sentence about what changed. Pensieve stores that as a Vial: a durable, snapshot-backed promo evidence record that **outlives the source task** (even if you later delete it from To-Do). v1 MVP is user-typed; v1.1 will add an optional AI-polish pass that drafts an IC-framed statement from your sentence. See the dashboard section below for usage, and `brainstorms/01-review-findings.md` for the full Vial v1 design.
 
+**Phase 2.6 — Garden: board tending game** *(v1 shipped)*
+A quiet HUD-style gamification of board hygiene. Every deliberate action on a card — drag, edit, capture/skip a Vial, regenerate — bumps its `last_tended_at` timestamp. Cards age through **fresh → active → stale → ghost** based on how long they've gone untouched (3 / 8 / 30 day thresholds), shown as a small colored dot on each card. The masthead grows a **HEALTH 00–100** pill that scores the whole board (penalties for stale/ghost/overdue cards, bonus for captured Vials on closed cards). Click the pill to filter the board to offenders. Auto-sync from To-Do does **NOT** count as tending — only your deliberate actions do, so the freshness signal stays real. v2 adds three daily quests (e.g. "tend the 3 stale cards"); v3 adds achievement badges + a weekly level-summary. See `brainstorms/02-board-tending-game.md` for the full design and GitHub issues #6/#7/#8.
+
 **Phase 3 — Reflection and Reverie debrief**
 Weekly and monthly reflection prompts. Closing-of-Reverie debrief flow. Reflection turns into structured notes you can paste into a manager update or a self-assessment without losing the original framing.
 
@@ -489,6 +492,8 @@ Features:
 - **Semantic search**: press Enter in the search box (or click the magnifier) to query Chroma. The board filters to the semantic top-K.
 - **Review readout**: top-right of the masthead, reads `[ REVIEW · NN ]` (mono, amber underline when non-zero) for the count of memories currently in the review queue (low confidence or explicitly flagged by the LLM). Flagged cards also carry a `> STATUS // REVIEW` rule under their title.
 - **Closure capture (Vials)**: closed cards with no closure note yet grow an amber **&#x1F4DC; CAPTURE** chevron. Click it for a one-textarea modal — type a sentence about what changed, hit Save, and Pensieve stores it as a Vial (durable promo evidence with a frozen snapshot of the closure-time context). Hit Skip to dismiss without writing anything. Cards with one or more captured Vials show a small **&#x1F4DC; N** badge instead.
+- **Board Health pill (Garden v1)**: top of the masthead, reads `HEALTH NN` and is color-tiered green / yellow / red. Hover for the per-term breakdown (stale, ghost, overdue, capture %). Click to filter the board to stale, ghost, and overdue cards — click again to clear. The score is `100 - %stale*30 - overdue*5 - ghost*10 + capture%*10`, clamped 0..100.
+- **Per-card freshness dot (Garden v1)**: a small colored dot in the top-right of each card. **Fresh** (green) = tended in the last 3 days; **stale** (amber) = 8–30 days untouched; **ghost** (red) = >30 days untouched. Captured-Vial closed cards get a gold dot. Auto-sync does NOT count as tending — only your deliberate actions (drag, edit, capture/skip, regenerate) do.
 - **Goals editor**: the **Set Goals** button opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals. Saves to `data/connect-goals.json` via the API.
 
 The dashboard remains functional without the API server: if `/api/healthz` is unreachable, it falls back to the bundled seed memories and shows "offline (seed data)" in the footer.
@@ -543,6 +548,7 @@ pensieve/
 |   |-- cli.py                 Typer CLI: init, sync, status, search, serve, goals
 |   |-- config.py              pydantic-settings, .env loader
 |   |-- sync.py                Sync orchestrator: pull -> enrich -> upsert
+|   |-- garden.py              Garden v1: pure-function freshness + board-health derivation
 |   |-- scheduler.py           Background AutoSyncScheduler + start_sync_job helper (shared by /api/sync and the lifespan-started periodic loop)
 |
 |-- frontend-proto/            Local-first HUD kanban dashboard (HTML/CSS/JS)
@@ -597,12 +603,13 @@ Phase 1 is the daily-driver state. Beyond the core Phase 1 cut, the live build a
 - **Closure capture (Vial v1 MVP).** Closed cards grow an amber **&#x1F4DC; CAPTURE** chevron — one click, one sentence, one Vial. Vials are durable evidence and survive upstream task deletion. v1.1 adds optional AI polish; v1.2 wires Vials into recap exports. See `brainstorms/01-review-findings.md` for the design.
 - **Two-way close sync.** Drag a card to **Closed** and Pensieve marks the source task complete in Outlook via `MarkComplete()`. The reverse direction (close in To-Do → card moves to Closed) was already wired; the new 2-minute auto-sync makes that round-trip feel instant.
 - **Backend auto-sync scheduler** (default every 120s) plus a **frontend auto-refresh** poll (every 30s) so the kanban stays current without manual "Pull from To-Do" clicks.
+- **Garden v1 — board tending game.** Every card gets a freshness dot (fresh/stale/ghost) based on `last_tended_at`, and the masthead shows a HEALTH 00–100 pill scoring the whole board. Auto-sync intentionally does NOT bump tending — only deliberate user actions do, so the staleness signal is real. v2 (daily quests) + v3 (achievements + weekly level-summary) are in flight; see `brainstorms/02-board-tending-game.md`.
 - **Connect-recap list filter.** `POST /api/recap` only consumes tasks from lists on `PENSIEVE_RECAP_LIST_NAMES` (default `CISO GRC`), so a personal `home` or `UW Lectures` list never leaks into a work recap unless you explicitly opt them in per call.
 - **Cross-PC kanban mirror** (the original `pensieve/col:<col>` Categories writeback). Off by default, see the section above.
 
 Phase 2 (Vials) v1 MVP is shipped. v1.1 (AI polish) and v1.2 (recap integration) are tracked in [GitHub issue #1](https://github.com/andy-herman/pensieve/issues/1). Phase 4 (calendar integration) is parked on the Microsoft Secure Future Initiative timeline rather than on Pensieve's design. See `OPEN-QUESTIONS.md` for the current state of that conversation.
 
-Tests: 147 / 147 pass. See `tests/` for the suite layout.
+Tests: 189 / 189 pass. See `tests/` for the suite layout.
 
 ## Design notes
 

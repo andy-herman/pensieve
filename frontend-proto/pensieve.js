@@ -284,11 +284,12 @@ const STATE = {
   page: "board",          // "board" | "recap" | "graph"
   weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
   theme: "hud",           // single theme; legacy state field kept for compatibility
-  filter: { strand: null, search: "", reviewOnly: false },
+  filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
   apiConnected: false,
   apiSourceLabel: "seed",
+  boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
 };
 
 function loadGoals() {
@@ -334,12 +335,21 @@ function isReviewNeeded(m) {
 function memoryMatchesFilter(m) {
   if (STATE.semanticResultIds && !STATE.semanticResultIds.has(m.id)) return false;
   if (STATE.filter.reviewOnly && !isReviewNeeded(m)) return false;
+  if (STATE.filter.boardHealthOffenders && !isBoardHealthOffender(m)) return false;
   if (STATE.filter.strand && m.suggested_strand !== STATE.filter.strand) return false;
   if (STATE.filter.search) {
     const hay = `${m.display_title || ""} ${m.title} ${m.why} ${m.impact}`.toLowerCase();
     if (!hay.includes(STATE.filter.search.toLowerCase())) return false;
   }
   return true;
+}
+
+// Garden v1: a card is an "offender" if it's stale, ghost, or overdue.
+// Click the Board Health pill to filter the board down to just these.
+function isBoardHealthOffender(m) {
+  if (m.is_overdue) return true;
+  const f = m.freshness;
+  return f === "stale" || f === "ghost";
 }
 
 // Format a due_date ISO string as a compact "DUE Mon 8" pill, or null if absent/invalid.
@@ -429,6 +439,9 @@ async function loadMemoriesFromApi() {
         STATE.goalsMeta = goalsResp._meta;
       }
     } catch (e) { /* keep local */ }
+    // Garden v1: refresh the board-health pill alongside the memories so
+    // the score reflects the same snapshot the user is looking at.
+    await loadBoardHealth();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
@@ -436,6 +449,56 @@ async function loadMemoriesFromApi() {
     console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}. Using seed data.`);
     return false;
   }
+}
+
+// --- Garden v1: Board Health fetch + render -----------------------------
+async function loadBoardHealth() {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.boardHealth = await fetchJson("/api/board/health");
+  } catch (e) {
+    STATE.boardHealth = null;
+  }
+  renderBoardHealth();
+}
+
+function renderBoardHealth() {
+  const el = document.getElementById("board-health");
+  if (!el) return;
+  const scoreEl = document.getElementById("board-health-score");
+  const tipEl = document.getElementById("board-health-tip");
+  const h = STATE.boardHealth;
+  if (!h) {
+    el.removeAttribute("data-tier");
+    if (scoreEl) scoreEl.textContent = "--";
+    if (tipEl) { tipEl.hidden = true; tipEl.innerHTML = ""; }
+    return;
+  }
+  el.dataset.tier = h.tier || "yellow";
+  if (scoreEl) scoreEl.textContent = String(h.score);
+  el.classList.toggle("filter-active", !!STATE.filter.boardHealthOffenders);
+  if (tipEl) {
+    const t = h.terms || {};
+    const c = h.counts || {};
+    const lines = [
+      `<strong>Board Health: ${h.score}/100</strong>`,
+      `<ul>`,
+      `<li>open: ${c.open ?? 0} / closed: ${c.closed ?? 0}</li>`,
+      `<li>stale: ${t.stale_count ?? 0} (-${Math.round((t.stale_pct ?? 0) * 30)} pts)</li>`,
+      `<li>ghost: ${t.ghost_count ?? 0} (-${(t.ghost_count ?? 0) * 10} pts)</li>`,
+      `<li>overdue: ${t.overdue_count ?? 0} (-${(t.overdue_count ?? 0) * 5} pts)</li>`,
+      `<li>capture: ${Math.round((t.capture_pct ?? 0) * 100)}% (+${Math.round((t.capture_pct ?? 0) * 10)} pts)</li>`,
+      `</ul>`,
+      `<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`,
+    ];
+    tipEl.innerHTML = lines.join("");
+  }
+}
+
+function toggleBoardHealthFilter() {
+  STATE.filter.boardHealthOffenders = !STATE.filter.boardHealthOffenders;
+  renderBoardHealth();
+  renderBoard();
 }
 
 // --- Auto-refresh poll ---------------------------------------------------
@@ -520,6 +583,8 @@ async function regenerateMemory(memoryId) {
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
+    // Garden v1: regenerate is a tend, so the health pill needs to refresh.
+    loadBoardHealth();
     // Re-open the modal with the regenerated memory so the user sees the new text live.
     const refreshed = STATE.memories[idx] || fresh;
     openModal(refreshed);
@@ -598,7 +663,17 @@ async function persistColumnChange(memoryId, column) {
       } else if (cm && cm.reason === "task-not-found-at-source") {
         toast("Closed locally - upstream task not found in To-Do");
       }
+      // Garden v1: the API returns the enriched memory so we can update
+      // freshness in place (the dot must refresh, not just the score pill).
+      if (payload && payload.memory) {
+        const idx = STATE.memories.findIndex(x => x.id === payload.memory.id);
+        if (idx >= 0) {
+          STATE.memories[idx] = { ...STATE.memories[idx], ...payload.memory };
+        }
+      }
     } catch (_) { /* response body parsing is best-effort */ }
+    // Garden v1: refresh the board-health pill so the score reflects this tend.
+    loadBoardHealth().then(() => renderBoard());
     // If we got here, the API is up. Flip the flag so the next render of UI
     // affordances that gate on apiConnected (e.g. semantic search) starts
     // working without forcing a page reload.
@@ -818,6 +893,15 @@ function renderCard(m, idx) {
   el.draggable = true;
   el.dataset.memoryId = m.id;
   el.style.setProperty("--ink-delay", `${idx * 60}ms`);
+
+  // Garden v1: per-card freshness dot via [data-freshness] CSS hook.
+  // Only set when truthy so generic selectors aren't accidentally matched.
+  if (m.freshness) {
+    el.dataset.freshness = m.freshness;
+  }
+  if (m.is_overdue) {
+    el.classList.add("is-overdue");
+  }
 
   // Primary goal color for the left rail
   const primaryGoal = (m.connect_goal_ids && m.connect_goal_ids.length > 0) ? getGoal(m.connect_goal_ids[0]) : null;
@@ -1074,6 +1158,8 @@ async function saveMemoryEdit(memoryId) {
     }
     renderStrandFilter();
     renderBoard();
+    // Garden v1: editing tends the card, so refresh the health pill.
+    loadBoardHealth();
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
@@ -1406,13 +1492,35 @@ function init() {
     });
   }
 
+  // Click filter from Board Health pill -> show only stale/ghost/overdue
+  const boardHealthEl = document.getElementById("board-health");
+  if (boardHealthEl) {
+    boardHealthEl.addEventListener("click", toggleBoardHealthFilter);
+    boardHealthEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleBoardHealthFilter();
+      }
+    });
+    const tipEl = document.getElementById("board-health-tip");
+    if (tipEl) {
+      const show = () => { tipEl.hidden = false; };
+      const hide = () => { tipEl.hidden = true; };
+      boardHealthEl.addEventListener("mouseenter", show);
+      boardHealthEl.addEventListener("mouseleave", hide);
+      boardHealthEl.addEventListener("focus", show);
+      boardHealthEl.addEventListener("blur", hide);
+    }
+  }
+
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
-    STATE.filter = { strand: null, search: "", reviewOnly: false };
+    STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false };
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     $("#search").value = "";
     renderStrandFilter();
+    renderBoardHealth();
     renderBoard();
   });
 

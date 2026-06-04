@@ -299,6 +299,104 @@ a:focus-visible {
   font-size: 0.72rem;
 }
 
+/* ---- Garden v1: Board Health pill --------------------------- */
+
+.board-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-left: var(--sp-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  transition: color 240ms ease, border-color 240ms ease;
+}
+.board-health[data-tier="green"]  { color: var(--green);   border-color: rgba(73, 245, 157, 0.35); }
+.board-health[data-tier="yellow"] { color: var(--amber);   border-color: rgba(255, 170, 0, 0.40); }
+.board-health[data-tier="red"]    { color: var(--red);     border-color: rgba(255, 51, 102, 0.45); }
+.board-health-label { opacity: 0.8; }
+.board-health-score {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.10em;
+}
+.board-health.filter-active {
+  outline: 1px solid var(--amber);
+  outline-offset: 2px;
+}
+.board-health:hover,
+.board-health:focus-visible {
+  filter: brightness(1.15);
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+.board-health-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 10px 12px;
+  background: rgba(8, 12, 22, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--ice);
+  font-family: var(--mono);
+  font-size: 0.70rem;
+  letter-spacing: 0.10em;
+  text-align: left;
+  text-transform: none;
+  line-height: 1.5;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.board-health-tip[hidden] { display: none; }
+.board-health-tip ul {
+  margin: 6px 0 0;
+  padding-left: 14px;
+}
+.board-health-tip li { margin: 1px 0; }
+
+/* ---- Garden v1: per-card freshness dots --------------------- */
+
+.card[data-freshness] {
+  position: relative;
+}
+.card[data-freshness]::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+}
+.card[data-freshness="fresh"]::after  { background: var(--green); box-shadow: 0 0 6px rgba(73, 245, 157, 0.7); }
+.card[data-freshness="stale"]::after  { background: var(--amber); box-shadow: 0 0 6px rgba(255, 170, 0, 0.7); }
+.card[data-freshness="ghost"]::after  { background: var(--red);   box-shadow: 0 0 6px rgba(255, 51, 102, 0.7); }
+.card[data-freshness="active"]::after { display: none; }
+.card[data-freshness="closed_vialed"]::after {
+  background: var(--amber);
+  box-shadow: 0 0 6px rgba(255, 200, 80, 0.7);
+}
+.card[data-freshness="stale"]  { filter: saturate(0.85); }
+.card[data-freshness="ghost"]  { filter: saturate(0.65); }
+.card.is-overdue { border-color: rgba(255, 51, 102, 0.55); }
+
+/* Hide Garden chrome on non-board pages (recap/graph/docs). */
+html[data-page="recap"] .board-health,
+html[data-page="graph"] .board-health,
+html[data-page="docs"]  .board-health { display: none; }
+
 /* ---- Toolbar ------------------------------------------------ */
 
 .toolbar {

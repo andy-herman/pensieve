@@ -271,17 +271,26 @@ def run_sync(
         stats.skipped_unchanged += 1
 
     # Apply column-only updates immediately (no LLM, no concurrency needed).
+    # Use update_meta (atomic single-call metadata write) instead of
+    # upsert_memory — this is a metadata-only change, no embedding rebuild,
+    # and critically does NOT touch last_tended_at (Garden v1: auto-sync
+    # must never bump the user's tending timestamp).
     for t in column_only_updates:
-        mem = store.get_memory(t.id)
-        if mem is None:
+        ok = store.update_meta(
+            t.id,
+            {
+                "column": "closed",
+                "completed": True,
+                "completed_at": (t.completed_at or datetime.now(timezone.utc)),
+            },
+        )
+        if not ok:
             continue
-        mem.completed = True
-        mem.completed_at = t.completed_at or mem.completed_at
-        mem.column = "closed"
-        store.upsert_memory(mem)
+        mem = store.get_memory(t.id)  # re-read for display only
+        title = mem.title if mem else t.title
         stats.updated_enriched += 1
         console.print(
-            f"  [green]CLOSE [/green] (auto-close) {mem.title} "
+            f"  [green]CLOSE [/green] (auto-close) {title} "
             f"[dim](source marked complete; no re-enrich needed)[/dim]"
         )
         _audit_write(
@@ -347,7 +356,7 @@ def run_sync(
                 _audit_write({"mode": "sync", "task_id": task.id, "error": err, "source": source.name})
                 continue
 
-            store.upsert_memory(mem)
+            store.upsert_memory_preserving_user_fields(mem)
             stats.tokens_used += mem.tokens_used
             if reason == "new":
                 stats.new_enriched += 1

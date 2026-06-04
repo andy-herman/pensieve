@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from pensieve import garden
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
@@ -63,6 +65,26 @@ def create_app() -> FastAPI:
         mem_dict["vials_count"] = captured_counts.get(memory_id, 0)
         mem_dict["pending_closure_capture"] = bool(is_closed and memory_id not in any_vial_ids)
         return mem_dict
+
+    def _enrich_with_freshness(mem_dict: dict[str, Any], memory: Any,
+                               now: datetime,
+                               captured_counts: dict[str, int]) -> dict[str, Any]:
+        """Add Garden v1 derived fields: freshness + is_overdue.
+
+        Pure-function enrichment at the API boundary (same pattern as
+        ``pending_closure_capture``). Memory model stays clean of Garden
+        concepts. ``captured_counts`` is used to decide ``closed_vialed``
+        — skipped Vials must NOT promote a closed card to that state.
+        """
+        has_captured = captured_counts.get(memory.id, 0) > 0
+        mem_dict["freshness"] = garden.derive_freshness(
+            memory, now, has_captured_vial=has_captured
+        )
+        mem_dict["is_overdue"] = garden.is_overdue(memory, now)
+        return mem_dict
+
+    def _now_utc() -> datetime:
+        return datetime.now(timezone.utc)
 
     def _mirror_column_to_source(memory_id: str, column: str) -> dict[str, Any]:
         """Best-effort writeback of `pensieve/col:<col>` to the upstream task.
@@ -141,13 +163,14 @@ def create_app() -> FastAPI:
         mems = store.list_memories()
         captured_counts = vial_store.captured_count_by_memory()
         any_vial_ids = vial_store.has_any_vial_by_memory()
-        return {
-            "count": len(mems),
-            "memories": [
-                _enrich_with_vials(m.to_dashboard_dict(), m.id, captured_counts, any_vial_ids)
-                for m in mems
-            ],
-        }
+        now = _now_utc()
+        out = []
+        for m in mems:
+            d = m.to_dashboard_dict()
+            _enrich_with_vials(d, m.id, captured_counts, any_vial_ids)
+            _enrich_with_freshness(d, m, now, captured_counts)
+            out.append(d)
+        return {"count": len(mems), "memories": out}
 
     @app.get("/api/memories/{memory_id}")
     def get_memory(memory_id: str) -> dict[str, Any]:
@@ -156,26 +179,63 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         captured_counts = vial_store.captured_count_by_memory()
         any_vial_ids = vial_store.has_any_vial_by_memory()
-        return _enrich_with_vials(
-            mem.to_dashboard_dict(), mem.id, captured_counts, any_vial_ids
+        d = mem.to_dashboard_dict()
+        _enrich_with_vials(d, mem.id, captured_counts, any_vial_ids)
+        _enrich_with_freshness(d, mem, _now_utc(), captured_counts)
+        return d
+
+    @app.get("/api/board/health")
+    def board_health() -> dict[str, Any]:
+        """Garden v1: single board-health score + per-term breakdown.
+
+        Used by the masthead pill and the click-to-filter offenders view.
+        Computed live from current memories + captured-vial counts.
+        ``clean_streak_d`` and ``quest_bonus`` are 0 in v1 (introduced in v2).
+        """
+        mems = store.list_memories()
+        captured_counts = vial_store.captured_count_by_memory()
+        result = garden.compute_board_health(
+            mems,
+            _now_utc(),
+            captured_counts=captured_counts,
+            clean_streak_d=0,
+            quest_bonus=0,
         )
+        result["tier"] = garden.board_health_tier(result["score"])
+        return result
 
     @app.patch("/api/memories/{memory_id}/column")
     def patch_column(memory_id: str, body: dict[str, str]) -> dict[str, Any]:
         col = (body or {}).get("column", "").strip()
         if col not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {col}")
-        ok = store.update_column(memory_id, col)
+        # Garden v1: combine column update + tended bump into ONE atomic-ish
+        # metadata write so concurrent partials can't clobber each other.
+        ok = store.update_meta(
+            memory_id,
+            {"column": col, "last_tended_at": _now_utc()},
+        )
         if not ok:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         mirror_result = _mirror_column_to_source(memory_id, col)
         completion_mirror = _mirror_completion_to_source(memory_id, col)
+        # Return the enriched memory so the frontend can update in place
+        # (freshness dot must refresh, not just the board-health pill).
+        mem = store.get_memory(memory_id)
+        memory_dict = None
+        if mem is not None:
+            captured_counts = vial_store.captured_count_by_memory()
+            any_vial_ids = vial_store.has_any_vial_by_memory()
+            memory_dict = mem.to_dashboard_dict()
+            _enrich_with_vials(memory_dict, mem.id, captured_counts, any_vial_ids)
+            _enrich_with_freshness(memory_dict, mem, _now_utc(), captured_counts)
         return {
             "ok": True,
             "id": memory_id,
             "column": col,
             "mirror": mirror_result,
             "completion_mirror": completion_mirror,
+            "memory": memory_dict,
         }
 
     @app.patch("/api/memories/{memory_id}")
@@ -209,15 +269,24 @@ def create_app() -> FastAPI:
             mem.needs_human_strand_review = bool(body["needs_human_strand_review"])
         if mem.column not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {mem.column}")
+        # Garden v1: set tended timestamp BEFORE upsert (full upsert writes
+        # the whole metadata blob, so a post-upsert bump would race with
+        # the rewrite).
+        mem.last_tended_at = _now_utc()
         store.upsert_memory(mem)
         mirror_result = None
         completion_mirror = None
         if "column" in body and body["column"] is not None:
             mirror_result = _mirror_column_to_source(memory_id, mem.column)
             completion_mirror = _mirror_completion_to_source(memory_id, mem.column)
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
+        d = mem.to_dashboard_dict()
+        _enrich_with_vials(d, mem.id, captured_counts, any_vial_ids)
+        _enrich_with_freshness(d, mem, _now_utc(), captured_counts)
         return {
             "ok": True,
-            "memory": mem.to_dashboard_dict(),
+            "memory": d,
             "mirror": mirror_result,
             "completion_mirror": completion_mirror,
         }
@@ -285,6 +354,10 @@ def create_app() -> FastAPI:
             )
         vial = Vial.snapshot_from(mem, captured_text=text, capture_kind=kind)
         vial_store.upsert_vial(vial)
+        # Garden v1: posting (or skipping) a Vial counts as deliberate
+        # user care of the card. Bump independent of vial_store write so
+        # we don't couple the two domains.
+        store.bump_tended_at(memory_id, _now_utc())
         return {"ok": True, "vial": vial.to_dashboard_dict()}
 
     @app.delete("/api/vials/{vial_id}")
@@ -298,11 +371,16 @@ def create_app() -> FastAPI:
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1), top_k: int = 12) -> dict[str, Any]:
         results = store.search(q, top_k=top_k)
-        return {
-            "query": q,
-            "count": len(results),
-            "memories": [m.to_dashboard_dict() for m in results],
-        }
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
+        now = _now_utc()
+        out = []
+        for m in results:
+            d = m.to_dashboard_dict()
+            _enrich_with_vials(d, m.id, captured_counts, any_vial_ids)
+            _enrich_with_freshness(d, m, now, captured_counts)
+            out.append(d)
+        return {"query": q, "count": len(results), "memories": out}
 
     @app.get("/api/goals")
     def goals() -> dict[str, Any]:
@@ -540,11 +618,19 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=f"Enrichment failed: {e}") from e
 
         merged = overlay_regeneration(existing, task, result)
+        # Garden v1: regenerate is a deliberate user-initiated tend.
+        # Set BEFORE upsert (full-blob write would race with a post-bump).
+        merged.last_tended_at = _now_utc()
         store.upsert_memory(merged)
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
+        d = merged.to_dashboard_dict()
+        _enrich_with_vials(d, merged.id, captured_counts, any_vial_ids)
+        _enrich_with_freshness(d, merged, _now_utc(), captured_counts)
         return {
             "ok": True,
             "tokens_used": result.tokens_used,
-            "memory": merged.to_dashboard_dict(),
+            "memory": d,
         }
 
     @app.post("/api/recap")
