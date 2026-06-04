@@ -17,15 +17,17 @@ It runs entirely on your machine. Your To-Do data is read-only. Your enrichments
 3. [Core concepts](#core-concepts)
 4. [Connect Goals and lanes](#connect-goals-and-lanes)
 5. [Phased roadmap](#phased-roadmap)
-6. [Architecture](#architecture)
-7. [Quickstart](#quickstart)
-8. [The dashboard](#the-dashboard)
-9. [Configuration](#configuration)
-10. [Repository layout](#repository-layout)
-11. [Hard constraints](#hard-constraints)
-12. [Current status](#current-status)
-13. [Design notes](#design-notes)
-14. [License and acknowledgements](#license-and-acknowledgements)
+6. [Cross-PC mirror mode (optional)](#cross-pc-mirror-mode-optional)
+7. [Auto-sync and close writeback (optional)](#auto-sync-and-close-writeback-optional)
+8. [Architecture](#architecture)
+9. [Quickstart](#quickstart)
+10. [The dashboard](#the-dashboard)
+11. [Configuration](#configuration)
+12. [Repository layout](#repository-layout)
+13. [Hard constraints](#hard-constraints)
+14. [Current status](#current-status)
+15. [Design notes](#design-notes)
+16. [License and acknowledgements](#license-and-acknowledgements)
 
 ---
 
@@ -60,9 +62,11 @@ What it deliberately does **not** do (yet):
 - Require any custom Entra app registration
 
 It can optionally mirror your kanban column back to To-Do as a single
-`pensieve/col:<col>` tag on the source task. That tag is the only thing
-Pensieve ever writes upstream; user-authored categories are preserved byte
-for byte. Off by default. See [Cross-PC mirror mode](#cross-pc-mirror-mode-optional)
+`pensieve/col:<col>` tag on the source task, and (separately) mirror a
+drag-to-Closed by marking the source task complete via `MarkComplete()`.
+Both surfaces are namespace-scoped, reversible, and off by default. See
+[Cross-PC mirror mode](#cross-pc-mirror-mode-optional) and
+[Auto-sync and close writeback](#auto-sync-and-close-writeback-optional)
 below.
 
 ## Core concepts
@@ -196,9 +200,72 @@ The `pensieve/col:<col>` tag lives in the task's Outlook Categories field, which
 - Read-side hooks: `pensieve/sync.py::_column_from_task`, `_build_memory`, and `overlay_regeneration`
 - API surface: `patch_column` and `patch_memory` in `pensieve/api/server.py` now return a `mirror: {mirrored, reason}` field on every response
 - Settings: `pensieve/config.py` (`mirror_to_source`, `mirror_tag_prefix`)
-- Tests: `tests/test_outlook_com_sink.py` + `tests/test_sync_mirror_tag.py` (26 tests, no live Outlook required)
+- Tests: `tests/test_outlook_com_sink.py` + `tests/test_sync_mirror_tag.py` + `tests/test_scheduler.py` (117 tests, no live Outlook required)
 
 The writer is isolated from the read-only `OutlookCOMSource` so the "sources are read-only" invariant in [AGENTS.md](./AGENTS.md) stays intact.
+
+## Auto-sync and close writeback (optional)
+
+Two separate opt-in surfaces that together make Pensieve feel "live" instead of a thing you have to remember to refresh. Both are off by default; both share the same single-writer lock as the manual **Pull from To-Do** button so they can never collide with a click-driven sync.
+
+### Auto-sync scheduler
+
+When the FastAPI app starts, it spins up a background `AutoSyncScheduler` that fires on a fixed interval and runs the same code path as `POST /api/sync`. The dashboard's frontend poll (every 30 s) picks up new enrichments shortly after.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS` | `120` | Tick frequency. `0` disables the scheduler entirely. |
+| `PENSIEVE_AUTO_SYNC_SOURCE` | (empty) | Source the scheduler should pull from. Empty falls through to `PENSIEVE_DEFAULT_SOURCE`. **If your default source is `sample_file` for fast CLI work, set this to `outlook_com` or scheduler ticks will silently skip themselves.** |
+
+On startup you'll see one of two banners in the console:
+
+```
+Auto-sync scheduler started: every 120s from source 'outlook_com'.
+```
+
+or, if the resolved source is `sample_file` (re-syncing a static fixture every two minutes is pointless, so ticks no-op):
+
+```
+Auto-sync scheduler is enabled but the resolved source is 'sample_file',
+so ticks will be no-ops. Set PENSIEVE_AUTO_SYNC_SOURCE=outlook_com (or
+change PENSIEVE_DEFAULT_SOURCE) to actually pull from Outlook every 120s.
+```
+
+The scheduler shares one atomic lock with the manual `/api/sync` route, so a click during a tick and a tick during a click are both handled cleanly: whichever ran first owns the run, the other returns `already_running=true`.
+
+### Close writeback (drag-to-Closed → MarkComplete)
+
+When `PENSIEVE_MIRROR_COMPLETION=true`, dragging a card to the **Closed** column also calls `TaskItem.MarkComplete()` on the source Outlook task. That sets `Status`, `PercentComplete=100`, `DateCompleted=now`, and `Complete=True` consistently. Falls back to `item.Complete = True` for non-Task COM surfaces (e.g. a MailItem flagged as a task).
+
+**v1 is one-way close-only by design.** Dragging a card **out** of the Closed column does **not** reopen the source task. The rationale: an accidental drag from Closed must not silently un-complete a task that may be shared with delegates. If you want to reopen a task, do it in Outlook directly. The next auto-sync moves the card back to **Memory** via the existing completion-drift handler in `pensieve.sync`.
+
+The flag is intentionally separate from `PENSIEVE_MIRROR_TO_SOURCE` because completion is a much higher-impact write than a category tag (visible to delegates, propagates to shared lists, harder to undo). You can run the column-tag mirror on and the close writeback off, or vice versa.
+
+A toast appears on the dashboard after a drag-to-Closed:
+
+- `Marked complete in To-Do` — writeback succeeded
+- `Closed locally but To-Do writeback failed: <reason>` — sink raised an error; the local column move is already persisted
+- `Closed locally - upstream task not found in To-Do` — source `EntryID` was stale (task deleted upstream); next sync will reconcile
+
+### Recommended setup for the live experience
+
+```
+PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS=120
+PENSIEVE_AUTO_SYNC_SOURCE=outlook_com
+PENSIEVE_MIRROR_TO_SOURCE=true
+PENSIEVE_MIRROR_COMPLETION=true
+```
+
+With those four set, the kanban auto-refreshes both ways: edits in Outlook show up in Pensieve within ~150 s worst-case, and drags in Pensieve write straight back to the source task.
+
+### Where it lives in the code
+
+- Scheduler: `pensieve/scheduler.py` (`AutoSyncScheduler` + `start_sync_job` helper, both used by `POST /api/sync` and the lifespan loop)
+- Atomic lock: `pensieve/sync_state.py::SyncJobTracker.try_begin`
+- Completion writer: `pensieve/sources/outlook_com_sink.py::set_completion` (uses `MarkComplete()` with `item.Complete = True` fallback; per-call `CoInitialize/CoUninitialize` bracket so it works on any FastAPI worker thread)
+- API wire-up: `_mirror_completion_to_source` in `pensieve/api/server.py` (only fires when the target column is `closed`)
+- Frontend poll: `refreshMemoriesIfSafe` in `frontend-proto/pensieve.js` (skips when a modal is open, a drag is in flight, a PATCH is in flight, or the tab is hidden)
+- Tests: `tests/test_scheduler.py` (8 tests: atomic gate under a 10-way concurrent race, periodic firing, sample_file silent-skip, `auto_sync_source` override, clean stop) + completion-mirror cases in `tests/test_outlook_com_sink.py`
 
 ## Architecture
 
@@ -443,6 +510,12 @@ All config flows through `.env`. The most important keys:
 | `PENSIEVE_ENRICHMENT_CONCURRENCY` | `3` | How many tasks to enrich in parallel |
 | `PENSIEVE_OUTLOOK_SKIP_COMPLETED_OLDER_DAYS` | `30` | Don't bother enriching completed tasks older than this |
 | `PENSIEVE_API_CORS_ORIGINS` | `http://localhost:8765,http://127.0.0.1:8765,null` | Comma-separated CORS allow-list |
+| `PENSIEVE_MIRROR_TO_SOURCE` | `false` | Mirror column drags back to Outlook as a `pensieve/col:<col>` category. See [Cross-PC mirror mode](#cross-pc-mirror-mode-optional). |
+| `PENSIEVE_MIRROR_TAG_PREFIX` | `pensieve/col:` | Prefix that scopes every category Pensieve will read or write. |
+| `PENSIEVE_MIRROR_COMPLETION` | `false` | When true, dragging a card to **Closed** also calls `TaskItem.MarkComplete()` on the source. v1 is one-way close-only. See [Auto-sync and close writeback](#auto-sync-and-close-writeback-optional). |
+| `PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS` | `120` | How often the backend silently re-pulls from your source. `0` disables the scheduler. |
+| `PENSIEVE_AUTO_SYNC_SOURCE` | (empty) | Which source the scheduler should hit. Empty falls through to `PENSIEVE_DEFAULT_SOURCE`. Set to `outlook_com` if your default is `sample_file`. |
+| `PENSIEVE_RECAP_LIST_NAMES` | `CISO GRC` | Comma-separated allowlist of Outlook list names that feed `POST /api/recap`. Blank disables the filter (everything goes in). |
 
 See `.env.example` for the canonical list.
 
@@ -468,6 +541,7 @@ pensieve/
 |   |-- cli.py                 Typer CLI: init, sync, status, search, serve, goals
 |   |-- config.py              pydantic-settings, .env loader
 |   |-- sync.py                Sync orchestrator: pull -> enrich -> upsert
+|   |-- scheduler.py           Background AutoSyncScheduler + start_sync_job helper (shared by /api/sync and the lifespan-started periodic loop)
 |
 |-- frontend-proto/            Local-first HUD kanban dashboard (HTML/CSS/JS)
 |   |-- index.html
@@ -515,7 +589,17 @@ These are non-negotiable for the foreseeable future:
 
 ## Current status
 
-Phase 1 is complete enough to use day to day for a single user. Phase 2 (closure detection and Vials) and Phase 4 (calendar integration) are the next big rocks. Phase 4 is parked on the Microsoft Secure Future Initiative timeline rather than on Pensieve's design — see `OPEN-QUESTIONS.md` for the current state of that conversation.
+Phase 1 is the daily-driver state. Beyond the core Phase 1 cut, the live build also includes:
+
+- **AI-curated `display_title`** rendered on cards (long source titles get a clean 5-12-word display title at enrichment time; the source `Subject` is never modified).
+- **Two-way close sync.** Drag a card to **Closed** and Pensieve marks the source task complete in Outlook via `MarkComplete()`. The reverse direction (close in To-Do → card moves to Closed) was already wired; the new 2-minute auto-sync makes that round-trip feel instant.
+- **Backend auto-sync scheduler** (default every 120s) plus a **frontend auto-refresh** poll (every 30s) so the kanban stays current without manual "Pull from To-Do" clicks.
+- **Connect-recap list filter.** `POST /api/recap` only consumes tasks from lists on `PENSIEVE_RECAP_LIST_NAMES` (default `CISO GRC`), so a personal `home` or `UW Lectures` list never leaks into a work recap unless you explicitly opt them in per call.
+- **Cross-PC kanban mirror** (the original `pensieve/col:<col>` Categories writeback). Off by default, see the section above.
+
+Phase 2 (closure capture and Vials) and Phase 4 (calendar integration) are the next big rocks. Phase 4 is parked on the Microsoft Secure Future Initiative timeline rather than on Pensieve's design. See `OPEN-QUESTIONS.md` for the current state of that conversation.
+
+Tests: 117 / 117 pass. See `tests/` for the suite layout.
 
 ## Design notes
 
