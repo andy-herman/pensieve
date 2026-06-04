@@ -137,7 +137,8 @@ Pensieve/
 │   │   └── enricher.py
 │   ├── store/
 │   │   ├── schema.py      # Memory + Vial Pydantic models
-│   │   └── chroma.py      # ChromaMemoryStore (PersistentClient)
+│   │   ├── chroma.py      # ChromaMemoryStore (PersistentClient)
+│   │   └── vials.py       # ChromaVialStore (closure-capture; outlives Memories)
 │   └── api/
 │       └── server.py      # FastAPI + StaticFiles mount for the dashboard
 │

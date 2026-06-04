@@ -139,6 +139,26 @@
     </article>
   </div>
 
+  <div id="vial-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="vial"></div>
+    <article class="modal-card vial-modal-card" role="dialog" aria-modal="true" aria-labelledby="vial-title">
+      <button class="modal-close" data-close="vial" aria-label="Close">x</button>
+      <div class="modal-body">
+        <h2 id="vial-title" class="vial-title">&#x1F4DC; Closure capture</h2>
+        <p class="vial-subtitle">What changed when this closed? One sentence is fine.</p>
+        <p class="vial-context" id="vial-context"></p>
+        <textarea id="vial-text" class="vial-text" rows="4" maxlength="2000"
+          placeholder="e.g. Shifted policy from X to Y after Bob's review. Unblocks Q3 approvals."></textarea>
+        <div class="vial-actions">
+          <button id="vial-skip" class="ghost-button" type="button" title="Dismiss without capturing">Skip</button>
+          <button id="vial-cancel" class="ghost-button" type="button" data-close="vial">Cancel</button>
+          <button id="vial-save" class="primary-button" type="button">Save Vial</button>
+        </div>
+        <p class="vial-footnote">Vials are durable promo evidence. They outlive the source task.</p>
+      </div>
+    </article>
+  </div>
+
   <div id="goals-modal" class="modal" hidden>
     <div class="modal-backdrop" data-close="goals"></div>
     <article class="modal-card goals-modal-card" role="dialog" aria-modal="true" aria-labelledby="goals-title">

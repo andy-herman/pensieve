@@ -464,7 +464,7 @@ async function refreshMemoriesIfSafe() {
   if (pollInFlight) return;
   if (window.__pensievePatchInFlight > 0) return;
   if (typeof DRAG !== "undefined" && DRAG && DRAG.id) return;
-  if (_isModalOpen("card-modal") || _isModalOpen("goals-modal")) return;
+  if (_isModalOpen("card-modal") || _isModalOpen("goals-modal") || _isModalOpen("vial-modal")) return;
   pollInFlight = true;
   try {
     const ok = await loadMemoriesFromApi();
@@ -852,13 +852,26 @@ function renderCard(m, idx) {
     </div>
     <p class="card-why">${escapeHtml(m.why)}</p>
     ${goalsHtml ? `<div class="card-goals">${goalsHtml}</div>` : ""}
+    ${renderVialAffordance(m)}
   `;
 
   el.addEventListener("click", e => {
     if (el.classList.contains("dragging")) return;
+    // Chevron / badge clicks handle themselves — don't open the card modal
+    if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
     openModal(m);
   });
   return el;
+}
+
+function renderVialAffordance(m) {
+  if (m.pending_closure_capture) {
+    return `<button class="card-vial-chevron" type="button" data-memory-id="${escapeHtml(m.id)}" title="Capture what changed when this closed">&#x1F4DC; CAPTURE</button>`;
+  }
+  if (m.vials_count && m.vials_count > 0) {
+    return `<button class="card-vial-badge" type="button" data-memory-id="${escapeHtml(m.id)}" title="${m.vials_count} closure note(s) captured">&#x1F4DC; ${m.vials_count}</button>`;
+  }
+  return "";
 }
 
 function escapeHtml(s) {
@@ -1070,6 +1083,59 @@ async function saveMemoryEdit(memoryId) {
 }
 
 function closeModal() { $("#card-modal").hidden = true; }
+
+// ----- 7b. Vial modal (closure capture) -----
+
+const VIAL = { memoryId: null };
+
+function openVialModal(memoryId) {
+  const m = STATE.memories.find(x => x.id === memoryId);
+  if (!m) return;
+  VIAL.memoryId = memoryId;
+  const titleText = m.display_title || m.title || "(untitled)";
+  const ctx = $("#vial-context");
+  if (ctx) ctx.textContent = titleText;
+  const ta = $("#vial-text");
+  if (ta) { ta.value = ""; }
+  $("#vial-modal").hidden = false;
+  setTimeout(() => { if (ta) ta.focus(); }, 0);
+}
+
+function closeVialModal() {
+  $("#vial-modal").hidden = true;
+  VIAL.memoryId = null;
+}
+
+async function saveVial(kind) {
+  const memoryId = VIAL.memoryId;
+  if (!memoryId) return;
+  const text = ($("#vial-text").value || "").trim();
+  if (kind === "captured" && !text) {
+    toast("Add a sentence, or use Skip to dismiss");
+    return;
+  }
+  const apiId = memoryId.replace(/^mem_/, "");
+  window.__pensievePatchInFlight = (window.__pensievePatchInFlight || 0) + 1;
+  try {
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/vials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`${res.status}: ${detail}`);
+    }
+    closeVialModal();
+    toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
+    await loadMemoriesFromApi();
+    renderBoard();
+  } catch (e) {
+    toast(`Vial save failed: ${e.message}`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
+  }
+}
 
 // ----- 8. Goals editor -----
 
@@ -1498,10 +1564,24 @@ function init() {
   $("#goals-modal").addEventListener("click", e => {
     if (e.target.dataset.close === "goals") $("#goals-modal").hidden = true;
   });
+  $("#vial-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "vial") closeVialModal();
+  });
+  $("#vial-save").addEventListener("click", () => saveVial("captured"));
+  $("#vial-skip").addEventListener("click", () => saveVial("skipped"));
+  // Delegate chevron/badge clicks on the kanban board
+  document.addEventListener("click", e => {
+    const chevron = e.target.closest(".card-vial-chevron, .card-vial-badge");
+    if (chevron) {
+      e.stopPropagation();
+      openVialModal(chevron.dataset.memoryId);
+    }
+  });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       closeModal();
       $("#goals-modal").hidden = true;
+      closeVialModal();
     }
   });
 }

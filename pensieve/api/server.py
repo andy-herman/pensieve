@@ -16,7 +16,8 @@ from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sources.outlook_com_sink import get_sink_for_source
 from pensieve.sources.sink import TaskSink
-from pensieve.store import ChromaMemoryStore
+from pensieve.store import ChromaMemoryStore, ChromaVialStore
+from pensieve.store.schema import Vial
 from pensieve.sync_state import get_tracker
 
 
@@ -47,6 +48,21 @@ def create_app() -> FastAPI:
     )
 
     store = ChromaMemoryStore(settings)
+    vial_store = ChromaVialStore(settings)
+
+    def _enrich_with_vials(mem_dict: dict[str, Any], memory_id: str,
+                           captured_counts: dict[str, int],
+                           any_vial_ids: set[str]) -> dict[str, Any]:
+        """Add vials_count + pending_closure_capture to a Memory dashboard dict.
+
+        Pending = column is closed AND no Vial (captured or skipped) exists
+        for this memory. A Skip clears the chevron without adding to
+        vials_count (which only counts captured Vials).
+        """
+        is_closed = mem_dict.get("column") == "closed"
+        mem_dict["vials_count"] = captured_counts.get(memory_id, 0)
+        mem_dict["pending_closure_capture"] = bool(is_closed and memory_id not in any_vial_ids)
+        return mem_dict
 
     def _mirror_column_to_source(memory_id: str, column: str) -> dict[str, Any]:
         """Best-effort writeback of `pensieve/col:<col>` to the upstream task.
@@ -123,9 +139,14 @@ def create_app() -> FastAPI:
     @app.get("/api/memories")
     def list_memories() -> dict[str, Any]:
         mems = store.list_memories()
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
         return {
             "count": len(mems),
-            "memories": [m.to_dashboard_dict() for m in mems],
+            "memories": [
+                _enrich_with_vials(m.to_dashboard_dict(), m.id, captured_counts, any_vial_ids)
+                for m in mems
+            ],
         }
 
     @app.get("/api/memories/{memory_id}")
@@ -133,7 +154,11 @@ def create_app() -> FastAPI:
         mem = store.get_memory(memory_id)
         if mem is None:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
-        return mem.to_dashboard_dict()
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
+        return _enrich_with_vials(
+            mem.to_dashboard_dict(), mem.id, captured_counts, any_vial_ids
+        )
 
     @app.patch("/api/memories/{memory_id}/column")
     def patch_column(memory_id: str, body: dict[str, str]) -> dict[str, Any]:
@@ -196,6 +221,79 @@ def create_app() -> FastAPI:
             "mirror": mirror_result,
             "completion_mirror": completion_mirror,
         }
+
+    # ----- Vials (closure-capture records) -----
+
+    @app.get("/api/vials")
+    def list_all_vials() -> dict[str, Any]:
+        vials = vial_store.list_vials()
+        return {
+            "count": len(vials),
+            "vials": [v.to_dashboard_dict() for v in vials],
+        }
+
+    @app.get("/api/memories/{memory_id}/vials")
+    def list_memory_vials(memory_id: str) -> dict[str, Any]:
+        if store.get_memory(memory_id) is None:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        vials = vial_store.list_vials_for_memory(memory_id)
+        return {
+            "memory_id": memory_id,
+            "count": len(vials),
+            "vials": [v.to_dashboard_dict() for v in vials],
+        }
+
+    @app.post("/api/memories/{memory_id}/vials")
+    def create_vial(memory_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Create a closure-capture Vial for a closed Memory.
+
+        Body: {captured_text: str, capture_kind?: "captured" | "skipped"}
+        Defaults capture_kind to "captured". Rejects with 409 unless the
+        Memory is in the closed column. Rejects empty captured_text when
+        capture_kind == "captured"; allows empty when "skipped".
+        """
+        mem = store.get_memory(memory_id)
+        if mem is None:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+        if mem.column != "closed":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Memory {memory_id} is in column '{mem.column}'; "
+                    "closure capture is only allowed for closed memories"
+                ),
+            )
+        body = body or {}
+        kind = (body.get("capture_kind") or "captured").strip()
+        if kind not in ("captured", "skipped"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid capture_kind: {kind!r} (allowed: 'captured', 'skipped')",
+            )
+        text = str(body.get("captured_text") or "").strip()
+        if len(text) > 2000:
+            raise HTTPException(
+                status_code=400, detail="captured_text exceeds 2000 character limit"
+            )
+        if kind == "captured" and not text:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "captured_text is required when capture_kind == 'captured'; "
+                    "use capture_kind == 'skipped' to dismiss the chevron without text"
+                ),
+            )
+        vial = Vial.snapshot_from(mem, captured_text=text, capture_kind=kind)
+        vial_store.upsert_vial(vial)
+        return {"ok": True, "vial": vial.to_dashboard_dict()}
+
+    @app.delete("/api/vials/{vial_id}")
+    def delete_vial(vial_id: str) -> dict[str, Any]:
+        existing = vial_store.get_vial(vial_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Vial {vial_id} not found")
+        vial_store.delete_vial(vial_id)
+        return {"ok": True, "id": vial_id}
 
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1), top_k: int = 12) -> dict[str, Any]:

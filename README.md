@@ -132,8 +132,8 @@ Read tasks from a canned `samples.json`, run them through the enrichment prompt,
 **Phase 1 — Local stack with ChromaDB and live To-Do** *(current)*
 Read live To-Do tasks via Outlook COM (read-only), enrich them, persist to local ChromaDB, serve via FastAPI, render on the dashboard. No writeback, no calendar, no Graph.
 
-**Phase 2 — Closure capture and Vials**
-When you complete a task in To-Do, Pensieve detects it on the next sync, prompts you for an impact statement, and stores a Vial in Chroma. The Vial is searchable evidence of finished work for self-assessments and reviews.
+**Phase 2 — Closure capture and Vials** *(v1 MVP shipped)*
+When a task lands in the Closed column, the card grows an amber **&#x1F4DC; CAPTURE** chevron prompting you for one sentence about what changed. Pensieve stores that as a Vial: a durable, snapshot-backed promo evidence record that **outlives the source task** (even if you later delete it from To-Do). v1 MVP is user-typed; v1.1 will add an optional AI-polish pass that drafts an IC-framed statement from your sentence. See the dashboard section below for usage, and `brainstorms/01-review-findings.md` for the full Vial v1 design.
 
 **Phase 3 — Reflection and Reverie debrief**
 Weekly and monthly reflection prompts. Closing-of-Reverie debrief flow. Reflection turns into structured notes you can paste into a manager update or a self-assessment without losing the original framing.
@@ -488,6 +488,7 @@ Features:
 - **Text filter**: type in the search box to filter by title, why, or impact across the loaded memories.
 - **Semantic search**: press Enter in the search box (or click the magnifier) to query Chroma. The board filters to the semantic top-K.
 - **Review readout**: top-right of the masthead, reads `[ REVIEW · NN ]` (mono, amber underline when non-zero) for the count of memories currently in the review queue (low confidence or explicitly flagged by the LLM). Flagged cards also carry a `> STATUS // REVIEW` rule under their title.
+- **Closure capture (Vials)**: closed cards with no closure note yet grow an amber **&#x1F4DC; CAPTURE** chevron. Click it for a one-textarea modal — type a sentence about what changed, hit Save, and Pensieve stores it as a Vial (durable promo evidence with a frozen snapshot of the closure-time context). Hit Skip to dismiss without writing anything. Cards with one or more captured Vials show a small **&#x1F4DC; N** badge instead.
 - **Goals editor**: the **Set Goals** button opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals. Saves to `data/connect-goals.json` via the API.
 
 The dashboard remains functional without the API server: if `/api/healthz` is unreachable, it falls back to the bundled seed memories and shows "offline (seed data)" in the footer.
@@ -534,7 +535,8 @@ pensieve/
 |   |   |-- connect_goals.py   Loads data/connect-goals.json
 |   |   |-- enricher.py        Per-task enrichment with structured JSON output
 |   |-- store/                 ChromaDB-backed memory store
-|   |   |-- chroma.py          PersistentClient wrapper (upsert, get, search)
+|   |   |-- chroma.py          ChromaMemoryStore: PersistentClient wrapper for Memories (upsert, get, search)
+|   |   |-- vials.py           ChromaVialStore: closure-capture records, durable (outlive Memories)
 |   |   |-- schema.py          Memory + Vial pydantic models
 |   |-- api/                   FastAPI server
 |   |   |-- server.py          Routes + static mount for the dashboard
@@ -592,14 +594,15 @@ These are non-negotiable for the foreseeable future:
 Phase 1 is the daily-driver state. Beyond the core Phase 1 cut, the live build also includes:
 
 - **AI-curated `display_title`** rendered on cards (long source titles get a clean 5-12-word display title at enrichment time; the source `Subject` is never modified).
+- **Closure capture (Vial v1 MVP).** Closed cards grow an amber **&#x1F4DC; CAPTURE** chevron — one click, one sentence, one Vial. Vials are durable evidence and survive upstream task deletion. v1.1 adds optional AI polish; v1.2 wires Vials into recap exports. See `brainstorms/01-review-findings.md` for the design.
 - **Two-way close sync.** Drag a card to **Closed** and Pensieve marks the source task complete in Outlook via `MarkComplete()`. The reverse direction (close in To-Do → card moves to Closed) was already wired; the new 2-minute auto-sync makes that round-trip feel instant.
 - **Backend auto-sync scheduler** (default every 120s) plus a **frontend auto-refresh** poll (every 30s) so the kanban stays current without manual "Pull from To-Do" clicks.
 - **Connect-recap list filter.** `POST /api/recap` only consumes tasks from lists on `PENSIEVE_RECAP_LIST_NAMES` (default `CISO GRC`), so a personal `home` or `UW Lectures` list never leaks into a work recap unless you explicitly opt them in per call.
 - **Cross-PC kanban mirror** (the original `pensieve/col:<col>` Categories writeback). Off by default, see the section above.
 
-Phase 2 (closure capture and Vials) and Phase 4 (calendar integration) are the next big rocks. Phase 4 is parked on the Microsoft Secure Future Initiative timeline rather than on Pensieve's design. See `OPEN-QUESTIONS.md` for the current state of that conversation.
+Phase 2 (Vials) v1 MVP is shipped. v1.1 (AI polish) and v1.2 (recap integration) are tracked in [GitHub issue #1](https://github.com/andy-herman/pensieve/issues/1). Phase 4 (calendar integration) is parked on the Microsoft Secure Future Initiative timeline rather than on Pensieve's design. See `OPEN-QUESTIONS.md` for the current state of that conversation.
 
-Tests: 117 / 117 pass. See `tests/` for the suite layout.
+Tests: 147 / 147 pass. See `tests/` for the suite layout.
 
 ## Design notes
 

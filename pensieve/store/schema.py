@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,13 +119,136 @@ class Memory(BaseModel):
         }
 
 
-class Vial(BaseModel):
-    """Closure record for a completed Memory. Phase 2; stub now."""
+def _new_vial_id() -> str:
+    return f"vial_{uuid.uuid4().hex}"
 
-    id: str
+
+class Vial(BaseModel):
+    """A closure-capture record: what changed when a Memory was closed.
+
+    Vials are durable promo evidence. They outlive their parent Memory —
+    if the upstream To-Do task is later deleted (orphan sweep) or the
+    Memory is re-edited / re-enriched, the Vial's snapshot fields preserve
+    the closure-time context for future recap/promo use.
+    """
+
+    id: str = Field(default_factory=_new_vial_id)
     memory_id: str
-    title: str
-    impact_statement: str = ""
     captured_at: datetime = Field(default_factory=_utcnow)
-    connect_goal_ids: list[str] = Field(default_factory=list)
-    raw_memory_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+    # Either a meaningful captured note or an explicit skip marker
+    capture_kind: Literal["captured", "skipped"] = "captured"
+    captured_text: str = ""  # required (non-empty) iff capture_kind == "captured"
+
+    # Reserved for v1.1 AI polish (empty in v1)
+    polished_text: str = ""
+
+    # Closure-time snapshots: frozen at create; don't follow Memory edits
+    title_snapshot: str = ""
+    display_title_snapshot: str = ""
+    why_snapshot: str = ""
+    impact_snapshot: str = ""
+    connect_alignment_note_snapshot: str = ""
+    connect_goal_ids_snapshot: list[str] = Field(default_factory=list)
+    suggested_strand_snapshot: Optional[str] = None
+    source_snapshot: str = ""
+    source_task_id_snapshot: str = ""
+    list_name_snapshot: str = ""
+    column_snapshot: str = "closed"
+    completed_at_snapshot: Optional[datetime] = None
+    due_date_snapshot: Optional[datetime] = None
+
+    # Provenance for future audit / UI hints
+    source: str = "user"  # "user" | "ai_drafted" | "ai_edited" (v1: always "user")
+    tokens_used: int = 0
+
+    def to_chroma_metadata(self) -> dict[str, Any]:
+        """Flatten to Chroma-friendly scalars (str/int/float/bool only)."""
+        return {
+            "memory_id": self.memory_id,
+            "captured_at": self.captured_at.isoformat(),
+            "capture_kind": self.capture_kind,
+            "captured_text": self.captured_text,
+            "polished_text": self.polished_text,
+            "title_snapshot": self.title_snapshot,
+            "display_title_snapshot": self.display_title_snapshot,
+            "why_snapshot": self.why_snapshot,
+            "impact_snapshot": self.impact_snapshot,
+            "connect_alignment_note_snapshot": self.connect_alignment_note_snapshot,
+            "connect_goal_ids_snapshot_csv": ",".join(self.connect_goal_ids_snapshot),
+            "suggested_strand_snapshot": self.suggested_strand_snapshot or "",
+            "source_snapshot": self.source_snapshot,
+            "source_task_id_snapshot": self.source_task_id_snapshot,
+            "list_name_snapshot": self.list_name_snapshot,
+            "column_snapshot": self.column_snapshot,
+            "completed_at_snapshot": (
+                self.completed_at_snapshot.isoformat() if self.completed_at_snapshot else ""
+            ),
+            "due_date_snapshot": (
+                self.due_date_snapshot.isoformat() if self.due_date_snapshot else ""
+            ),
+            "source": self.source,
+            "tokens_used": int(self.tokens_used),
+        }
+
+    def to_dashboard_dict(self) -> dict[str, Any]:
+        """JSON shape returned by Vial API endpoints."""
+        return {
+            "id": self.id,
+            "memory_id": self.memory_id,
+            "captured_at": self.captured_at.isoformat(),
+            "capture_kind": self.capture_kind,
+            "captured_text": self.captured_text,
+            "polished_text": self.polished_text,
+            "title_snapshot": self.title_snapshot,
+            "display_title_snapshot": self.display_title_snapshot,
+            "why_snapshot": self.why_snapshot,
+            "impact_snapshot": self.impact_snapshot,
+            "connect_alignment_note_snapshot": self.connect_alignment_note_snapshot,
+            "connect_goal_ids_snapshot": list(self.connect_goal_ids_snapshot),
+            "suggested_strand_snapshot": self.suggested_strand_snapshot,
+            "source_snapshot": self.source_snapshot,
+            "source_task_id_snapshot": self.source_task_id_snapshot,
+            "list_name_snapshot": self.list_name_snapshot,
+            "column_snapshot": self.column_snapshot,
+            "completed_at_snapshot": (
+                self.completed_at_snapshot.isoformat() if self.completed_at_snapshot else None
+            ),
+            "due_date_snapshot": (
+                self.due_date_snapshot.isoformat() if self.due_date_snapshot else None
+            ),
+            "source": self.source,
+            "tokens_used": self.tokens_used,
+        }
+
+    @classmethod
+    def snapshot_from(
+        cls,
+        memory: "Memory",
+        *,
+        captured_text: str = "",
+        capture_kind: str = "captured",
+    ) -> "Vial":
+        """Build a Vial that snapshots a Memory at closure-time.
+
+        The Memory's promo-relevant context is frozen into the Vial so a
+        later re-edit or re-enrich of the Memory doesn't rewrite history.
+        """
+        return cls(
+            memory_id=memory.id,
+            capture_kind=capture_kind,
+            captured_text=captured_text,
+            title_snapshot=memory.title,
+            display_title_snapshot=memory.display_title or "",
+            why_snapshot=memory.why,
+            impact_snapshot=memory.impact,
+            connect_alignment_note_snapshot=memory.connect_alignment_note,
+            connect_goal_ids_snapshot=list(memory.connect_goal_ids),
+            suggested_strand_snapshot=memory.suggested_strand,
+            source_snapshot=memory.source,
+            source_task_id_snapshot=memory.source_task_id,
+            list_name_snapshot=memory.list_name,
+            column_snapshot=memory.column,
+            completed_at_snapshot=memory.completed_at,
+            due_date_snapshot=memory.due_date,
+        )

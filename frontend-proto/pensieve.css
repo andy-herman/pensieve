@@ -761,6 +761,115 @@ body[data-view="lanes"] .board,
 .goal-chip[data-lane="sage"]    { color: var(--teal); }
 .goal-chip[data-lane="rose"]    { color: var(--pink); }
 
+/* Closure-capture chevron + badge (Vial v1).
+   Chevron = amber, pulsing — appears on closed cards with no Vial yet.
+   Badge   = subtle — appears once a Vial exists, shows count. */
+.card-vial-chevron,
+.card-vial-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--sp-3);
+  padding: 4px 9px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  cursor: pointer;
+  clip-path: polygon(0 4px, 4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
+}
+
+.card-vial-chevron {
+  color: var(--amber, #ffb454);
+  border: 1px solid var(--amber, #ffb454);
+  background: rgba(255, 180, 84, 0.08);
+  animation: vial-chevron-pulse 2.6s ease-in-out infinite;
+}
+
+.card-vial-chevron:hover {
+  background: rgba(255, 180, 84, 0.18);
+  filter: brightness(1.15);
+}
+
+@keyframes vial-chevron-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 180, 84, 0.0); }
+  50%      { box-shadow: 0 0 6px 1px rgba(255, 180, 84, 0.35); }
+}
+
+.card-vial-badge {
+  color: rgba(168, 216, 240, 0.85);
+  border: 1px solid rgba(168, 216, 240, 0.4);
+}
+
+.card-vial-badge:hover {
+  color: var(--cyan-light);
+  border-color: var(--cyan-light);
+}
+
+/* Vial modal — minimal one-textarea closure capture flow */
+.vial-modal-card {
+  max-width: 560px;
+}
+
+.vial-title {
+  margin: 0 0 var(--sp-1);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: var(--amber, #ffb454);
+}
+
+.vial-subtitle {
+  margin: 0 0 var(--sp-2);
+  color: var(--muted-strong);
+  font-size: 0.85rem;
+}
+
+.vial-context {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid rgba(168, 216, 240, 0.4);
+  color: var(--cyan-light);
+  font-style: italic;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.vial-text {
+  width: 100%;
+  min-height: 96px;
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(4, 12, 24, 0.65);
+  color: inherit;
+  border: 1px solid rgba(168, 216, 240, 0.25);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.vial-text:focus {
+  outline: none;
+  border-color: var(--amber, #ffb454);
+  box-shadow: 0 0 4px rgba(255, 180, 84, 0.3);
+}
+
+.vial-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+.vial-footnote {
+  margin: var(--sp-3) 0 0;
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
 /* Wax-seal "needs review" badge: retired in the diagnostic-readout redesign.
    Status is now communicated via .card-status (under the title) instead of a
    corner badge. Kept the rule to neutralize any stale DOM. */
