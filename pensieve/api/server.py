@@ -12,6 +12,8 @@ from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from pensieve import achievement_state as achievement_state_mod
+from pensieve import achievements as achievements_mod
 from pensieve import garden
 from pensieve import quest_state as quest_state_mod
 from pensieve import quests as quests_mod
@@ -113,8 +115,18 @@ def create_app() -> FastAPI:
         was_clean = quests_mod.is_board_clean(
             mems, now, captured_counts=captured_counts
         )
+        # Capture yesterday's intrinsic health snapshot for the level-summary
+        # endpoint (Garden v3) — uses the streak we had BEFORE this rollover.
+        snapshot = garden.compute_board_health(
+            mems,
+            now,
+            captured_counts=captured_counts,
+            clean_streak_d=state.clean_streak_d,
+            quest_bonus=0,
+        )
         quest_state_mod.record_yesterday_clean(
-            state, was_clean=was_clean, now=now
+            state, was_clean=was_clean, now=now,
+            health_score=int(snapshot["score"]),
         )
         # Pre-compute today's intrinsic health to drive the hit-95-health gate.
         prelim = garden.compute_board_health(
@@ -380,6 +392,89 @@ def create_app() -> FastAPI:
             ),
             "quest_bonus": quest_state_mod.quest_bonus_today(state),
         }
+
+    # ----- Garden v3 helpers ------------------------------------------------
+
+    def _evaluate_and_merge_achievements(
+        now: datetime,
+    ) -> tuple[achievement_state_mod.AchievementState, set[str]]:
+        """Load achievement state, evaluate predicates, persist new unlocks.
+
+        Returns ``(state, new_ids)`` so the API surface can render confetti
+        triggers when ``new_ids`` is non-empty. Idempotent — repeated calls
+        without any predicate flipping return ``(state, set())``.
+        """
+        mems = store.list_memories()
+        vials = vial_store.list_vials()
+        # Use the post-rollover quest_state so the clean-day history is current.
+        q_state = _get_or_init_quest_state(now)
+        # Use INTRINSIC health (no quest_bonus) to gate Sharpshooter — earning
+        # a +5 quest bonus shouldn't shortcut the 95 threshold.
+        captured_counts = vial_store.captured_count_by_memory()
+        live = garden.compute_board_health(
+            mems,
+            now,
+            captured_counts=captured_counts,
+            clean_streak_d=q_state.clean_streak_d,
+            quest_bonus=0,
+        )
+        should = achievements_mod.evaluate(
+            mems, vials,
+            current_health=int(live["score"]),
+            history=q_state.history,
+        )
+        state = achievement_state_mod.load_state(settings.achievements_path)
+        state, new_ids = achievement_state_mod.merge_unlocked(state, should, now)
+        if new_ids:
+            achievement_state_mod.save_state(state, settings.achievements_path)
+        return state, new_ids
+
+    @app.get("/api/achievements")
+    def list_achievements() -> dict[str, Any]:
+        """Garden v3: list all badges with locked / unlocked status.
+
+        Auto-evaluates on every call (idempotent). When new unlocks land,
+        the response includes ``new_unlocks`` so the frontend can fire its
+        confetti micro-burst once. Subsequent calls return an empty
+        ``new_unlocks`` list (the badges stay in ``unlocked``).
+        """
+        now = _now_utc()
+        state, new_ids = _evaluate_and_merge_achievements(now)
+        unlocked_by_id = {u.id: u for u in state.unlocked}
+        out_defs = []
+        for d in achievements_mod.definitions():
+            entry = dict(d)
+            u = unlocked_by_id.get(d["id"])
+            entry["unlocked"] = u is not None
+            entry["unlocked_at"] = (
+                u.unlocked_at.astimezone(timezone.utc).isoformat() if u else None
+            )
+            out_defs.append(entry)
+        unlocked_count = sum(1 for d in out_defs if d["unlocked"])
+        return {
+            "achievements": out_defs,
+            "total": len(out_defs),
+            "unlocked_count": unlocked_count,
+            "new_unlocks": sorted(new_ids),
+        }
+
+    @app.get("/api/garden/level-summary")
+    def level_summary() -> dict[str, Any]:
+        """Garden v3: trailing-7-days roll-up.
+
+        Designed for the Friday digest (Issue #3) to consume — exposed
+        standalone here so the dashboard can also show a "this week"
+        block. Returns counts + capture rate + week-over-week health
+        delta + streak data. Reads day-snapshot history from
+        :mod:`pensieve.quest_state`.
+        """
+        now = _now_utc()
+        state = _get_or_init_quest_state(now)
+        mems = store.list_memories()
+        vials = vial_store.list_vials()
+        return achievements_mod.build_level_summary(
+            mems, vials, now=now, history=state.history
+        )
 
     @app.patch("/api/memories/{memory_id}/column")
     def patch_column(memory_id: str, body: dict[str, str]) -> dict[str, Any]:

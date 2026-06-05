@@ -128,6 +128,8 @@ Pensieve/
 │   ├── garden.py          # Garden v1: pure-function freshness + board-health derivation
 │   ├── quests.py          # Garden v2: pure-function daily quest generator + completion check
 │   ├── quest_state.py     # Garden v2: persistence for today's quests + clean-day history
+│   ├── achievements.py    # Garden v3: 9-badge predicate evaluator + level-summary builder
+│   ├── achievement_state.py  # Garden v3: persistence for unlocked badges
 │   ├── sources/           # TaskSource implementations (READ-ONLY contract)
 │   │   ├── base.py
 │   │   ├── outlook_com.py # pywin32 Outlook COM source

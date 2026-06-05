@@ -96,11 +96,15 @@ class QuestState:
         today_raw = d.get("today")
         today = TodayRow.from_dict(today_raw) if isinstance(today_raw, dict) else None
         history_raw = d.get("history") or []
-        history = [
-            {"date": str(x.get("date") or ""), "clean": bool(x.get("clean"))}
-            for x in history_raw
-            if isinstance(x, dict) and x.get("date")
-        ]
+        history = []
+        for x in history_raw:
+            if not isinstance(x, dict) or not x.get("date"):
+                continue
+            entry: dict = {"date": str(x["date"]), "clean": bool(x.get("clean"))}
+            hs = x.get("health_score")
+            if isinstance(hs, int):
+                entry["health_score"] = hs
+            history.append(entry)
         return cls(
             today=today,
             clean_streak_d=int(d.get("clean_streak_d") or 0),
@@ -162,7 +166,11 @@ def is_today_row(row: Optional[TodayRow], now: datetime) -> bool:
 
 
 def record_yesterday_clean(
-    state: QuestState, *, was_clean: bool, now: datetime
+    state: QuestState,
+    *,
+    was_clean: bool,
+    now: datetime,
+    health_score: Optional[int] = None,
 ) -> QuestState:
     """Append yesterday's clean/dirty record and recompute ``clean_streak_d``.
 
@@ -170,13 +178,25 @@ def record_yesterday_clean(
     overwrite that entry instead of duplicating. ``clean_streak_d`` becomes
     the count of consecutive clean days ending at yesterday (today is not
     yet decided).
+
+    ``health_score`` is an optional integer snapshot of the board health
+    score for the day being recorded. When provided it lands in the history
+    entry so :func:`pensieve.achievements.build_level_summary` can compute
+    week-over-week deltas. Older entries that predate this field stay valid
+    (level-summary tolerates missing scores).
     """
     y_key = _yesterday_key(now)
     history = list(state.history or [])
+    new_entry: dict = {"date": y_key, "clean": bool(was_clean)}
+    if health_score is not None:
+        new_entry["health_score"] = int(health_score)
     if history and history[-1].get("date") == y_key:
-        history[-1] = {"date": y_key, "clean": bool(was_clean)}
+        # Preserve any pre-existing health_score if the caller didn't supply one.
+        if health_score is None and isinstance(history[-1].get("health_score"), int):
+            new_entry["health_score"] = int(history[-1]["health_score"])
+        history[-1] = new_entry
     else:
-        history.append({"date": y_key, "clean": bool(was_clean)})
+        history.append(new_entry)
     history = history[-MAX_HISTORY_ENTRIES:]
 
     # Recompute streak: walk backwards from the tail counting consecutive cleans.

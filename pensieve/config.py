@@ -131,6 +131,11 @@ class Settings(BaseSettings):
         """Garden v2 daily quests + clean-day history."""
         return self.data_dir / "garden-quests.json"
 
+    @property
+    def achievements_path(self) -> Path:
+        """Garden v3 unlocked achievement badges."""
+        return self.data_dir / "achievements.json"
+
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
 

@@ -291,6 +291,14 @@ const STATE = {
   apiSourceLabel: "seed",
   boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
   quests: null,            // {today: {date, quests, generated_at}, clean_streak_d, all_done, quest_bonus} | null
+  achievements: null,      // {achievements, total, unlocked_count, new_unlocks} | null
+  achievementsSeenIds: (() => {
+    try {
+      const raw = localStorage.getItem("pensieve-ach-seen");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (e) { /* fall through */ }
+    return new Set();
+  })(),
 };
 
 function loadGoals() {
@@ -442,10 +450,13 @@ async function loadMemoriesFromApi() {
       }
     } catch (e) { /* keep local */ }
     // Garden v1: refresh the board-health pill alongside the memories so
+    // Garden v1: refresh the board-health pill alongside the memories so
     // the score reflects the same snapshot the user is looking at.
     await loadBoardHealth();
     // Garden v2: refresh today's quest panel + completion state.
     await loadQuests();
+    // Garden v3: re-evaluate achievements; surfaces confetti on new unlocks.
+    await loadAchievements();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
@@ -640,6 +651,180 @@ function toggleQuestFilter(targetIds) {
   renderBoard();
 }
 
+// --- Garden v3: achievements + confetti ---------------------------------
+async function loadAchievements({ allowConfetti = true } = {}) {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.achievements = await fetchJson("/api/achievements");
+  } catch (e) {
+    STATE.achievements = null;
+  }
+  renderAchievementsButton();
+  if (
+    allowConfetti &&
+    STATE.achievements &&
+    Array.isArray(STATE.achievements.new_unlocks) &&
+    STATE.achievements.new_unlocks.length > 0
+  ) {
+    const unseen = STATE.achievements.new_unlocks.filter(
+      id => !STATE.achievementsSeenIds.has(id)
+    );
+    if (unseen.length > 0) {
+      const btn = document.getElementById("achievements-btn");
+      if (btn) {
+        btn.classList.add("has-new-unlock");
+        setTimeout(() => btn.classList.remove("has-new-unlock"), 2600);
+        burstConfettiAt(btn);
+      }
+      const names = unseen.map(id => {
+        const def = STATE.achievements.achievements.find(a => a.id === id);
+        return def ? `${def.emoji} ${def.name}` : id;
+      }).join(", ");
+      toast(`Unlocked: ${names}`);
+      unseen.forEach(id => STATE.achievementsSeenIds.add(id));
+      try {
+        localStorage.setItem(
+          "pensieve-ach-seen",
+          JSON.stringify(Array.from(STATE.achievementsSeenIds)),
+        );
+      } catch (e) { /* ignore quota */ }
+    }
+  }
+}
+
+function renderAchievementsButton() {
+  const countEl = document.getElementById("achievements-btn-count");
+  if (!countEl) return;
+  const a = STATE.achievements;
+  if (!a || !a.total) {
+    countEl.hidden = true;
+    countEl.textContent = "0";
+    return;
+  }
+  countEl.hidden = false;
+  countEl.textContent = `${a.unlocked_count}/${a.total}`;
+}
+
+function renderAchievementsModal() {
+  const grid = document.getElementById("achievements-grid");
+  const summary = document.getElementById("achievements-summary");
+  if (!grid) return;
+  const a = STATE.achievements;
+  if (!a || !Array.isArray(a.achievements)) {
+    grid.innerHTML = "<p style='opacity:.6'>No achievement data yet.</p>";
+    if (summary) summary.textContent = "";
+    return;
+  }
+  grid.innerHTML = a.achievements.map(def => {
+    const state = def.unlocked ? "unlocked" : "locked";
+    const when = def.unlocked_at
+      ? `<div class="achievement-unlocked-at">${_formatUnlockedDate(def.unlocked_at)}</div>`
+      : "";
+    const safeName = _escape(def.name);
+    const safeDesc = _escape(def.description || "");
+    return `<div class="achievement-card" data-state="${state}" title="${safeDesc}">
+      <div class="achievement-emoji" aria-hidden="true">${def.emoji}</div>
+      <div class="achievement-name">${safeName}</div>
+      <div class="achievement-desc">${safeDesc}</div>
+      ${when}
+    </div>`;
+  }).join("");
+  if (summary) {
+    summary.textContent = `${a.unlocked_count} of ${a.total} unlocked.`;
+  }
+}
+
+function _formatUnlockedDate(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function _escape(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function openAchievementsModal() {
+  const modal = document.getElementById("achievements-modal");
+  if (!modal) return;
+  renderAchievementsModal();
+  modal.hidden = false;
+  // Reset the new-unlock styling on the button once the user has seen them.
+  if (STATE.achievements && Array.isArray(STATE.achievements.achievements)) {
+    STATE.achievements.achievements.forEach(def => {
+      if (def.unlocked) STATE.achievementsSeenIds.add(def.id);
+    });
+    try {
+      localStorage.setItem(
+        "pensieve-ach-seen",
+        JSON.stringify(Array.from(STATE.achievementsSeenIds)),
+      );
+    } catch (e) { /* ignore */ }
+  }
+}
+
+function closeAchievementsModal() {
+  const modal = document.getElementById("achievements-modal");
+  if (modal) modal.hidden = true;
+}
+
+// Hand-rolled canvas confetti burst centered on the target element. ~30 lines
+// so we avoid an external library. Particles fall under gravity for ~1s.
+function burstConfettiAt(targetEl) {
+  const canvas = document.getElementById("confetti-canvas");
+  if (!canvas || !targetEl) return;
+  const rect = targetEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  canvas.classList.add("is-firing");
+  const colors = ["#7cffff", "#ffe07c", "#7cff9d", "#ff8da1", "#c9a0ff"];
+  const N = 36;
+  const particles = Array.from({ length: N }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 5;
+    return {
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      size: 4 + Math.random() * 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 0,
+    };
+  });
+  const start = performance.now();
+  function frame(now) {
+    const t = now - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.vy += 0.18;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life = t;
+      ctx.globalAlpha = Math.max(0, 1 - t / 1100);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    });
+    if (t < 1100) {
+      requestAnimationFrame(frame);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.classList.remove("is-firing");
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
 // --- Auto-refresh poll ---------------------------------------------------
 // The backend has an auto-sync scheduler (PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS,
 // default 120s) that pulls fresh Microsoft To-Do data and writes enrichments
@@ -648,6 +833,7 @@ function toggleQuestFilter(targetIds) {
 // in any situation where a re-render would clobber unsaved UI state:
 //   - the user is editing a card (`#card-modal` open)
 //   - the user is editing Connect goals (`#goals-modal` open)
+//   - the user is viewing achievements (`#achievements-modal` open)
 //   - a card is mid-drag (DRAG.id set)
 //   - a PATCH from the dashboard is in flight (patchInFlight > 0)
 //   - the document is hidden (Page Visibility API) — saves API calls when the tab is in the background
@@ -666,7 +852,12 @@ async function refreshMemoriesIfSafe() {
   if (pollInFlight) return;
   if (window.__pensievePatchInFlight > 0) return;
   if (typeof DRAG !== "undefined" && DRAG && DRAG.id) return;
-  if (_isModalOpen("card-modal") || _isModalOpen("goals-modal") || _isModalOpen("vial-modal")) return;
+  if (
+    _isModalOpen("card-modal") ||
+    _isModalOpen("goals-modal") ||
+    _isModalOpen("vial-modal") ||
+    _isModalOpen("achievements-modal")
+  ) return;
   pollInFlight = true;
   try {
     const ok = await loadMemoriesFromApi();
@@ -722,9 +913,10 @@ async function regenerateMemory(memoryId) {
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
-    // Garden v1+v2: regenerate is a tend — refresh both pill AND quest panel.
+    // Garden v1+v2+v3: regenerate is a tend — refresh pill, quests, and achievements.
     loadBoardHealth();
     loadQuests();
+    loadAchievements();
     // Re-open the modal with the regenerated memory so the user sees the new text live.
     const refreshed = STATE.memories[idx] || fresh;
     openModal(refreshed);
@@ -812,10 +1004,11 @@ async function persistColumnChange(memoryId, column) {
         }
       }
     } catch (_) { /* response body parsing is best-effort */ }
-    // Garden v1+v2: refresh the board-health pill AND quest panel so the
-    // score and quest completion state reflect this tend.
+    // Garden v1+v2+v3: refresh pill, quest panel, achievements so they all
+    // reflect this tend (and a potential confetti burst on new unlocks).
     loadBoardHealth().then(() => renderBoard());
     loadQuests();
+    loadAchievements();
     // If we got here, the API is up. Flip the flag so the next render of UI
     // affordances that gate on apiConnected (e.g. semantic search) starts
     // working without forcing a page reload.
@@ -1300,9 +1493,10 @@ async function saveMemoryEdit(memoryId) {
     }
     renderStrandFilter();
     renderBoard();
-    // Garden v1+v2: editing tends the card — refresh pill AND quest panel.
+    // Garden v1+v2+v3: editing tends the card — refresh pill, quests, achievements.
     loadBoardHealth();
     loadQuests();
+    loadAchievements();
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
@@ -1821,6 +2015,17 @@ function init() {
   });
   $("#vial-save").addEventListener("click", () => saveVial("captured"));
   $("#vial-skip").addEventListener("click", () => saveVial("skipped"));
+
+  // Garden v3: achievements button + modal.
+  const achBtn = document.getElementById("achievements-btn");
+  if (achBtn) achBtn.addEventListener("click", openAchievementsModal);
+  const achModal = document.getElementById("achievements-modal");
+  if (achModal) {
+    achModal.addEventListener("click", e => {
+      if (e.target.dataset.close === "achievements") closeAchievementsModal();
+    });
+  }
+
   // Delegate chevron/badge clicks on the kanban board
   document.addEventListener("click", e => {
     const chevron = e.target.closest(".card-vial-chevron, .card-vial-badge");
@@ -1834,6 +2039,7 @@ function init() {
       closeModal();
       $("#goals-modal").hidden = true;
       closeVialModal();
+      closeAchievementsModal();
     }
   });
 }
