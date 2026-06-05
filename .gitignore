@@ -47,6 +47,11 @@ data/notes-backups/
 data/recaps/
 data/docs/
 
+# Garden runtime state (achievements, daily quests) + store backups
+data/achievements.json
+data/garden-quests.json
+data/chroma.bak*/
+
 # Local editor / preview config
 .claude/
 

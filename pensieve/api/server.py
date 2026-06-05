@@ -517,7 +517,8 @@ def create_app() -> FastAPI:
 
         Accepts any of: title, why, impact, suggested_strand, strand_kind,
         connect_goal_ids (list), connect_alignment_note, notes_for_user,
-        column, needs_human_strand_review.
+        column, needs_human_strand_review, due_date (date "YYYY-MM-DD",
+        full ISO datetime, or null to clear).
         """
         mem = store.get_memory(memory_id)
         if mem is None:
@@ -540,6 +541,23 @@ def create_app() -> FastAPI:
             mem.connect_goal_ids = [str(g) for g in body["connect_goal_ids"] if g]
         if "needs_human_strand_review" in body:
             mem.needs_human_strand_review = bool(body["needs_human_strand_review"])
+        if "due_date" in body:
+            raw_due = body["due_date"]
+            if raw_due:
+                from datetime import datetime as _dt
+                from datetime import timezone as _tz
+
+                try:
+                    parsed = _dt.fromisoformat(str(raw_due).strip())
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid due_date: {raw_due}"
+                    ) from e
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=_tz.utc)
+                mem.due_date = parsed
+            else:
+                mem.due_date = None
         if mem.column not in ("memory", "dive", "review", "closed"):
             raise HTTPException(status_code=400, detail=f"Invalid column: {mem.column}")
         # Garden v1: set tended timestamp BEFORE upsert (full upsert writes

@@ -483,7 +483,11 @@ You can also set `PENSIEVE_DEFAULT_SOURCE=outlook_com` in `.env` so `pensieve sy
 
 The dashboard is a single static page served by the FastAPI app at the root URL. It has no build step, no framework, no transpilation. It is plain HTML, CSS, and JavaScript so you can read every line.
 
-Features:
+It has four pages, switched via the tabs under the header: **Board** (the kanban), **Recap** (Connect-format summaries), **Graph** (a constellation view of your tasks), and **Docs** (an in-app SOP/notes hub). Each is described below.
+
+The header is a calm two-tier command bar: row one is the brand plus a grouped status cluster (review count, board health, achievements), and row two is a controls ribbon — search, the Lifecycle/Lanes toggle, a **Filter ▾** popover (holds the strand filters, the *This week* toggle, and *Clear filters*, with an active-filter count badge), the primary **Pull from To-Do** action, and a **⋯** overflow menu (Refresh, Set goals, and the card-density toggle).
+
+Board features:
 
 - **Lifecycle view** with 4 columns (Memory, Dive, Review, Closed). Drag cards between columns; the change persists to Chroma via PATCH. Tasks completed in To-Do auto-route to Closed on the next sync (no LLM tokens spent).
 - **Lanes view** with one column per Connect Goal plus an Unaligned column. Columns auto-fit, so any number of goals lays out cleanly. Drag a card to a lane to mark that Memory as aligned to that goal.
@@ -496,9 +500,24 @@ Features:
 - **Per-card freshness dot (Garden v1)**: a small colored dot in the top-right of each card. **Fresh** (green) = tended in the last 3 days; **stale** (amber) = 8–30 days untouched; **ghost** (red) = >30 days untouched. Captured-Vial closed cards get a gold dot. Auto-sync does NOT count as tending — only your deliberate actions (drag, edit, capture/skip, regenerate) do.
 - **Daily quest panel (Garden v2)**: up to 3 quest chips below the toolbar each day — "Bury or revive a ghost", "Tend 3 stale cards in CISO GRC", "Capture vials on yesterday's closures", "Triage 1 inbox card", "Hit 95+ board health today". Click a chip to filter the board to just that quest's target cards. Quests are generated each morning from the current board state, never carry over, and grant a **+5 board-health bonus when all are complete**. A 🔥 streak counter shows consecutive days the board has stayed clean.
 - **Achievements 🏆 (Garden v3)**: a button beside the HEALTH pill opens a modal grid of nine badges — 🌱 Sprout (1st memory), 📜 Scribe (10 captured Vials), 🌟 Centurion (100 lifetime Vials), 🧹 Custodian (close a card that lived ≥30 days as a ghost), ⚡ Storm (5 closures in one day), 🏆 Clean Week (7 consecutive clean days), 🔥 Streak Keeper (30 consecutive clean days), 🎯 Sharpshooter (hit 95+ health), 🌳 Gardener (unlock all the others). Badges unlock once and stay unlocked. New unlocks fire a confetti micro-burst at the button. The `/api/garden/level-summary` endpoint exposes a trailing-7-day roll-up (closures, capture rate, health-week-over-week delta, current/longest streak) for the upcoming Friday digest.
-- **Goals editor**: the **Set Goals** button opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals. Saves to `data/connect-goals.json` via the API.
+- **Goals / lanes editor**: the **Set Goals** button (and the **+ Add lane** tile in Lanes view) opens a modal where you can upload your Connect PDF for AI parsing (✨ Parse with AI), or hand-edit/add/remove goals (lanes). Saves to `data/connect-goals.json` via the API.
+- **Editable due date**: each card's edit modal has a **Due** date field. Cards with no due date default it to ~2 weeks out, so saving a card sets a sensible deadline; cards show a `DUE` pill (amber when soon, red when overdue). Stored in Pensieve's store via `PATCH /api/memories/{id}` (not written back to To-Do).
+- **Weekly Closed filter**: the **This week** toggle (in the Filter popover) hides Closed cards older than the most recent Monday so that column does not grow without bound. Non-destructive — nothing is deleted, and Recap/Graph/search still see everything.
+- **Calmer, denser cards**: each card carries a single left-edge lane accent plus a small lane dot; strand/goal metadata is quiet muted text rather than colored pills (overdue stays red). Descriptions clamp to two lines (full text in the card modal). A **Density** toggle in the ⋯ menu switches between **Comfortable** and **Compact** (descriptions hidden, ~2× more cards per screen); the choice persists in `localStorage`.
 
 The dashboard remains functional without the API server: if `/api/healthz` is unreachable, it falls back to the bundled seed memories and shows "offline (seed data)" in the footer.
+
+### Recap page
+
+Draft a Microsoft Connect "Reflect on the past" summary from your enriched memories, grouped by committed Connect goal (themed heading → what/how narrative → **Impact**). One model call per goal. Pick a scope (All / Completed & Closed / Needs review) and a reflection period, then Generate. You can **export to DOCX**, keep a **run history** (every recap is saved and re-openable), and **chat to correct a section** — double-click a section (or hit Revise), tell the agent it misread a task, and that section regenerates incorporating your note. Backed by `POST /api/recap`, `/api/recap/export`, `/api/recap/history`, and `/api/recap/revise`.
+
+### Graph (Constellation) page
+
+An Obsidian-style force-directed graph of your work, built on the same Chroma embeddings that power search. Goal hubs anchor the layout; task nodes orbit the goals they align to, colored by lane. **Alignment edges** connect a task to its goal; **semantic edges** connect tasks whose embeddings are similar (tune the threshold with the slider). Dashboard stat tiles summarize counts per goal / column / strand, completed, unaligned, and link totals. Click a node to open that card. Backed by `GET /api/graph`.
+
+### Docs page
+
+An in-app documentation hub for SOPs and tool notes, stored as markdown under `data/docs/`. Sidebar list + rendered markdown view + in-app create / edit / save / delete. Seeds a "What is Pensieve" overview and an SOP template on first open. Backed by `/api/docs` CRUD.
 
 ## Configuration
 

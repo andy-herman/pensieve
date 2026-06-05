@@ -13,49 +13,92 @@
 
   <div class="starfield" aria-hidden="true"></div>
 
-  <header class="masthead">
-    <div class="title-block">
-      <h1 class="title">Pensieve</h1>
-      <p class="tagline">Memory archive / live capture</p>
-    </div>
-
-    <div class="review-block" title="Memories that need your review">
-      <span id="review-count">CLEAR</span>
-    </div>
-
-    <div class="board-health" id="board-health" role="button" tabindex="0"
-         aria-label="Board health — click to filter to stale, ghost, or overdue cards"
-         title="Click to filter to stale/ghost/overdue cards">
-      <span class="board-health-label">HEALTH</span>
-      <span class="board-health-score" id="board-health-score">--</span>
-      <div class="board-health-tip" id="board-health-tip" hidden></div>
-    </div>
-
-    <button class="achievements-btn" id="achievements-btn" type="button"
-            aria-label="Open achievements"
-            title="Achievements — track your progress and unlocks">
-      <span class="achievements-btn-icon">&#x1F3C6;</span>
-      <span class="achievements-btn-count" id="achievements-btn-count" hidden>0</span>
-    </button>
-
-    <div class="toolbar">
-      <div class="search-wrap">
-        <input type="search" id="search" placeholder="Search memories (Enter for semantic)" aria-label="Search memories" />
-        <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB">SEARCH</button>
+  <header class="masthead masthead--tiered">
+    <!-- Row 1: identity (left) + status cluster (right) -->
+    <div class="masthead-row masthead-row--identity">
+      <div class="title-block">
+        <h1 class="title">Pensieve</h1>
+        <p class="tagline">Memory archive / live capture</p>
       </div>
 
-      <div class="view-toggle" role="group" aria-label="Board view">
-        <button class="view-btn active" data-view="lifecycle" title="Group by lifecycle column">Lifecycle</button>
-        <button class="view-btn" data-view="lanes" title="Group by Connect goal lane">Lanes</button>
+      <div class="status-cluster" role="group" aria-label="Board status">
+        <div class="review-block" title="Memories that need your review">
+          <span id="review-count">CLEAR</span>
+        </div>
+        <div class="board-health" id="board-health" role="button" tabindex="0"
+             aria-label="Board health — click to filter to stale, ghost, or overdue cards"
+             title="Click to filter to stale/ghost/overdue cards">
+          <span class="board-health-label">HEALTH</span>
+          <span class="board-health-score" id="board-health-score">--</span>
+          <div class="board-health-tip" id="board-health-tip" hidden></div>
+        </div>
+        <button class="achievements-btn" id="achievements-btn" type="button"
+                aria-label="Open achievements"
+                title="Achievements — track your progress and unlocks">
+          <span class="achievements-btn-icon">&#x1F3C6;</span>
+          <span class="achievements-btn-count" id="achievements-btn-count" hidden>0</span>
+        </button>
       </div>
+    </div>
 
-      <div id="strand-filter" class="strand-filter" aria-label="Filter by strand"></div>
+    <!-- Row 2: controls ribbon, grouped into zones -->
+    <div class="masthead-row masthead-row--controls">
+      <div class="toolbar" role="toolbar" aria-label="Board controls">
+        <div class="tb-zone tb-zone--search">
+          <div class="search-wrap">
+            <input type="search" id="search" placeholder="Search memories (Enter for semantic)" aria-label="Search memories" />
+            <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB">SEARCH</button>
+          </div>
+        </div>
 
-      <button id="weekly-filter-btn" class="ghost-button" title="Hide Closed tasks older than this week (Monday reset). Nothing is deleted.">This week</button>
-      <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Fetch new tasks from Microsoft To-Do">Pull from To-Do</button>
-      <button id="refresh-btn" class="ghost-button" title="Reload board from local Pensieve store">Refresh</button>
-      <button id="open-goals" class="ghost-button" title="Add or edit your Connect goal lanes">Set goals</button>
-      <button id="clear-filters" class="ghost-button" title="Show every memory">Clear filters</button>
+        <span class="tb-rule" aria-hidden="true"></span>
+
+        <div class="tb-zone tb-zone--view">
+          <div class="view-toggle" role="group" aria-label="Board view">
+            <button class="view-btn active" data-view="lifecycle" title="Group by lifecycle column">Lifecycle</button>
+            <button class="view-btn" data-view="lanes" title="Group by Connect goal lane">Lanes</button>
+          </div>
+        </div>
+
+        <span class="tb-rule" aria-hidden="true"></span>
+
+        <!-- Filter popover holds the strand pills + week filter + clear -->
+        <div class="tb-zone tb-zone--filter">
+          <div class="cmd-pop" id="filter-pop-wrap">
+            <button type="button" id="filter-pop-btn" class="ghost-button cmd-pop-btn"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="filter-pop-panel"
+                    title="Filter by strand, week, or clear filters">
+              Filter
+              <span class="cmd-pop-badge" id="filter-active-badge" hidden>0</span>
+              <span class="cmd-caret" aria-hidden="true">&#x25BE;</span>
+            </button>
+            <div class="cmd-pop-panel" id="filter-pop-panel" role="dialog" aria-label="Filter memories" hidden>
+              <div class="cmd-pop-section">
+                <span class="cmd-pop-heading">Strands</span>
+                <div id="strand-filter" class="strand-filter" aria-label="Filter by strand"></div>
+              </div>
+              <div class="cmd-pop-section cmd-pop-row">
+                <button id="weekly-filter-btn" class="ghost-button" title="Hide Closed tasks older than this week (Monday reset). Nothing is deleted.">This week</button>
+                <button id="clear-filters" class="ghost-button" title="Show every memory">Clear filters</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions: one visible primary + overflow for the rest -->
+        <div class="tb-zone tb-zone--actions">
+          <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Fetch new tasks from Microsoft To-Do">Pull from To-Do</button>
+          <div class="cmd-pop" id="more-pop-wrap">
+            <button type="button" id="more-pop-btn" class="ghost-button cmd-more-btn"
+                    aria-haspopup="true" aria-expanded="false" aria-controls="more-pop-panel" aria-label="More actions" title="More actions">&#x22EF;</button>
+            <div class="cmd-pop-panel cmd-menu" id="more-pop-panel" role="menu" aria-label="More actions" hidden>
+              <button id="refresh-btn" class="ghost-button cmd-menu-item" role="menuitem" title="Reload board from local Pensieve store">Refresh</button>
+              <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect goal lanes">Set goals</button>
+              <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="quest-panel" id="quest-panel" hidden>

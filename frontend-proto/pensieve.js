@@ -416,6 +416,7 @@ function passesWeeklyFilter(m, colId) {
 function applyWeeklyFilterState() {
   const btn = $("#weekly-filter-btn");
   if (btn) btn.classList.toggle("active", !!STATE.weeklyFilter);
+  updateFilterBadge();
 }
 
 // ----- 5b. API client + remote sync -----
@@ -1085,6 +1086,7 @@ function renderStrandFilter() {
     });
     root.appendChild(btn);
   });
+  updateFilterBadge();
 }
 
 function renderBoard() {
@@ -1341,9 +1343,29 @@ const LIFECYCLE_OPTIONS = [
   { id: "closed", label: "Closed" },
 ];
 
+// Format a Date or ISO string as a YYYY-MM-DD value for <input type="date">.
+function toInputDate(d) {
+  const x = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(x.getTime())) return "";
+  const y = x.getFullYear();
+  const mo = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
+}
+
+// Default due date for a card with none set: ~2 weeks from today.
+function defaultDueDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 14);
+  return toInputDate(d);
+}
+
 function openModal(m) {
   const body = $("#modal-body");
   const review = isReviewNeeded(m);
+  // Pre-fill the due field with the card's existing due date, or default to
+  // ~2 weeks out so saving a card without one sets it roughly two weeks ahead.
+  const dueValue = m.due_date ? toInputDate(m.due_date) : defaultDueDate();
 
   const strandOptions = [`<option value="">&lt;unstranded&gt;</option>`]
     .concat(STRANDS.map(s =>
@@ -1375,6 +1397,9 @@ function openModal(m) {
       </label>
       <label class="inline-label">Column
         <select id="edit-column" class="inline-select">${colOptions}</select>
+      </label>
+      <label class="inline-label">Due
+        <input type="date" id="edit-due" class="inline-select" value="${dueValue}" title="Defaults to ~2 weeks out; clear to remove" />
       </label>
       <label class="inline-label review-toggle">
         <input type="checkbox" id="edit-review" ${m.needs_human_strand_review ? "checked" : ""} />
@@ -1453,6 +1478,7 @@ function readEditedFields() {
     connect_goal_ids: selectedGoalIds,
     connect_alignment_note: $("#edit-align-note").value,
     notes_for_user: $("#edit-notes-user").value,
+    due_date: $("#edit-due").value || null,
   };
 }
 
@@ -1792,6 +1818,9 @@ function init() {
   renderStrandFilter();
   applyView();
   applyWeeklyFilterState();
+  initHeaderPopovers();
+  initDensityToggle();
+  updateFilterBadge();
 
   // Load from API (falls back to seed data on failure), then re-render
   loadMemoriesFromApi().then(ok => {
@@ -2801,6 +2830,74 @@ async function deleteDoc() {
     toast("Document deleted");
   } catch (e) {
     toast(`Delete failed: ${e.message}`);
+  }
+}
+
+// ----- Masthead popovers (Filter + overflow) + filter badge -----
+
+function initHeaderPopovers() {
+  const pops = [
+    { btn: $("#filter-pop-btn"), panel: $("#filter-pop-panel"), wrap: $("#filter-pop-wrap") },
+    { btn: $("#more-pop-btn"), panel: $("#more-pop-panel"), wrap: $("#more-pop-wrap") },
+  ].filter(p => p.btn && p.panel && p.wrap);
+  if (!pops.length) return;
+
+  const close = p => { p.panel.hidden = true; p.btn.setAttribute("aria-expanded", "false"); };
+  const open = p => {
+    pops.forEach(o => { if (o !== p) close(o); });
+    p.panel.hidden = false;
+    p.btn.setAttribute("aria-expanded", "true");
+  };
+  const closeAll = () => pops.forEach(close);
+
+  pops.forEach(p => {
+    p.btn.addEventListener("click", e => {
+      e.stopPropagation();
+      p.panel.hidden ? open(p) : close(p);
+    });
+  });
+  // Click outside any popover closes them; clicks inside a panel keep it open.
+  document.addEventListener("click", e => {
+    if (!pops.some(p => p.wrap.contains(e.target))) closeAll();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && pops.some(p => !p.panel.hidden)) {
+      closeAll();
+      (pops.find(p => p.btn) || {}).btn?.focus();
+    }
+  });
+}
+
+function updateFilterBadge() {
+  const badge = $("#filter-active-badge");
+  if (!badge) return;
+  let n = 0;
+  if (STATE.filter && STATE.filter.strand) n++;
+  if (STATE.weeklyFilter) n++;
+  badge.textContent = String(n);
+  badge.hidden = n === 0;
+}
+
+// Card density: "comfortable" (default, clamped description) | "compact" (no description).
+function initDensityToggle() {
+  const KEY = "pensieve-density";
+  const btn = $("#density-toggle");
+  let mode = (() => { try { return localStorage.getItem(KEY) === "compact" ? "compact" : "comfortable"; } catch (e) { return "comfortable"; } })();
+  const apply = m => {
+    document.documentElement.setAttribute("data-density", m);
+    if (btn) {
+      const compact = m === "compact";
+      btn.setAttribute("aria-pressed", String(compact));
+      btn.textContent = compact ? "Density: Compact" : "Density: Comfortable";
+    }
+  };
+  apply(mode);
+  if (btn) {
+    btn.addEventListener("click", () => {
+      mode = mode === "compact" ? "comfortable" : "compact";
+      try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
+      apply(mode);
+    });
   }
 }
 
