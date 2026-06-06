@@ -1135,5 +1135,18 @@ def create_app() -> FastAPI:
     return app
 
 
-# Module-level app for uvicorn `pensieve.api.server:app`
-app = create_app()
+# Module-level `app` for uvicorn (`pensieve.api.server:app`), built lazily.
+# Importing this module must NOT construct the app or open the Chroma store —
+# tests import `create_app` from here, and an eager build would read the real
+# data dir at collection time (so a bad store would break test collection).
+# uvicorn accesses the `app` attribute, which triggers construction on demand.
+_app = None
+
+
+def __getattr__(name: str):  # PEP 562 module-level lazy attribute
+    if name == "app":
+        global _app
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

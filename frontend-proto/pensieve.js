@@ -2882,7 +2882,7 @@ function updateFilterBadge() {
 function initDensityToggle() {
   const KEY = "pensieve-density";
   const btn = $("#density-toggle");
-  let mode = (() => { try { return localStorage.getItem(KEY) === "compact" ? "compact" : "comfortable"; } catch (e) { return "comfortable"; } })();
+  let mode = (() => { try { return localStorage.getItem(KEY) === "comfortable" ? "comfortable" : "compact"; } catch (e) { return "compact"; } })();
   const apply = m => {
     document.documentElement.setAttribute("data-density", m);
     if (btn) {

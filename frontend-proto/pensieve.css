@@ -2493,15 +2493,22 @@ html[data-page="docs"] .review-block { display: none; }
 
 .card-vial-chevron, .card-vial-badge { margin-top: var(--sp-2); }
 
-/* ---- Density: Compact mode (toggle in the More menu) ---- */
-:root[data-density="compact"] .card { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
-:root[data-density="compact"] .column-cards { gap: var(--sp-2); }
-:root[data-density="compact"] .card-why { display: none; }
-:root[data-density="compact"] .card-title {
+/* ---- Density: Compact is the default (toggle to Comfortable in the More menu) ----
+   The `:not([data-density])` selectors make first paint compact before JS sets
+   the attribute, so there is no flash of the comfortable layout. */
+:root[data-density="compact"] .card,
+:root:not([data-density]) .card { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3); }
+:root[data-density="compact"] .column-cards,
+:root:not([data-density]) .column-cards { gap: var(--sp-2); }
+:root[data-density="compact"] .card-why,
+:root:not([data-density]) .card-why { display: none; }
+:root[data-density="compact"] .card-title,
+:root:not([data-density]) .card-title {
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-bottom: var(--sp-1);
 }
-:root[data-density="compact"] .card-goals { margin-top: var(--sp-1); }
+:root[data-density="compact"] .card-goals,
+:root:not([data-density]) .card-goals { margin-top: var(--sp-1); }
