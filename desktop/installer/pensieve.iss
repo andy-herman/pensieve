@@ -54,7 +54,7 @@ WelcomeLabel2=This installs Pensieve {#AppVersion}, a personal memory layer for 
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "copilotcli"; Description: "Install the GitHub Copilot CLI with winget (needed for the AI features; skipped if already installed)"; GroupDescription: "GitHub Copilot:"; Check: CopilotCliMissing
+Name: "copilotcli"; Description: "Install the GitHub Copilot CLI from GitHub with winget, under GitHub's terms (needed for the AI features; skipped if already installed)"; GroupDescription: "GitHub Copilot:"; Check: CopilotCliMissing
 
 [Files]
 Source: "{#StageDir}\Pensieve.exe"; DestDir: "{app}"; Flags: ignoreversion
