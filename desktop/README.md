@@ -33,8 +33,15 @@ nothing to install. The repo path is baked in as a fallback, so rerun the
 build if you move the repo. `PENSIEVE_HOME` and `PENSIEVE_PYTHON` environment
 variables override the repo and Python paths.
 
-To change the icon, edit `pensieve-icon.svg` and run `.\desktop\Make-Icon.ps1`
-(regenerates `pensieve.ico` and `frontend-proto\favicon.ico`).
+The icon is the Blender-rendered basin (`art\pensieve-emblem.png`) composited
+on `art\icon-badge.svg`. After changing either, run `.\desktop\Make-Icon.ps1`
+(regenerates `pensieve.ico`, `frontend-proto\favicon.ico`, and
+`art\icon-512.png`). The Blender scene lives outside the repo at
+`C:\Andy Herman\Dev\pensieve-design\pensieve-basin.blend`.
+
+The splash plays `frontend-proto\assets\splash-loop.mp4` (a Higgsfield
+Seedance loop animated from the same render) and fades into the dashboard
+once the backend answers.
 
 ## Troubleshooting
 
