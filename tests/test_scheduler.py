@@ -14,8 +14,10 @@ Covers:
 
 from __future__ import annotations
 
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 from pensieve.config import Settings
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
@@ -23,8 +25,10 @@ from pensieve.sync_state import SyncJobTracker
 
 
 def _settings(**overrides) -> Settings:
+    # A throwaway data dir keeps in-app choices on this machine (for example
+    # data/connections.json picking a task source) out of the test.
     base = Settings()
-    return base.model_copy(update=overrides)
+    return base.model_copy(update={"data_dir": Path(tempfile.mkdtemp(prefix="pensieve-sched-")), **overrides})
 
 
 def _fake_worker_factory(barrier: threading.Event, started: list[str]):

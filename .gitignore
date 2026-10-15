@@ -61,3 +61,6 @@ data/chroma.bak*/
 
 # Desktop launcher build intermediates (desktop/dist is covered by dist/ above)
 desktop/obj/
+
+# setuptools build output (pip install of the repo)
+/build/
