@@ -120,9 +120,7 @@ const OFFLINE_HINT = "Pensieve's engine is not running. Close this window and op
 const STATE = {
   goals: loadGoals(),
   goalsMeta: {},
-  // Empty until the API answers. The seed memories are only a fallback for
-  // when the API is unreachable, so they never flash before live data.
-  memories: [],
+  memories: [],           // empty until the API answers
   booting: true,          // true until the first API answer (or failure)
   boardSig: "",           // last /api/memories + /api/goals payload; unchanged polls skip the re-render
   boardChanged: false,    // set by loadMemoriesFromApi
@@ -139,7 +137,7 @@ const STATE = {
   filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   apiConnected: false,
-  apiSourceLabel: "seed",
+  apiSourceLabel: "connecting...",
   boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
   quests: null,            // {today: {date, quests, generated_at}, clean_streak_d, all_done, quest_bonus} | null
   achievements: null,      // {achievements, total, unlocked_count, new_unlocks} | null
@@ -1363,7 +1361,6 @@ function toInputDate(d) {
   return `${y}-${mo}-${day}`;
 }
 
-// Default due date for a card with none set: ~2 weeks from today.
 // Card modal bookkeeping: which memory it shows, and what had focus before it
 // opened (focus returns there on close, so keyboard users keep their place).
 const CARD_MODAL = { memoryId: null, returnFocus: null };
@@ -1423,7 +1420,7 @@ function openModal(m) {
         <select id="edit-column" class="inline-select">${colOptions}</select>
       </label>
       <label class="inline-label">Due
-        <input type="date" id="edit-due" class="inline-select" value="${dueValue}" title="Defaults to ~2 weeks out; clear to remove" />
+        <input type="date" id="edit-due" class="inline-select" value="${dueValue}" title="Clear to remove the due date" />
       </label>
       <label class="inline-label review-toggle">
         <input type="checkbox" id="edit-review" ${m.needs_human_strand_review ? "checked" : ""} />
@@ -2521,7 +2518,7 @@ function toast(msg) {
 function init() {
   // Start the API round trip first so it overlaps with the first render.
   // Until it answers, the board shows empty column shells ("Stirring the
-  // memories..."); seed cards only appear if the API is unreachable.
+  // memories...").
   const firstLoad = loadMemoriesFromApi();
 
   initDensityToggle();

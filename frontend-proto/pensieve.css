@@ -253,8 +253,8 @@ html[data-theme="marauder"] {
 
 /* ----- 2. Base + atmosphere ----- */
 
-/* Metric-matched local fallbacks for the Google webfonts. Until Cinzel and
-   IM Fell arrive (font-display: swap), text renders in Georgia scaled to the
+/* Metric-matched local fallbacks for the bundled webfonts (fonts.css). Until
+   Cinzel and IM Fell load (font-display: swap), text renders in Georgia scaled to the
    webfont's average glyph width, so the swap barely moves anything (card
    titles keep their line breaks and clamps). Ratios were measured against
    Georgia in Edge on two sample texts: plain Georgia is 8-20% off for Cinzel
