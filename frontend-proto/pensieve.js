@@ -983,7 +983,7 @@ function _isModalOpen(id) {
 }
 
 function anyModalOpen() {
-  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal"].some(_isModalOpen);
+  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal"].some(_isModalOpen);
 }
 
 async function refreshMemoriesIfSafe() {
@@ -1863,6 +1863,135 @@ async function saveVial(kind) {
   }
 }
 
+// ----- 7b. AI models panel -----
+// Picks the GitHub Copilot model for each job (GET/PUT /api/ai). Choices
+// apply on the backend's next AI call; blank selects inherit the default.
+const AI_EDIT = { state: null, models: [] };
+const AI_PURPOSE_KEYS = ["enrichment", "recap", "goals"];
+
+async function openAiModels() {
+  $("#ai-modal").hidden = false;
+  $("#ai-test-result").textContent = "";
+  $("#ai-account").textContent = "";
+  $("#ai-rows").innerHTML = `<p class="empty-state">Asking GitHub Copilot which models you can use...</p>`;
+  $("#ai-save").disabled = true;
+  try {
+    const [state, catalog] = await Promise.all([fetchJson("/api/ai"), fetchJson("/api/ai/models")]);
+    AI_EDIT.state = state;
+    AI_EDIT.models = catalog.models || [];
+    renderAiModels();
+  } catch (e) {
+    $("#ai-rows").innerHTML = `<p class="empty-state">Could not load models (${escapeHtml(e.message)}). Is the backend running and signed in to Copilot?</p>`;
+  }
+}
+
+function closeAiModal() {
+  $("#ai-modal").hidden = true;
+}
+
+function aiModelOptions(selected, inheritLabel) {
+  const opts = [`<option value="">${escapeHtml(inheritLabel)}</option>`];
+  for (const m of AI_EDIT.models) {
+    const label = m.name && m.name !== m.id ? `${m.name} (${m.id})` : m.id;
+    const off = m.enabled === false;
+    opts.push(`<option value="${escapeHtml(m.id)}"${m.id === selected ? " selected" : ""}${off ? " disabled" : ""}>${escapeHtml(label)}${off ? " - not enabled for your account" : ""}</option>`);
+  }
+  // Keep a saved choice visible even if it has left the catalog.
+  if (selected && !AI_EDIT.models.some(m => m.id === selected)) {
+    opts.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} (unavailable)</option>`);
+  }
+  return opts.join("");
+}
+
+function aiDefaultEffective() {
+  const sel = $("#ai-sel-default");
+  return (sel && sel.value) || AI_EDIT.state.env_default;
+}
+
+function renderAiModels() {
+  const s = AI_EDIT.state;
+  $("#ai-account").innerHTML = s.provider === "github_copilot"
+    ? `Using GitHub Copilot as <strong>${escapeHtml(s.account || "the Copilot CLI's signed-in user")}</strong>.`
+    : `Provider is <strong>${escapeHtml(s.provider)}</strong>; model choice applies to GitHub Copilot only.`;
+  const rows = [
+    { key: "default", label: "Default for everything", model: s.default, inherit: `Use .env default (${s.env_default})` },
+    ...s.purposes.map(p => ({ key: p.key, label: p.label, model: p.model, inherit: `Use default (${s.default_effective})` })),
+  ];
+  const lock = s.editable ? "" : " disabled";
+  $("#ai-rows").innerHTML = rows.map(r => `
+    <div class="ai-row${r.key === "default" ? " ai-row--default" : ""}">
+      <label class="ai-row-label" for="ai-sel-${r.key}">${escapeHtml(r.label)}</label>
+      <select id="ai-sel-${r.key}" class="ai-select" data-key="${r.key}"${lock}>${aiModelOptions(r.model, r.inherit)}</select>
+      <button type="button" class="ghost-button ai-test-btn" data-key="${r.key}"${lock} title="Send one tiny prompt to this model">Test</button>
+    </div>`).join("");
+  $("#ai-save").disabled = !s.editable;
+}
+
+// Purpose rows read "Use default (X)"; keep X in step with the Default row.
+function refreshAiInheritLabels() {
+  const eff = aiDefaultEffective();
+  AI_PURPOSE_KEYS.forEach(k => {
+    const first = $(`#ai-sel-${k} option[value=""]`);
+    if (first) first.textContent = `Use default (${eff})`;
+  });
+}
+
+function aiModelForRow(key) {
+  const sel = $(`#ai-sel-${key}`);
+  if (sel && sel.value) return sel.value;
+  return key === "default" ? AI_EDIT.state.env_default : aiDefaultEffective();
+}
+
+async function testAiModel(btn) {
+  const model = aiModelForRow(btn.dataset.key);
+  const out = $("#ai-test-result");
+  btn.disabled = true;
+  out.textContent = `Asking ${model}...`;
+  try {
+    const res = await fetch(`${API_BASE}/api/ai/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    out.textContent = body.ok
+      ? `${body.model} answered in ${body.seconds} s.`
+      : `${body.model} replied, but not as expected: "${body.reply}"`;
+  } catch (e) {
+    out.textContent = `Test failed: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveAiModels() {
+  const payload = {};
+  ["default", ...AI_PURPOSE_KEYS].forEach(k => {
+    const sel = $(`#ai-sel-${k}`);
+    payload[k] = sel ? sel.value : "";
+  });
+  const btn = $("#ai-save");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/ai`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    AI_EDIT.state = body;
+    const summary = body.purposes.map(p => `${p.label.split(" ")[0]}: ${p.effective}`).join(", ");
+    toast(`AI models saved. ${summary}`);
+    closeAiModal();
+  } catch (e) {
+    $("#ai-test-result").textContent = `Not saved: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ----- 8. Goals editor -----
 
 // The editor works on a draft copy. STATE.goals (and so the board) only
@@ -2439,6 +2568,18 @@ function init() {
     });
   }
 
+  // AI models panel
+  $("#open-ai-models").addEventListener("click", openAiModels);
+  $("#ai-save").addEventListener("click", saveAiModels);
+  $("#ai-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "ai") { closeAiModal(); return; }
+    const test = e.target.closest(".ai-test-btn");
+    if (test) testAiModel(test);
+  });
+  $("#ai-modal").addEventListener("change", e => {
+    if (e.target.id === "ai-sel-default") refreshAiInheritLabels();
+  });
+
   // Goals editor
   $("#open-goals").addEventListener("click", openGoalsEditor);
   $("#goals-save").addEventListener("click", saveGoalsFromEditor);
@@ -2542,6 +2683,7 @@ function init() {
       closeGoalsModal();
       closeVialModal();
       closeAchievementsModal();
+      closeAiModal();
     }
   });
 }

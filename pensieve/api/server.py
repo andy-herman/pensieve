@@ -57,6 +57,18 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
+        if settings.llm_provider == "github_copilot" and settings.copilot_prewarm:
+            # Boot the Copilot CLI in the background so the first recap or
+            # regenerate does not pay the multi-second startup.
+            def _warm() -> None:
+                try:
+                    from pensieve.enrichment.chat_provider import get_chat_client
+
+                    get_chat_client(settings).warm()  # type: ignore[attr-defined]
+                except Exception as e:
+                    print(f"GitHub Copilot warm-up failed: {e}", flush=True)
+
+            threading.Thread(target=_warm, daemon=True, name="pensieve-copilot-warm").start()
         scheduler = AutoSyncScheduler(settings, get_tracker())
         scheduler.start()
         scheduler_holder["scheduler"] = scheduler
@@ -303,6 +315,67 @@ def create_app() -> FastAPI:
             }
         except Exception as e:
             return {"mirrored": False, "reason": f"sink-error: {e}"}
+
+    # ----- AI models (in-app model choice, see pensieve.ai_prefs) -----
+
+    def _ai_client() -> Any:
+        from pensieve.enrichment.chat_provider import get_chat_client
+
+        return get_chat_client(settings)
+
+    @app.get("/api/ai")
+    def ai_state() -> dict[str, Any]:
+        """Provider, account, and the saved / effective model per purpose."""
+        from pensieve import ai_prefs
+
+        state = ai_prefs.describe(settings)
+        state["provider"] = settings.llm_provider
+        state["account"] = settings.copilot_github_user or None
+        state["editable"] = settings.llm_provider == "github_copilot"
+        return state
+
+    @app.get("/api/ai/models")
+    def ai_models() -> dict[str, Any]:
+        """Models the Copilot account can use (enabled ones first)."""
+        if settings.llm_provider != "github_copilot":
+            return {"models": [], "note": "Model choice applies to the GitHub Copilot provider."}
+        try:
+            models = _ai_client().list_models()
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Could not reach GitHub Copilot: {e}") from e
+        models.sort(key=lambda m: (not m.get("enabled", True), m.get("id") or ""))
+        return {"models": models}
+
+    @app.put("/api/ai")
+    def ai_save(body: dict[str, Any]) -> dict[str, Any]:
+        """Save model choices. Blank means inherit (purpose -> default -> .env)."""
+        from pensieve import ai_prefs
+
+        wanted = {k: str(body.get(k) or "").strip() for k in ("default", *ai_prefs.PURPOSES)}
+        chosen = {v for v in wanted.values() if v}
+        if chosen and settings.llm_provider == "github_copilot":
+            try:
+                known = {m["id"] for m in _ai_client().list_models()}
+            except Exception:
+                known = set()  # cannot verify right now; accept the ids as given
+            unknown = sorted(chosen - known) if known else []
+            if unknown:
+                raise HTTPException(status_code=400, detail=f"Unknown model: {', '.join(unknown)}")
+        ai_prefs.save(settings, wanted)
+        return ai_state()
+
+    @app.post("/api/ai/test")
+    def ai_test(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Send one tiny prompt to a model to prove it answers for this account."""
+        from pensieve import ai_prefs
+
+        if settings.llm_provider != "github_copilot":
+            raise HTTPException(status_code=400, detail="Model tests apply to the GitHub Copilot provider.")
+        model = str((body or {}).get("model") or "").strip() or ai_prefs.model_for(settings, "enrichment")
+        try:
+            return _ai_client().ping(model)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"{model} did not answer: {e}") from e
 
     @app.get("/api/healthz")
     def healthz() -> dict[str, Any]:

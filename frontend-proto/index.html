@@ -121,6 +121,7 @@
             <div class="cmd-pop-panel cmd-menu" id="more-pop-panel" role="menu" aria-label="More actions" hidden>
               <button id="refresh-btn" class="ghost-button cmd-menu-item" role="menuitem" title="Reload board from local Pensieve store">&#x21bb; Refresh</button>
               <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect Houses">Set goals</button>
+              <button id="open-ai-models" class="ghost-button cmd-menu-item" role="menuitem" title="Choose which GitHub Copilot models Pensieve uses">AI models</button>
               <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
             </div>
           </div>
@@ -278,6 +279,24 @@
           <button id="goals-save" class="primary-button">Save goals</button>
         </div>
         <p class="goals-footnote">Saved to <code>data/connect-goals.json</code>. Used by the AI to align tasks to your goals on the next sync.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="ai-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="ai"></div>
+    <article class="modal-card ai-modal-card" role="dialog" aria-modal="true" aria-labelledby="ai-title">
+      <button class="modal-close" data-close="ai" aria-label="Close">x</button>
+      <div class="modal-body">
+        <h2 id="ai-title" class="goals-title">AI models</h2>
+        <p class="goals-subtitle">Choose which GitHub Copilot model does each job. A change applies to the very next AI call; nothing needs restarting.</p>
+        <p class="ai-account" id="ai-account"></p>
+        <div id="ai-rows" class="ai-rows"></div>
+        <p class="ai-test-result" id="ai-test-result" aria-live="polite"></p>
+        <div class="goals-actions">
+          <button id="ai-save" class="primary-button">Save models</button>
+        </div>
+        <p class="goals-footnote">Saved to <code>data/ai-models.json</code>. "Use default" follows the Default row, which follows <code>COPILOT_MODEL</code> in <code>.env</code>. Test sends one tiny prompt to that model.</p>
       </div>
     </article>
   </div>

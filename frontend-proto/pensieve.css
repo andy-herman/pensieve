@@ -1555,6 +1555,44 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 
 .goals-modal-card { max-width: 880px; }
 
+/* ---- AI models panel ---- */
+.ai-modal-card { max-width: 720px; }
+.ai-account {
+  margin: 0 0 var(--sp-4);
+  font-family: var(--font-script);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.ai-account strong { font-family: var(--font-display); letter-spacing: 0.5px; color: var(--ink); }
+.ai-rows { display: grid; gap: var(--sp-3); }
+.ai-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.6fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--parchment-1) 45%, transparent);
+}
+.ai-row--default { border-color: var(--parchment-dark); box-shadow: inset 3px 0 0 var(--candle-ink); }
+.ai-row-label { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.5px; color: var(--ink); }
+.ai-select { width: 100%; min-width: 0; padding: 6px 8px; font-size: 14px; }
+.ai-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.ai-test-btn { white-space: nowrap; }
+.ai-test-result {
+  min-height: 1.4em;
+  margin: var(--sp-3) 0 0;
+  font-family: var(--font-script);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+@media (max-width: 640px) {
+  .ai-row { grid-template-columns: 1fr auto; }
+  .ai-row-label { grid-column: 1 / -1; }
+}
+
 .modal-close {
   position: absolute;
   top: 10px;
@@ -1641,6 +1679,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 .goal-check input[type=checkbox] { accent-color: var(--ink-soft); cursor: pointer; }
 
 .inline-select,
+.ai-select,
 .modal-textarea,
 .goal-input,
 .goal-textarea,
@@ -1657,6 +1696,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   transition: border-color var(--t-med) ease, background var(--t-med) ease, box-shadow var(--t-med) ease;
 }
 .inline-select:focus,
+.ai-select:focus,
 .modal-textarea:focus,
 .goal-input:focus,
 .goal-textarea:focus,
@@ -1670,6 +1710,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   background: var(--field-bg-focus);
 }
 .inline-select:focus-visible,
+.ai-select:focus-visible,
 .modal-textarea:focus-visible,
 .goal-input:focus-visible,
 .goal-textarea:focus-visible,
