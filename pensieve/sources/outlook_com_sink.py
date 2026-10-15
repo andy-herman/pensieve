@@ -32,9 +32,12 @@ from pensieve.sources.sink import TaskSink, merge_pensieve_tag
 
 
 @contextmanager
-def _ensured_com_apartment() -> Iterator[None]:
+def com_apartment() -> Iterator[None]:
     """Initialize an STA on the current thread if one isn't already, and
     uninitialize ONLY if we were the ones that initialized it.
+
+    Shared by this sink and ``GET /api/lists``: anything that touches
+    Outlook COM from a FastAPI worker thread needs its own apartment.
 
     Repeated CoInitialize() on a thread that already owns the same apartment
     returns S_FALSE (no raise); we still call CoUninitialize() to balance
@@ -121,7 +124,7 @@ class OutlookCOMSink(TaskSink):
         self._app = None
 
     def set_column_tag(self, task_id: str, column: str, *, prefix: str) -> bool:
-        with _ensured_com_apartment():
+        with com_apartment():
             try:
                 return self._set_column_tag_unguarded(task_id, column, prefix=prefix)
             finally:
@@ -139,7 +142,7 @@ class OutlookCOMSink(TaskSink):
         return True
 
     def clear_column_tag(self, task_id: str, *, prefix: str) -> bool:
-        with _ensured_com_apartment():
+        with com_apartment():
             try:
                 return self._clear_column_tag_unguarded(task_id, prefix=prefix)
             finally:
@@ -157,7 +160,7 @@ class OutlookCOMSink(TaskSink):
         return True
 
     def set_completion(self, task_id: str, completed: bool) -> bool:
-        with _ensured_com_apartment():
+        with com_apartment():
             try:
                 return self._set_completion_unguarded(task_id, completed)
             finally:

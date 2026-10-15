@@ -54,6 +54,17 @@ def _parse_due_date(raw: str) -> datetime:
     return parsed.replace(tzinfo=timezone.utc)
 
 
+def _str_list(value: Any) -> Optional[list[str]]:
+    """A JSON list of non-blank strings, or None when the field is absent or not a list.
+
+    The recap routes rely on the difference: ``None`` means "use the
+    configured default", ``[]`` means "no filter".
+    """
+    if not isinstance(value, list):
+        return None
+    return [str(v) for v in value if str(v).strip()]
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     scheduler_holder: dict[str, AutoSyncScheduler] = {}
@@ -113,39 +124,34 @@ def create_app() -> FastAPI:
     # serializes every read-modify-write of those files.
     garden_state_lock = threading.RLock()
 
-    def _enrich_with_vials(mem_dict: dict[str, Any], memory_id: str,
-                           captured_counts: dict[str, int],
-                           any_vial_ids: set[str]) -> dict[str, Any]:
-        """Add vials_count + pending_closure_capture to a Memory dashboard dict.
-
-        Pending = column is closed AND no Vial (captured or skipped) exists
-        for this memory. A Skip clears the chevron without adding to
-        vials_count (which only counts captured Vials).
-        """
-        is_closed = mem_dict.get("column") == "closed"
-        mem_dict["vials_count"] = captured_counts.get(memory_id, 0)
-        mem_dict["pending_closure_capture"] = bool(is_closed and memory_id not in any_vial_ids)
-        return mem_dict
-
-    def _enrich_with_freshness(mem_dict: dict[str, Any], memory: Any,
-                               now: datetime,
-                               captured_counts: dict[str, int]) -> dict[str, Any]:
-        """Add Garden v1 derived fields: freshness + is_overdue.
-
-        Pure-function enrichment at the API boundary (same pattern as
-        ``pending_closure_capture``). Memory model stays clean of Garden
-        concepts. ``captured_counts`` is used to decide ``closed_vialed``
-        — skipped Vials must NOT promote a closed card to that state.
-        """
-        has_captured = captured_counts.get(memory.id, 0) > 0
-        mem_dict["freshness"] = garden.derive_freshness(
-            memory, now, has_captured_vial=has_captured
-        )
-        mem_dict["is_overdue"] = garden.is_overdue(memory, now)
-        return mem_dict
-
     def _now_utc() -> datetime:
         return datetime.now(timezone.utc)
+
+    def _dashboard_dicts(mems: list[Any]) -> list[dict[str, Any]]:
+        """Dashboard JSON for memories, plus the fields derived at the API boundary.
+
+        - ``vials_count``: captured Vials only (a Skip does not count).
+        - ``pending_closure_capture``: closed AND no Vial at all, so a Skip
+          also clears the chevron.
+        - ``freshness`` / ``is_overdue`` (Garden): only a CAPTURED Vial
+          promotes a closed card to ``closed_vialed``.
+
+        The Memory model itself stays free of Vial and Garden concepts.
+        """
+        captured_counts = vial_store.captured_count_by_memory()
+        any_vial_ids = vial_store.has_any_vial_by_memory()
+        now = _now_utc()
+        out = []
+        for m in mems:
+            d = m.to_dashboard_dict()
+            d["vials_count"] = captured_counts.get(m.id, 0)
+            d["pending_closure_capture"] = bool(m.column == "closed" and m.id not in any_vial_ids)
+            d["freshness"] = garden.derive_freshness(
+                m, now, has_captured_vial=captured_counts.get(m.id, 0) > 0
+            )
+            d["is_overdue"] = garden.is_overdue(m, now)
+            out.append(d)
+        return out
 
     # ----- Garden v2 quest helpers ------------------------------------------
 
@@ -601,28 +607,14 @@ def create_app() -> FastAPI:
     @app.get("/api/memories")
     def list_memories() -> dict[str, Any]:
         mems = store.list_memories()
-        captured_counts = vial_store.captured_count_by_memory()
-        any_vial_ids = vial_store.has_any_vial_by_memory()
-        now = _now_utc()
-        out = []
-        for m in mems:
-            d = m.to_dashboard_dict()
-            _enrich_with_vials(d, m.id, captured_counts, any_vial_ids)
-            _enrich_with_freshness(d, m, now, captured_counts)
-            out.append(d)
-        return {"count": len(mems), "memories": out}
+        return {"count": len(mems), "memories": _dashboard_dicts(mems)}
 
     @app.get("/api/memories/{memory_id}")
     def get_memory(memory_id: str) -> dict[str, Any]:
         mem = store.get_memory(memory_id)
         if mem is None:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
-        captured_counts = vial_store.captured_count_by_memory()
-        any_vial_ids = vial_store.has_any_vial_by_memory()
-        d = mem.to_dashboard_dict()
-        _enrich_with_vials(d, mem.id, captured_counts, any_vial_ids)
-        _enrich_with_freshness(d, mem, _now_utc(), captured_counts)
-        return d
+        return _dashboard_dicts([mem])[0]
 
     @app.get("/api/board/health")
     def board_health() -> dict[str, Any]:
@@ -794,13 +786,7 @@ def create_app() -> FastAPI:
         # Return the enriched memory so the frontend can update in place
         # (freshness dot must refresh, not just the board-health pill).
         mem = store.get_memory(memory_id)
-        memory_dict = None
-        if mem is not None:
-            captured_counts = vial_store.captured_count_by_memory()
-            any_vial_ids = vial_store.has_any_vial_by_memory()
-            memory_dict = mem.to_dashboard_dict()
-            _enrich_with_vials(memory_dict, mem.id, captured_counts, any_vial_ids)
-            _enrich_with_freshness(memory_dict, mem, _now_utc(), captured_counts)
+        memory_dict = _dashboard_dicts([mem])[0] if mem is not None else None
         return {
             "ok": True,
             "id": memory_id,
@@ -860,14 +846,9 @@ def create_app() -> FastAPI:
         if "column" in body and body["column"] is not None:
             mirror_result = _mirror_column_to_source(memory_id, mem.column)
             completion_mirror = _mirror_completion_to_source(memory_id, mem.column)
-        captured_counts = vial_store.captured_count_by_memory()
-        any_vial_ids = vial_store.has_any_vial_by_memory()
-        d = mem.to_dashboard_dict()
-        _enrich_with_vials(d, mem.id, captured_counts, any_vial_ids)
-        _enrich_with_freshness(d, mem, _now_utc(), captured_counts)
         return {
             "ok": True,
-            "memory": d,
+            "memory": _dashboard_dicts([mem])[0],
             "mirror": mirror_result,
             "completion_mirror": completion_mirror,
         }
@@ -953,16 +934,7 @@ def create_app() -> FastAPI:
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1), top_k: int = 12) -> dict[str, Any]:
         results = store.search(q, top_k=top_k)
-        captured_counts = vial_store.captured_count_by_memory()
-        any_vial_ids = vial_store.has_any_vial_by_memory()
-        now = _now_utc()
-        out = []
-        for m in results:
-            d = m.to_dashboard_dict()
-            _enrich_with_vials(d, m.id, captured_counts, any_vial_ids)
-            _enrich_with_freshness(d, m, now, captured_counts)
-            out.append(d)
-        return {"query": q, "count": len(results), "memories": out}
+        return {"query": q, "count": len(results), "memories": _dashboard_dicts(results)}
 
     @app.get("/api/goals")
     def goals() -> dict[str, Any]:
@@ -1111,37 +1083,21 @@ def create_app() -> FastAPI:
 
         FastAPI dispatches sync routes onto worker threads from a pool, and
         COM apartments must be initialized per-thread on Windows. Without
-        the explicit CoInitialize/CoUninitialize bracket below, win32com
-        raises ``(-2147221008, 'CoInitialize has not been called.')`` on
-        any worker thread that hasn't been used for a COM call before.
+        the apartment bracket below, win32com raises
+        ``(-2147221008, 'CoInitialize has not been called.')`` on any worker
+        thread that hasn't been used for a COM call before.
         """
         from pensieve.sources.outlook_com import OutlookCOMSource, OutlookCOMUnavailable
+        from pensieve.sources.outlook_com_sink import com_apartment
 
-        _com_inited = False
-        try:
-            try:
-                import pythoncom  # type: ignore[import-not-found]
-
-                pythoncom.CoInitialize()
-                _com_inited = True
-            except Exception:
-                pass
-
+        with com_apartment():
             try:
                 # No named reference: the source (and its Outlook COM proxies)
-                # is released here, before CoUninitialize in the finally block.
+                # is released here, before the apartment is torn down.
                 folders = OutlookCOMSource().discover_lists()
             except OutlookCOMUnavailable as e:
                 raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
-            return {"count": len(folders), "lists": folders}
-        finally:
-            if _com_inited:
-                try:
-                    import pythoncom  # type: ignore[import-not-found]
-
-                    pythoncom.CoUninitialize()
-                except Exception:
-                    pass
+        return {"count": len(folders), "lists": folders}
 
     @app.post("/api/memories/{memory_id}/regenerate")
     def regenerate_memory(memory_id: str) -> dict[str, Any]:
@@ -1154,7 +1110,7 @@ def create_app() -> FastAPI:
         Preserves the user's manual: column (lifecycle placement) and
         notes_for_user (private note).
         """
-        from pensieve.cli import _build_recent_context_from_chroma
+        from pensieve.cli import _build_recent_context_from_chroma, _strand_catalog_from_samples
         from pensieve.enrichment import enrich_task, get_chat_client, load_connect_goals
         from pensieve.sources.base import RawTask
         from pensieve.sync import overlay_regeneration
@@ -1179,13 +1135,7 @@ def create_app() -> FastAPI:
         )
 
         # Strand catalog from samples.json; recent context from current Chroma state.
-        strand_catalog = None
-        if settings.samples_path.exists():
-            import json as _json
-
-            with settings.samples_path.open("r", encoding="utf-8") as f:
-                blob = _json.load(f)
-            strand_catalog = blob.get("strand_catalog")
+        strand_catalog = _strand_catalog_from_samples(settings)
         if strand_catalog is None:
             raise HTTPException(status_code=500, detail="strand_catalog missing (samples.json)")
 
@@ -1210,15 +1160,10 @@ def create_app() -> FastAPI:
         merged.last_tended_at = _now_utc()
         store.upsert_memory(merged)
         _maybe_complete_quests()
-        captured_counts = vial_store.captured_count_by_memory()
-        any_vial_ids = vial_store.has_any_vial_by_memory()
-        d = merged.to_dashboard_dict()
-        _enrich_with_vials(d, merged.id, captured_counts, any_vial_ids)
-        _enrich_with_freshness(d, merged, _now_utc(), captured_counts)
         return {
             "ok": True,
             "tokens_used": result.tokens_used,
-            "memory": d,
+            "memory": _dashboard_dicts([merged])[0],
         }
 
     @app.post("/api/recap")
@@ -1238,18 +1183,6 @@ def create_app() -> FastAPI:
 
         body = body or {}
         scope = (body.get("scope") or "all").strip()
-        goal_ids_raw = body.get("goal_ids") or None
-        goal_ids = (
-            [str(g) for g in goal_ids_raw if str(g).strip()]
-            if isinstance(goal_ids_raw, list)
-            else None
-        )
-        list_names_raw = body.get("list_names", None)
-        list_names = (
-            [str(n) for n in list_names_raw if str(n).strip()]
-            if isinstance(list_names_raw, list)
-            else None
-        )
         period_label = str(body.get("period_label") or "").strip()
 
         memories = store.list_memories()
@@ -1257,8 +1190,8 @@ def create_app() -> FastAPI:
             recap = generate_recap(
                 memories,
                 scope=scope,
-                goal_ids=goal_ids,
-                list_names=list_names,
+                goal_ids=_str_list(body.get("goal_ids")),
+                list_names=_str_list(body.get("list_names")),
                 period_label=period_label,
                 settings=settings,
             )
@@ -1317,12 +1250,6 @@ def create_app() -> FastAPI:
         goal_id = (body.get("goal_id") or "").strip()
         feedback = (body.get("feedback") or "").strip()
         scope = (body.get("scope") or "all").strip()
-        list_names_raw = body.get("list_names", None)
-        list_names = (
-            [str(n) for n in list_names_raw if str(n).strip()]
-            if isinstance(list_names_raw, list)
-            else None
-        )
         if not goal_id:
             raise HTTPException(status_code=400, detail="goal_id is required")
         if not feedback:
@@ -1334,7 +1261,7 @@ def create_app() -> FastAPI:
                 goal_id,
                 feedback,
                 scope=scope,
-                list_names=list_names,
+                list_names=_str_list(body.get("list_names")),
                 settings=settings,
             )
         except ValueError as e:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from pensieve.config import get_settings
+from pensieve.config import Settings, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.store import ChromaMemoryStore
 from pensieve.sync import run_sync
@@ -70,6 +71,14 @@ def _as_aware_utc(ts: Optional[datetime]) -> datetime:
     if ts is None:
         return datetime.min.replace(tzinfo=timezone.utc)
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+
+
+def _strand_catalog_from_samples(settings: Settings) -> Optional[list[dict]]:
+    """The strand catalog of record (``strand_catalog`` in data/samples.json), or None."""
+    if not settings.samples_path.exists():
+        return None
+    with settings.samples_path.open("r", encoding="utf-8") as f:
+        return json.load(f).get("strand_catalog")
 
 
 def _build_recent_context_from_chroma() -> dict:
@@ -135,21 +144,14 @@ def sync(
     strand_catalog = None
     recent_context = None
     if strand_catalog_path:
-        import json
-
         with strand_catalog_path.open("r", encoding="utf-8") as f:
             blob = json.load(f)
         strand_catalog = blob.get("strand_catalog")
         recent_context = blob.get("recent_context")
     elif src_name in ("outlook_com", "personal_graph"):
-        # Pull strand_catalog from samples.json (acts as the catalog of record),
-        # and synthesize recent_context from prior Chroma state.
-        if settings.samples_path.exists():
-            import json
-
-            with settings.samples_path.open("r", encoding="utf-8") as f:
-                blob = json.load(f)
-            strand_catalog = blob.get("strand_catalog")
+        # Live sources: strand catalog from samples.json, recent context from
+        # what is already in Chroma.
+        strand_catalog = _strand_catalog_from_samples(settings)
         recent_context = _build_recent_context_from_chroma()
 
     stats = run_sync(

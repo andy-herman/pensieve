@@ -113,19 +113,18 @@ def _run_sync_job(
     force: bool,
 ) -> None:
     """Build the source, run the sync, and record the result on the tracker."""
-    from pensieve.cli import _build_recent_context_from_chroma, _build_source
+    from pensieve.cli import (
+        _build_recent_context_from_chroma,
+        _build_source,
+        _strand_catalog_from_samples,
+    )
     from pensieve.sync import run_sync
 
     src = _build_source(src_name, list_names=list_names or None)
     strand_catalog = None
     recent_context = None
     if src_name in ("outlook_com", "personal_graph"):
-        if settings.samples_path.exists():
-            import json as _json
-
-            with settings.samples_path.open("r", encoding="utf-8") as f:
-                blob = _json.load(f)
-            strand_catalog = blob.get("strand_catalog")
+        strand_catalog = _strand_catalog_from_samples(settings)
         recent_context = _build_recent_context_from_chroma()
     tracker.update("Enriching new and changed tasks...")
     stats = run_sync(
