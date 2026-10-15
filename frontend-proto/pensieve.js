@@ -315,7 +315,11 @@ async function errorDetail(res) {
 
 async function apiFetch(path, opts) {
   const res = await fetch(`${API_BASE}${path}`, opts);
-  if (!res.ok) throw new Error(await errorDetail(res));
+  if (!res.ok) {
+    const err = new Error(await errorDetail(res));
+    err.status = res.status;  // 401: this window has no session key (see pensieve/api/security.py)
+    throw err;
+  }
   return res;
 }
 
@@ -427,6 +431,7 @@ async function loadMemoriesFromApi({ garden = true } = {}) {
       STATE.boardChanged = false;  // keep whatever is on screen
       STATE.apiSourceLabel = "offline (showing last refresh)";
     }
+    if (e.status === 401) STATE.apiSourceLabel = "locked: open Pensieve from its desktop app";
     console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}`);
     return false;
   }
@@ -1945,7 +1950,7 @@ function renderAccounts(st) {
   msBadge.dataset.state = ms.connected ? "on" : "off";
   let msHtml;
   if (ms.configured === false) {
-    msHtml = `<p class="account-error">This copy of Pensieve has no Microsoft app id yet. Whoever shared it needs to add PERSONAL_GRAPH_CLIENT_ID (see desktop/SHARING.md).</p>`;
+    msHtml = `<p class="account-error">Microsoft sign-in is not set up in this copy of Pensieve yet. Ask whoever shared it for an updated installer. Meanwhile you can read tasks from classic Outlook on this PC (below).</p>`;
   } else if (ms.flow && ms.flow.state === "pending") {
     msHtml = deviceCodeBlock("microsoft", ms.flow);
   } else if (ms.connected) {
