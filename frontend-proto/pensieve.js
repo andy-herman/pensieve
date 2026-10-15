@@ -483,17 +483,42 @@ function applyWeeklyFilterState() {
 
 // ----- 5b. API client + remote sync -----
 
+// The message for a failed response: FastAPI's `detail` when the server sent
+// one, else the HTTP status.
+async function errorDetail(res) {
+  const data = await res.json().catch(() => null);
+  return data && typeof data.detail === "string" ? data.detail : `API ${res.status} ${res.statusText}`.trim();
+}
+
+async function apiFetch(path, opts) {
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if (!res.ok) throw new Error(await errorDetail(res));
+  return res;
+}
+
 async function fetchJson(path, opts = {}) {
-  const url = `${API_BASE}${path}`;
-  const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
+  return (await apiFetch(path, opts)).json();
 }
 
 async function fetchText(path, opts = {}) {
-  const res = await fetch(`${API_BASE}${path}`, opts);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.text();
+  return (await apiFetch(path, opts)).text();
+}
+
+// Every JSON write (POST / PUT / PATCH / DELETE) goes through here. Returns
+// the parsed reply, or {} when there is none.
+async function sendJson(method, path, body) {
+  const init = { method };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const res = await apiFetch(path, init);
+  return (await res.json().catch(() => null)) || {};
+}
+
+// Path of one memory's API resource (dashboard ids carry a "mem_" prefix).
+function memoryPath(memoryId) {
+  return `/api/memories/${encodeURIComponent(apiIdOf(memoryId))}`;
 }
 
 // Requests where only the newest answer matters (semantic search, graph,
@@ -1029,15 +1054,7 @@ async function regenerateMemory(memoryId) {
     btn.innerHTML = "&#x2728; Brewing...";
   }
   try {
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/regenerate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`${res.status}: ${text.slice(0, 160)}`);
-    }
-    const body = await res.json();
+    const body = await sendJson("POST", `${memoryPath(memoryId)}/regenerate`);
     const fresh = body.memory;
     if (!fresh) throw new Error("API returned no memory");
     const newId = `mem_${fresh.source_task_id || fresh.id}`;
@@ -1100,21 +1117,11 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
 // payload. Throws with a short message on failure.
 async function patchMemoryApi(memoryId, suffix, body) {
   return trackPatch(async () => {
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}${suffix}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status}: ${text.slice(0, 120)}`);
-    }
-    // The API returns the enriched memory so freshness updates in place
-    // (the dot must refresh, not just the score pill). Best-effort parse.
-    const payload = (await res.json().catch(() => null)) || {};
+    const payload = await sendJson("PATCH", `${memoryPath(memoryId)}${suffix}`, body);
+    // The reply carries the enriched memory, so the freshness dot updates in place.
     if (payload.memory) mergeServerMemory(payload.memory);
-    // If we got here, the API is up. Flip the flag so UI affordances that
-    // gate on apiConnected (e.g. semantic search) work without a reload.
+    // The API answered, so features gated on apiConnected (e.g. semantic
+    // search) start working without a reload.
     if (!STATE.apiConnected) {
       STATE.apiConnected = true;
       if (STATE.apiSourceLabel === "offline (seed data)") {
@@ -1583,13 +1590,6 @@ function toggleReviewOnlyFilter() {
 
 // ----- 7. Modal -----
 
-const LIFECYCLE_OPTIONS = [
-  { id: "memory", label: "Memory" },
-  { id: "dive", label: "Dive" },
-  { id: "review", label: "Review" },
-  { id: "closed", label: "Closed" },
-];
-
 // Format a Date or ISO string as a YYYY-MM-DD value for <input type="date">.
 function toInputDate(d) {
   const x = (d instanceof Date) ? d : new Date(d);
@@ -1639,8 +1639,8 @@ function openModal(m) {
       `<option value="${escapeHtml(s.id)}" ${m.suggested_strand === s.id ? "selected" : ""}>${escapeHtml(s.display_name)} (${escapeHtml(s.kind)})</option>`
     )).join("");
 
-  const colOptions = LIFECYCLE_OPTIONS.map(c =>
-    `<option value="${c.id}" ${m.column === c.id ? "selected" : ""}>${c.label}</option>`
+  const colOptions = LIFECYCLE_COLUMNS.map(c =>
+    `<option value="${c.id}" ${m.column === c.id ? "selected" : ""}>${c.title}</option>`
   ).join("");
 
   const goalCheckboxes = STATE.goals.map(g => {
@@ -1840,15 +1840,10 @@ async function saveVial(kind) {
   buttons.forEach(b => { if (b) b.disabled = true; });
   try {
     await trackPatch(async () => {
-      const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/vials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+      await sendJson("POST", `${memoryPath(memoryId)}/vials`, {
+        captured_text: kind === "captured" ? text : "",
+        capture_kind: kind,
       });
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`${res.status}: ${detail}`);
-      }
       noteLocalMutation();
       closeVialModal();
       toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
@@ -1894,16 +1889,21 @@ async function openCapture() {
   setCaptureHint(speechRecognizer()
     ? "Listening starts when you click the microphone. Say the task, for example \"Send the status report to my manager by Friday.\""
     : "Speech is not available in this browser; type the task instead.");
-  try {
-    CAPTURE.info = await fetchJson("/api/capture");
-  } catch (_) {
-    CAPTURE.info = { enabled: false, lists: [], error: "Pensieve is offline." };
-  }
+  await loadCaptureInfo();
   if (!CAPTURE.info.enabled) {
     setCaptureHint(CAPTURE.info.error || "Adding tasks is switched off for this source.", true);
   }
   if (speechRecognizer() && CAPTURE.info.enabled) startListening();
   else $("#capture-text").focus();
+}
+
+// Whether adding tasks is on, and which lists the confirm card offers.
+async function loadCaptureInfo() {
+  try {
+    CAPTURE.info = await fetchJson("/api/capture");
+  } catch (_) {
+    CAPTURE.info = { enabled: false, lists: [], error: "Pensieve is offline." };
+  }
 }
 
 function closeCapture() {
@@ -1975,14 +1975,10 @@ async function understandCapture() {
   btn.disabled = true;
   setCaptureHint("Turning that into a task...");
   try {
-    const res = await fetch(`${API_BASE}/api/capture/parse`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, lists: (CAPTURE.info && CAPTURE.info.lists) || [] }),
-    });
-    const draft = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(draft.detail || `${res.status}`);
-    showCaptureDraft(draft);
+    showCaptureDraft(await sendJson("POST", "/api/capture/parse", {
+      text,
+      lists: (CAPTURE.info && CAPTURE.info.lists) || [],
+    }));
   } catch (e) {
     setCaptureHint(`Could not read that: ${e.message}`, true);
   } finally {
@@ -2000,16 +1996,11 @@ function showCaptureDraft(draft) {
   $("#cap-list").innerHTML = (info.lists || []).map(n =>
     `<option value="${escapeHtml(n)}"${n === chosen ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
   const where = info.source === "personal_graph" ? "Microsoft To Do" : "Outlook";
-  if (CAPTURE.request) {
-    $("#capture-where").textContent = `Requested by ${CAPTURE.request.from}. It will be added to ${where}, and their note will say you added it.`;
-    $("#capture-listen").hidden = true;
-    $("#capture-draft").hidden = false;
-    $("#cap-title").focus();
-    return;
-  }
-  $("#capture-where").textContent = draft.ai === false
-    ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
-    : `It will be added to ${where}. Check it, then Add.`;
+  $("#capture-where").textContent = CAPTURE.request
+    ? `Requested by ${agentName(CAPTURE.request.from)}. It will be added to ${where}, and their note will say you added it.`
+    : draft.ai === false
+      ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
+      : `It will be added to ${where}. Check it, then Add.`;
   $("#capture-listen").hidden = true;
   $("#capture-draft").hidden = false;
   $("#cap-title").focus();
@@ -2020,22 +2011,16 @@ async function addCapturedTask(e) {
   const btn = $("#capture-add");
   btn.disabled = true;
   try {
-    const url = CAPTURE.request
-      ? `${API_BASE}/api/bridge/requests/${encodeURIComponent(CAPTURE.request.id)}/add`
-      : `${API_BASE}/api/capture/add`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: $("#cap-title").value,
-        notes: $("#cap-notes").value,
-        due_date: $("#cap-due").value || null,
-        list_name: $("#cap-list").value || null,
-        importance: $("#cap-high").checked ? "high" : "normal",
-      }),
+    const path = CAPTURE.request
+      ? `/api/bridge/requests/${encodeURIComponent(CAPTURE.request.id)}/add`
+      : "/api/capture/add";
+    const body = await sendJson("POST", path, {
+      title: $("#cap-title").value,
+      notes: $("#cap-notes").value,
+      due_date: $("#cap-due").value || null,
+      list_name: $("#cap-list").value || null,
+      importance: $("#cap-high").checked ? "high" : "normal",
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
     closeCapture();
     toast(`Added to ${body.list_name || "your list"}. It will surface on the board in a moment.`);
     if (body.request) refreshAgentRequests();
@@ -2127,19 +2112,14 @@ async function reviewAgentRequest(id) {
   CAPTURE.request = r;
   $("#capture-title").textContent = `Task from ${agentName(r.from)}`;
   $("#capture-modal").hidden = false;
-  try {
-    CAPTURE.info = await fetchJson("/api/capture");
-  } catch (_) {
-    CAPTURE.info = { enabled: false, lists: [] };
-  }
-  showCaptureDraft({ ...r, ai: true });
+  await loadCaptureInfo();
+  showCaptureDraft(r);
 }
 
 async function dismissAgentRequest(id, btn) {
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/bridge/requests/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
-    if (!res.ok) throw new Error(`${res.status}`);
+    await sendJson("POST", `/api/bridge/requests/${encodeURIComponent(id)}/dismiss`);
     toast("Dismissed. The agent's note now says so.");
   } catch (e) {
     toast(`Could not dismiss: ${e.message}`);
@@ -2259,17 +2239,6 @@ function renderAccounts(st) {
   }
 }
 
-async function accountsPost(path, body = {}, method = "POST") {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `${res.status}`);
-  return data;
-}
-
 async function onAccountsClick(e) {
   const t = e.target;
   if (t.dataset.close === "accounts") { closeAccounts(); return; }
@@ -2283,20 +2252,19 @@ async function onAccountsClick(e) {
       const provider = connect.dataset.acctConnect;
       connect.disabled = true;
       connect.textContent = provider === "github" ? "Asking GitHub for a code..." : "Asking Microsoft for a code...";
-      await accountsPost(`/api/connect/${provider}/start`);
+      await sendJson("POST", `/api/connect/${provider}/start`);
       if (provider === "microsoft" && ACCOUNTS.status && ACCOUNTS.status.source !== "personal_graph") {
-        await accountsPost("/api/connect/source", { source: "personal_graph" }, "PUT");
+        await sendJson("PUT", "/api/connect/source", { source: "personal_graph" });
       }
       await refreshAccounts();
     } else if (disconnect) {
-      renderAccounts(await accountsPost(`/api/connect/${disconnect.dataset.acctDisconnect}/disconnect`));
+      renderAccounts(await sendJson("POST", `/api/connect/${disconnect.dataset.acctDisconnect}/disconnect`));
     } else if (cancel) {
-      renderAccounts(await accountsPost(`/api/connect/${cancel.dataset.acctCancel}/cancel`));
+      renderAccounts(await sendJson("POST", `/api/connect/${cancel.dataset.acctCancel}/cancel`));
     } else if (open) {
-      await accountsPost("/api/connect/open", { url: open.dataset.acctOpen });
+      await sendJson("POST", "/api/connect/open", { url: open.dataset.acctOpen });
     } else if (copy) {
-      await navigator.clipboard.writeText(copy.dataset.acctCopy);
-      toast("Code copied");
+      toast(await copyToClipboard(copy.dataset.acctCopy) ? "Code copied" : "Copy failed");
     }
   } catch (err) {
     toast(`Accounts: ${err.message}`);
@@ -2306,13 +2274,12 @@ async function onAccountsClick(e) {
 
 async function finishAccounts(dismissOnly) {
   try {
-    await accountsPost("/api/connect/finish");
+    await sendJson("POST", "/api/connect/finish");
   } catch (_) { /* closing is still fine */ }
   closeAccounts();
   if (!dismissOnly) {
     toast("All set. Pulling your tasks now...");
-    fetch(`${API_BASE}/api/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .catch(() => {});
+    sendJson("POST", "/api/sync", {}).catch(() => {});
   }
 }
 
@@ -2404,13 +2371,7 @@ async function testAiModel(btn) {
   btn.disabled = true;
   out.textContent = `Asking ${model}...`;
   try {
-    const res = await fetch(`${API_BASE}/api/ai/test`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    const body = await sendJson("POST", "/api/ai/test", { model });
     out.textContent = body.ok
       ? `${body.model} answered in ${body.seconds} s.`
       : `${body.model} replied, but not as expected: "${body.reply}"`;
@@ -2430,13 +2391,7 @@ async function saveAiModels() {
   const btn = $("#ai-save");
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/ai`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    const body = await sendJson("PUT", "/api/ai", payload);
     AI_EDIT.state = body;
     const summary = body.purposes.map(p => `${p.label.split(" ")[0]}: ${p.effective}`).join(", ");
     toast(`AI models saved. ${summary}`);
@@ -2506,19 +2461,7 @@ async function saveGoalsFromEditor() {
 
   if (STATE.apiConnected) {
     try {
-      const res = await fetch(`${API_BASE}/api/goals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          _meta: STATE.goalsMeta || {},
-          goals: STATE.goals,
-        }),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`${res.status}: ${txt.slice(0, 160)}`);
-      }
-      const body = await res.json();
+      const body = await sendJson("POST", "/api/goals", { _meta: STATE.goalsMeta || {}, goals: STATE.goals });
       toast(`Saved ${body.saved || STATE.goals.length} goals to server`);
     } catch (e) {
       toast(`Saved locally (server save failed: ${e.message})`);
@@ -2589,12 +2532,7 @@ async function uploadConnectPdf(file) {
   try {
     const fd = new FormData();
     fd.append("file", file, file.name);
-    const res = await fetch(`${API_BASE}/api/goals/import`, { method: "POST", body: fd });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const body = await res.json();
+    const body = await fetchJson("/api/goals/import", { method: "POST", body: fd });
     const proposal = body.proposal || {};
     const goals = Array.isArray(proposal.goals) ? proposal.goals : [];
     if (!goals.length) throw new Error("No goals found in PDF");
@@ -2977,16 +2915,7 @@ function init() {
       pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
       pullTodoBtn.classList.add("is-pulling");
       try {
-        const res = await fetch(`${API_BASE}/api/sync`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: "outlook_com" }),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`${res.status}: ${text.slice(0, 120)}`);
-        }
-        const body = await res.json();
+        const body = await sendJson("POST", "/api/sync", { source: "outlook_com" });
         if (body.already_running) {
           toast("A sync is already in flight - waiting for it to finish");
         } else {
@@ -3056,7 +2985,7 @@ function init() {
   $("#accounts-modal").addEventListener("change", async e => {
     if (e.target.name !== "task-source") return;
     try {
-      renderAccounts(await accountsPost("/api/connect/source", { source: e.target.value }, "PUT"));
+      renderAccounts(await sendJson("PUT", "/api/connect/source", { source: e.target.value }));
     } catch (err) {
       toast(`Accounts: ${err.message}`);
     }
@@ -3254,31 +3183,22 @@ async function generateRecap() {
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = "Drafting...";
-  if (status) status.textContent = "Calling the model, this can take a moment...";
+  status.textContent = "Calling the model, this can take a moment...";
   try {
-    const res = await fetch(`${API_BASE}/api/recap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope, period_label: period }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-    const data = await res.json();
-    STATE.lastRecap = data.recap;
+    const data = await sendJson("POST", "/api/recap", { scope, period_label: period });
     STATE.lastScope = scope;
     renderRecap(data.recap);
     const r = data.recap || {};
-    if (status) {
-      const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
-        ? ` Lists: ${r.list_names_applied.join(", ")}.`
-        : "";
-      status.textContent =
-        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
-        `${r.tokens_used || 0} tokens.`;
-    }
+    const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
+      ? ` Lists: ${r.list_names_applied.join(", ")}.`
+      : "";
+    status.textContent =
+      `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
+      `${r.tokens_used || 0} tokens.`;
     refreshRecapHistory();
   } catch (e) {
-    if (status) status.textContent = "";
-    output.innerHTML = `<p class="recap-empty">Recap failed: ${e.message}</p>`;
+    status.textContent = "";
+    output.innerHTML = `<p class="recap-empty">Recap failed: ${escapeHtml(e.message)}</p>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = original;
@@ -3319,16 +3239,13 @@ async function reviseSection(section, s) {
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "Rewriting...";
   try {
-    const res = await fetch(`${API_BASE}/api/recap/revise`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal_id: s.goal_id, feedback, scope: STATE.lastScope || "all" }),
+    const data = await sendJson("POST", "/api/recap/revise", {
+      goal_id: s.goal_id,
+      feedback,
+      scope: STATE.lastScope || "all",
     });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-    const data = await res.json();
-    const newSection = data.section;
-    // update in-memory recap + re-render this section's blocks
-    s.accomplishments = newSection.accomplishments || [];
+    // Update the in-memory recap, then re-render this section's blocks.
+    s.accomplishments = data.section.accomplishments || [];
     if (STATE.lastRecap && STATE.lastRecap.sections) {
       const idx = STATE.lastRecap.sections.findIndex(x => x.goal_id === s.goal_id);
       if (idx >= 0) STATE.lastRecap.sections[idx] = s;
@@ -3420,12 +3337,11 @@ async function exportRecapDocx() {
     toast("Generate a recap first."); return;
   }
   try {
-    const res = await fetch(`${API_BASE}/api/recap/export`, {
+    const res = await apiFetch("/api/recap/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recap: STATE.lastRecap }),
     });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -3898,9 +3814,10 @@ function wireGraphInteraction() {
 
 const DOCS = { current: null, list: [] };
 
-// Tiny, safe markdown renderer (escapes first, then applies a subset).
+// Tiny, safe markdown renderer (escapes first, then applies a subset). Quotes
+// are escaped too, so a link URL cannot break out of its href attribute.
 function renderMarkdown(md) {
-  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = escapeHtml;
   const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
   let html = "";
   let inUl = false, inOl = false, inCode = false;
@@ -3997,12 +3914,7 @@ async function saveDoc() {
   if (!DOCS.current) return;
   const content = $("#docs-editor").value;
   try {
-    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(DOCS.current)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    await sendJson("PUT", `/api/docs/${encodeURIComponent(DOCS.current)}`, { content });
     await loadDocs();
     await openDoc(DOCS.current);
     toast("Document saved");
@@ -4015,13 +3927,7 @@ async function newDoc() {
   const title = prompt("New document title:");
   if (!title || !title.trim()) return;
   try {
-    const res = await fetch(`${API_BASE}/api/docs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}`);
-    const data = await res.json();
+    const data = await sendJson("POST", "/api/docs", { title: title.trim() });
     DOCS.current = data.doc.id;
     await loadDocs();
     await openDoc(data.doc.id);
@@ -4037,8 +3943,7 @@ async function deleteDoc() {
   if (!confirm("Delete this document? This cannot be undone.")) return;
   const id = DOCS.current;
   try {
-    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    await sendJson("DELETE", `/api/docs/${encodeURIComponent(id)}`);
     DOCS.current = null;
     $("#docs-current-title").textContent = "Select a document";
     $("#docs-view").innerHTML = "";
