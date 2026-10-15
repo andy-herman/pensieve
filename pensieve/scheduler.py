@@ -266,6 +266,8 @@ class AutoSyncScheduler:
         src = self._resolve_source()
         if src == "sample_file":
             return  # silent skip per startup banner
+        if src == "personal_graph" and not self._microsoft_connected():
+            return  # not signed in yet (first run): the Accounts screen handles it
 
         try:
             t = self._starter(
@@ -282,6 +284,14 @@ class AutoSyncScheduler:
                 self._log_once("ok", None)  # reset the suppression on a healthy tick
         except Exception as e:
             self._log_once(f"err:{e}", f"[red]Auto-sync error:[/red] {e}")
+
+    def _microsoft_connected(self) -> bool:
+        try:
+            from pensieve.connections import microsoft_status
+
+            return bool(microsoft_status(self._settings).get("connected"))
+        except Exception:
+            return False
 
     def _log_once(self, status_key: str, message: Optional[str]) -> None:
         if self._last_status == status_key:

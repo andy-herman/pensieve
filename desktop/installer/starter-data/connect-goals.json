@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "source": "Pensieve starter goals (installed build). Generic on purpose; rename or replace them in More > Set goals.",
+    "last_synced": "2026-10-15",
+    "lane_mapping_rationale": "Lane colors follow goal order: crimson=Goal1, gold=Goal2, emerald=Goal3, azure=Goal4. Colors are cosmetic.",
+    "note": "Edit these in the dashboard (More > Set goals). Pensieve uses them to sort your tasks into Houses and to explain why each task matters."
+  },
+  "goals": [
+    {
+      "id": "goal-1-career",
+      "number": 1,
+      "short_name": "Career and work",
+      "name": "Career and work",
+      "lane": "crimson",
+      "color_primary": "#7a2018",
+      "color_accent": "#c9a655",
+      "summary": "Do work I am proud of, keep my commitments to my team, and keep growing my skills and my career.",
+      "success_criteria": [
+        "Deliver what I commit to, on time",
+        "Learn at least one new skill this quarter",
+        "Keep a running record of wins for reviews"
+      ],
+      "impact_statement": "Steady, visible progress at work that compounds into bigger opportunities.",
+      "keywords_for_alignment": ["work", "project", "meeting", "deadline", "manager", "team", "client", "report", "review", "career", "presentation", "email"]
+    },
+    {
+      "id": "goal-2-home",
+      "number": 2,
+      "short_name": "Home and family",
+      "name": "Home and family",
+      "lane": "gold",
+      "color_primary": "#8a6a12",
+      "color_accent": "#c9a655",
+      "summary": "Keep home life running smoothly and make time for the people who matter most.",
+      "success_criteria": [
+        "Bills, chores and appointments handled before they become urgent",
+        "Regular time with family and friends"
+      ],
+      "impact_statement": "Less background stress and more time for what matters.",
+      "keywords_for_alignment": ["home", "family", "kids", "groceries", "bill", "appointment", "repair", "errand", "birthday", "trip", "friends", "house"]
+    },
+    {
+      "id": "goal-3-health",
+      "number": 3,
+      "short_name": "Health and wellbeing",
+      "name": "Health and wellbeing",
+      "lane": "emerald",
+      "color_primary": "#1f5a3a",
+      "color_accent": "#c9a655",
+      "summary": "Look after my body and mind: movement, sleep, check-ups, and rest.",
+      "success_criteria": [
+        "Exercise most weeks",
+        "Keep up with health appointments",
+        "Protect time to rest"
+      ],
+      "impact_statement": "Energy and focus for everything else.",
+      "keywords_for_alignment": ["gym", "run", "workout", "doctor", "dentist", "sleep", "health", "meditation", "walk", "diet", "therapy", "rest"]
+    },
+    {
+      "id": "goal-4-growth",
+      "number": 4,
+      "short_name": "Learning and side projects",
+      "name": "Learning and side projects",
+      "lane": "azure",
+      "color_primary": "#1d3f6e",
+      "color_accent": "#c9a655",
+      "summary": "Make room for curiosity: courses, books, hobbies, and things I am building on the side.",
+      "success_criteria": [
+        "Finish one course or book a month",
+        "Ship one side project milestone a quarter"
+      ],
+      "impact_statement": "Keeps me growing outside of the day job.",
+      "keywords_for_alignment": ["learn", "course", "book", "read", "hobby", "side project", "build", "practice", "class", "study", "write", "create"]
+    }
+  ],
+  "behaviors": {}
+}

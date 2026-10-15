@@ -62,17 +62,15 @@ namespace PensieveDesktop
 
         static int Run()
         {
-            string repo = ResolveRepoRoot();
-            if (repo == null)
+            Layout layout = ResolveLayout();
+            if (layout == null)
             {
-                Fail("Could not find the Pensieve folder.\n\nSet the PENSIEVE_HOME environment variable to the repo folder, or rebuild the launcher with desktop\\build.ps1.");
+                Fail("Could not find the Pensieve folder.\n\nReinstall Pensieve, or for a developer checkout set PENSIEVE_HOME to the repo folder.");
                 return 2;
             }
-
-            string python = ResolvePython(repo);
-            if (python == null)
+            if (layout.ServerFile == null)
             {
-                Fail("Could not find Python for Pensieve.\n\nExpected " + Path.Combine(repo, ".venv\\Scripts\\python.exe") + " (or set PENSIEVE_PYTHON).");
+                Fail("Could not find Python for Pensieve.\n\nExpected " + Path.Combine(layout.Root, ".venv\\Scripts\\python.exe") + " (or set PENSIEVE_PYTHON).");
                 return 2;
             }
 
@@ -83,10 +81,11 @@ namespace PensieveDesktop
                 return 2;
             }
 
-            int port = ReadPort(repo);
+            int port = ReadPort(layout.EnvFiles);
             string baseUrl = "http://127.0.0.1:" + port + "/";
             string profileDir = Path.Combine(appDataDir, "EdgeProfile");
-            Log(string.Format("start: repo={0} python={1} port={2}", repo, python, port));
+            Log(string.Format("start: {0} root={1} server={2} port={3}",
+                layout.Installed ? "installed" : "dev", layout.Root, layout.ServerFile, port));
 
             bool createdNew;
             using (Mutex mutex = new Mutex(true, MutexName, out createdNew))
@@ -107,8 +106,8 @@ namespace PensieveDesktop
                 }
                 else
                 {
-                    server = StartServer(repo, python, port);
-                    string splash = WriteSplash(repo, baseUrl);
+                    server = StartServer(layout, port);
+                    string splash = WriteSplash(layout, baseUrl);
                     LaunchEdge(edge, profileDir, new Uri(splash).AbsoluteUri);
                     if (!WaitHealthy(baseUrl, server, TimeSpan.FromSeconds(120)))
                     {
@@ -132,6 +131,48 @@ namespace PensieveDesktop
         }
 
         // ---- Locating things ------------------------------------------------
+
+        // Where the backend and its files live: an installed copy (Pensieve.exe
+        // next to server\pensieve-server.exe, see desktop/installer/) or a
+        // developer checkout (repo plus its .venv).
+        class Layout
+        {
+            public bool Installed;
+            public string Root;        // install folder or repo root (backend working dir)
+            public string ServerFile;  // pensieve-server.exe, or the venv's python.exe
+            public string ServerArgs;  // arguments before --port
+            public string AssetsDir;   // dashboard assets (splash video and poster)
+            public string IconPath;
+            public string[] EnvFiles;  // where PENSIEVE_BACKEND_PORT may be set; later wins
+        }
+
+        static Layout ResolveLayout()
+        {
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            string serverExe = Path.Combine(exeDir, "server\\pensieve-server.exe");
+            Layout l = new Layout();
+            if (File.Exists(serverExe))
+            {
+                l.Installed = true;
+                l.Root = exeDir;
+                l.ServerFile = serverExe;
+                l.ServerArgs = "";
+                l.AssetsDir = Path.Combine(exeDir, "server\\_internal\\frontend-proto\\assets");
+                l.IconPath = Path.Combine(exeDir, "pensieve.ico");
+                l.EnvFiles = new string[] { Path.Combine(exeDir, "pensieve.env"), Path.Combine(appDataDir, "pensieve.env") };
+                return l;
+            }
+            string repo = ResolveRepoRoot();
+            if (repo == null) return null;
+            l.Installed = false;
+            l.Root = repo;
+            l.ServerFile = ResolvePython(repo);
+            l.ServerArgs = "-m pensieve.cli serve";
+            l.AssetsDir = Path.Combine(repo, "frontend-proto\\assets");
+            l.IconPath = Path.Combine(repo, "desktop\\pensieve.ico");
+            l.EnvFiles = new string[] { Path.Combine(repo, ".env") };
+            return l;
+        }
 
         static bool IsRepoRoot(string dir)
         {
@@ -194,26 +235,27 @@ namespace PensieveDesktop
             return null;
         }
 
-        static int ReadPort(string repo)
+        static int ReadPort(string[] envFiles)
         {
-            string envFile = Path.Combine(repo, ".env");
-            if (File.Exists(envFile))
+            int found = 8765;
+            foreach (string envFile in envFiles)
             {
+                if (!File.Exists(envFile)) continue;
                 foreach (string raw in File.ReadAllLines(envFile))
                 {
                     string line = raw.Trim();
                     if (!line.StartsWith("PENSIEVE_BACKEND_PORT")) continue;
                     int eq = line.IndexOf('=');
                     int port;
-                    if (eq > 0 && int.TryParse(line.Substring(eq + 1).Trim(), out port) && port > 0) return port;
+                    if (eq > 0 && int.TryParse(line.Substring(eq + 1).Trim(), out port) && port > 0) found = port;
                 }
             }
-            return 8765;
+            return found;
         }
 
         // ---- Backend --------------------------------------------------------
 
-        static Process StartServer(string repo, string python, int port)
+        static Process StartServer(Layout layout, int port)
         {
             string logPath = Path.Combine(logDir, "server.log");
             try
@@ -230,15 +272,15 @@ namespace PensieveDesktop
             serverLog.WriteLine();
             serverLog.WriteLine("==== " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " starting backend on port " + port + " ====");
 
-            ProcessStartInfo psi = new ProcessStartInfo(python, "-m pensieve.cli serve --port " + port);
-            psi.WorkingDirectory = repo;
+            ProcessStartInfo psi = new ProcessStartInfo(layout.ServerFile, (layout.ServerArgs + " --port " + port).Trim());
+            psi.WorkingDirectory = layout.Root;
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
             psi.StandardOutputEncoding = Encoding.UTF8;
             psi.StandardErrorEncoding = Encoding.UTF8;
-            psi.EnvironmentVariables["PYTHONPATH"] = repo;
+            if (!layout.Installed) psi.EnvironmentVariables["PYTHONPATH"] = layout.Root;
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
             psi.EnvironmentVariables["PYTHONUTF8"] = "1";
@@ -407,17 +449,20 @@ namespace PensieveDesktop
             }
         }
 
-        static string WriteSplash(string repo, string baseUrl)
+        static string WriteSplash(Layout layout, string baseUrl)
         {
             string path = Path.Combine(appDataDir, "splash.html");
-            string icon = Path.Combine(repo, "desktop\\pensieve.ico");
-            string video = Path.Combine(repo, "frontend-proto\\assets\\splash-loop.mp4");
-            string poster = Path.Combine(repo, "frontend-proto\\assets\\splash-poster.webp");
+            string icon = layout.IconPath;
+            string video = Path.Combine(layout.AssetsDir, "splash-loop.mp4");
+            string poster = Path.Combine(layout.AssetsDir, "splash-poster.webp");
+            string fonts = Path.Combine(layout.AssetsDir, "fonts");
             string html = SplashHtml
                 .Replace("@@TARGET@@", baseUrl)
                 .Replace("@@ICON@@", FileUri(icon))
                 .Replace("@@VIDEO@@", FileUri(video))
-                .Replace("@@POSTER@@", FileUri(poster));
+                .Replace("@@POSTER@@", FileUri(poster))
+                .Replace("@@CINZEL@@", FileUri(Path.Combine(fonts, "Cinzel-700.woff2")))
+                .Replace("@@FELL_ITALIC@@", FileUri(Path.Combine(fonts, "IMFellEnglish-400-italic.woff2")));
             File.WriteAllText(path, html, new UTF8Encoding(false));
             return path;
         }
@@ -456,9 +501,11 @@ namespace PensieveDesktop
 <meta charset=""utf-8"">
 <title>The Pensieve</title>
 <link rel=""icon"" href=""@@ICON@@"">
-<link rel=""preconnect"" href=""https://fonts.googleapis.com"">
-<link rel=""preconnect"" href=""https://fonts.gstatic.com"" crossorigin>
-<link href=""https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@1&display=swap"" rel=""stylesheet"">
+<style>
+  /* Bundled fonts (SIL OFL 1.1); nothing is fetched from the internet. */
+  @font-face { font-family: 'Cinzel'; font-weight: 500 700; font-display: swap; src: url('@@CINZEL@@') format('woff2'); }
+  @font-face { font-family: 'IM Fell English'; font-style: italic; font-display: swap; src: url('@@FELL_ITALIC@@') format('woff2'); }
+</style>
 <style>
   html, body { margin: 0; height: 100%; }
   body {

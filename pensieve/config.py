@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -10,6 +12,18 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Installed build (PyInstaller, see desktop/installer/): program files are
+# read-only, so per-user data and settings live under %LOCALAPPDATA%\Pensieve.
+# Settings come from the install folder's pensieve.env (defaults baked in by the
+# installer), then the user's own pensieve.env, then environment variables.
+FROZEN = bool(getattr(sys, "frozen", False))
+USER_HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Pensieve"
+INSTALL_ROOT = Path(sys.executable).resolve().parent.parent if FROZEN else REPO_ROOT
+ENV_FILES = (
+    (str(INSTALL_ROOT / "pensieve.env"), str(USER_HOME / "pensieve.env")) if FROZEN else (str(REPO_ROOT / ".env"),)
+)
+DEFAULT_DATA_DIR = USER_HOME / "data" if FROZEN else REPO_ROOT / "data"
 
 
 class Settings(BaseSettings):
@@ -21,7 +35,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=str(REPO_ROOT / ".env"),
+        env_file=ENV_FILES,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -99,7 +113,7 @@ class Settings(BaseSettings):
     )
 
     # --- Pensieve runtime ---
-    data_dir: Path = Field(default=REPO_ROOT / "data", alias="PENSIEVE_DATA_DIR")
+    data_dir: Path = Field(default=DEFAULT_DATA_DIR, alias="PENSIEVE_DATA_DIR")
     backend_port: int = Field(default=8765, alias="PENSIEVE_BACKEND_PORT")
     enrichment_confidence_threshold: float = Field(
         default=0.6, alias="PENSIEVE_ENRICHMENT_CONFIDENCE_THRESHOLD"

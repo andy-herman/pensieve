@@ -50,16 +50,24 @@ class CopilotUnavailable(RuntimeError):
 
 
 def _default_cli_path() -> Optional[str]:
-    """The Copilot CLI's native binary from a global npm install, if present."""
+    """The Copilot CLI's native binary: npm global install, winget install, or PATH."""
+    import shutil
+
+    candidates: list[Path] = []
     appdata = os.environ.get("APPDATA")
-    if not appdata:
-        return None
-    base = Path(appdata) / "npm" / "node_modules" / "@github" / "copilot" / "node_modules" / "@github"
-    for arch in ("win32-arm64", "win32-x64"):
-        exe = base / f"copilot-{arch}" / "copilot.exe"
+    if appdata:
+        base = Path(appdata) / "npm" / "node_modules" / "@github" / "copilot" / "node_modules" / "@github"
+        candidates += [base / f"copilot-{arch}" / "copilot.exe" for arch in ("win32-arm64", "win32-x64")]
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        winget = Path(local) / "Microsoft" / "WinGet"
+        candidates.append(winget / "Links" / "copilot.exe")  # `winget install GitHub.Copilot`
+        candidates += sorted((winget / "Packages").glob("GitHub.Copilot_*/copilot.exe"), reverse=True)
+    for exe in candidates:
         if exe.is_file():
             return str(exe)
-    return None
+    found = shutil.which("copilot.exe")  # npm's copilot.cmd shim is not usable by the SDK
+    return found or None
 
 
 _TOKEN_TTL_S = 1800.0

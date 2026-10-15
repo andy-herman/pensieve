@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "description": "Pensieve starter strand catalog (installed build). Strands are the kinds of work your tasks fall into; Pensieve suggests one per task. Generic on purpose.",
+    "last_updated": "2026-10-15"
+  },
+  "strand_catalog": [
+    {
+      "id": "focused-work",
+      "display_name": "Focused work",
+      "kind": "deep",
+      "description": "Work that needs an uninterrupted block: planning, analysis, building, drafting something substantial.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-1-career"]
+    },
+    {
+      "id": "communication",
+      "display_name": "Emails, calls and follow-ups",
+      "kind": "tactical",
+      "description": "Short replies, scheduling, check-ins and follow-ups with other people.",
+      "default_reverie_minutes": 20,
+      "connect_goal_ids": ["goal-1-career"]
+    },
+    {
+      "id": "writing",
+      "display_name": "Writing",
+      "kind": "writing",
+      "description": "Documents, reports, posts, presentations and anything that is mostly words.",
+      "default_reverie_minutes": 60,
+      "connect_goal_ids": ["goal-1-career", "goal-4-growth"]
+    },
+    {
+      "id": "home-admin",
+      "display_name": "Home admin and errands",
+      "kind": "tactical",
+      "description": "Bills, chores, shopping, repairs, paperwork and appointments.",
+      "default_reverie_minutes": 30,
+      "connect_goal_ids": ["goal-2-home"]
+    },
+    {
+      "id": "people",
+      "display_name": "Family and friends",
+      "kind": "tactical",
+      "description": "Plans, gifts, visits and time with people.",
+      "default_reverie_minutes": 30,
+      "connect_goal_ids": ["goal-2-home"]
+    },
+    {
+      "id": "health",
+      "display_name": "Health and fitness",
+      "kind": "tactical",
+      "description": "Exercise, appointments, sleep and wellbeing.",
+      "default_reverie_minutes": 45,
+      "connect_goal_ids": ["goal-3-health"]
+    },
+    {
+      "id": "learning",
+      "display_name": "Learning",
+      "kind": "learning",
+      "description": "Courses, reading, practice and research to build a skill.",
+      "default_reverie_minutes": 60,
+      "connect_goal_ids": ["goal-4-growth"]
+    },
+    {
+      "id": "side-projects",
+      "display_name": "Side projects",
+      "kind": "deep",
+      "description": "Personal projects and hobbies with something to build or finish.",
+      "default_reverie_minutes": 90,
+      "connect_goal_ids": ["goal-4-growth"]
+    }
+  ],
+  "recent_context": {
+    "user_recent_strands": [],
+    "recent_titles_in_same_list": []
+  },
+  "tasks": []
+}

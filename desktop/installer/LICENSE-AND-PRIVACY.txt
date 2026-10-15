@@ -1,0 +1,116 @@
+PENSIEVE: LICENSE, PRIVACY AND IMPORTANT NOTICES
+Version 1.0, effective 2026-10-15
+
+Please read this before installing. By installing or using Pensieve you agree
+to the license and notices below. The full text is also in the app under
+More > About and legal.
+
+-------------------------------------------------------------------------------
+1. WHAT PENSIEVE IS
+-------------------------------------------------------------------------------
+Pensieve is a free, unofficial personal project that adds a "memory layer" to
+your Microsoft To Do tasks: it copies your tasks to this PC, uses AI to note
+why each one matters and which of your goals it serves, and shows them on a
+board. It runs on your PC. There is no Pensieve account and no Pensieve server.
+
+-------------------------------------------------------------------------------
+2. PRIVACY: WHAT STAYS ON THIS PC
+-------------------------------------------------------------------------------
+Stored in %LOCALAPPDATA%\Pensieve on this PC, for your Windows user only:
+- copies of your tasks and the AI-written notes about them;
+- your goals, settings and model choices;
+- your Microsoft sign-in, encrypted with Windows data protection so only
+  your Windows user can read it (your GitHub sign-in is kept by the GitHub
+  Copilot CLI in Windows Credential Manager);
+- logs, which can include task titles when something goes wrong.
+Pensieve collects no analytics or usage telemetry and sends nothing to its
+author. Uninstalling offers to delete all of this.
+
+-------------------------------------------------------------------------------
+3. PRIVACY: WHAT LEAVES THIS PC, AND ONLY WHEN YOU USE IT
+-------------------------------------------------------------------------------
+- Microsoft (Microsoft Graph): after you sign in, Pensieve reads your To Do
+  lists and tasks, and adds a task only when you confirm one. Governed by
+  your Microsoft account terms and the Microsoft Privacy Statement.
+- GitHub Copilot: task titles, notes, list names and your goals are sent to
+  GitHub Copilot to write the summaries, drafts and recaps. This uses your own
+  Copilot plan and is governed by GitHub's terms and privacy statement for
+  that plan (Copilot may route requests to model providers GitHub works
+  with). Pensieve runs each request with all tools disabled and deletes its
+  Copilot session afterwards; GitHub's own retention rules still apply.
+- Speech: when you use "Speak a task", your voice is processed by the speech
+  recognition service built into Microsoft Edge.
+- Setup: the installer can install the GitHub Copilot CLI from GitHub using
+  Windows Package Manager (winget).
+- Optional: if you turn on the vault bridge, Pensieve writes a summary of your
+  board into a folder you choose; any sync service you use copies it.
+
+-------------------------------------------------------------------------------
+4. AI NOTICE
+-------------------------------------------------------------------------------
+AI-written summaries, goal matches, task drafts and recaps can be wrong or
+incomplete. Review them before relying on them. They are not professional,
+legal, financial, medical or career advice. You are responsible for any task
+you add and anything you send based on Pensieve's output.
+
+-------------------------------------------------------------------------------
+5. YOUR RESPONSIBILITIES
+-------------------------------------------------------------------------------
+Connect only accounts you own or are allowed to use. If you connect a work or
+school account, or put work information into Pensieve, follow your employer's
+or school's policies on AI tools and data. Keep Windows and your accounts
+secured; anyone who can sign in as your Windows user can open Pensieve.
+
+-------------------------------------------------------------------------------
+6. TRADEMARKS AND NON-AFFILIATION
+-------------------------------------------------------------------------------
+Pensieve is a fan-themed personal project. It is not affiliated with,
+sponsored or endorsed by Warner Bros. Entertainment Inc., J.K. Rowling or
+Wizarding World Digital. "Pensieve", "Hedwig", the Golden Snitch, the
+Marauder's Map, Hogwarts houses and related names are trademarks or creations
+of their respective owners and are used here only as a non-commercial,
+personal homage.
+Microsoft, Windows, Outlook, Microsoft To Do and Microsoft Edge are
+trademarks of the Microsoft group of companies. GitHub and GitHub Copilot are
+trademarks of GitHub, Inc. Obsidian is a trademark of Dynalist Inc. Pensieve
+is not affiliated with, sponsored or endorsed by any of them.
+
+-------------------------------------------------------------------------------
+7. LICENSE (MIT)
+-------------------------------------------------------------------------------
+Copyright (c) 2026 Andy Herman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+8. THIRD-PARTY COMPONENTS AND CREDITS
+-------------------------------------------------------------------------------
+Pensieve bundles open-source software (including Python, ChromaDB, ONNX
+Runtime, FastAPI, Pydantic, MSAL and the GitHub Copilot SDK) and the
+all-MiniLM-L6-v2 embedding model (Apache License 2.0), each under its own
+license. Their notices are in THIRD-PARTY-NOTICES.txt in the install folder.
+Fonts: Cinzel and IM Fell English, SIL Open Font License 1.1.
+Artwork: the Pensieve basin and Snitch were rendered in Blender; the owl,
+backgrounds and splash animation were generated with Higgsfield AI. Created
+for this project.
+
+-------------------------------------------------------------------------------
+9. CONTACT
+-------------------------------------------------------------------------------
+Questions or problems: https://github.com/andy-herman/pensieve

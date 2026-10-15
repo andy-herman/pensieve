@@ -78,7 +78,7 @@ def _goal_names(memory: Any, goals: dict[str, dict[str, Any]]) -> list[str]:
     for gid in getattr(memory, "connect_goal_ids", []) or []:
         g = goals.get(gid)
         if g:
-            out.append(str(g.get("short_title") or g.get("title") or gid))
+            out.append(str(g.get("short_name") or g.get("name") or g.get("short_title") or g.get("title") or gid))
     return out
 
 

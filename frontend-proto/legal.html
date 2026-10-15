@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>About and legal - The Pensieve</title>
+  <script>
+    try {
+      var t = localStorage.getItem("pensieve-theme");
+      if (t === "night" || t === "marauder") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { /* stay on day */ }
+  </script>
+  <link rel="icon" href="favicon.ico" />
+  <link rel="stylesheet" href="pensieve.css" />
+  <style>
+    .legal { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; position: relative; z-index: 1; }
+    .legal-head { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+    .legal-head img { width: 64px; height: auto; }
+    .legal h1 { margin: 0; font-family: var(--font-display); font-size: 32px; letter-spacing: 2px; color: var(--ink); }
+    .legal .meta { margin: 0 0 24px; font-family: var(--font-script); font-style: italic; color: var(--ink-soft); }
+    .legal nav { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 24px; font-family: var(--font-display); font-size: 13px; }
+    .legal nav a, .legal a { color: var(--ink-soft); }
+    .legal section {
+      margin: 0 0 18px; padding: 16px 20px;
+      border: 1px solid var(--line-soft); border-radius: var(--radius-md);
+      background: color-mix(in srgb, var(--parchment-1) 70%, transparent);
+    }
+    .legal h2 { margin: 0 0 8px; font-family: var(--font-display); font-size: 18px; letter-spacing: 1px; color: var(--ink); }
+    .legal p, .legal li { font-size: 15px; line-height: 1.6; color: var(--ink); }
+    .legal ul { padding-left: 20px; margin: 6px 0; }
+    .legal pre {
+      max-height: 420px; overflow: auto; padding: 12px; white-space: pre-wrap;
+      font-family: var(--font-mono); font-size: 12px; color: var(--ink);
+      background: var(--field-bg); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+    }
+    .back { display: inline-block; margin-bottom: 18px; font-family: var(--font-display); font-size: 13px; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <main class="legal">
+    <a class="back" href="/">&larr; Back to Pensieve</a>
+    <div class="legal-head">
+      <img src="assets/emblem.webp" alt="" width="64" height="76" />
+      <h1>About and legal</h1>
+    </div>
+    <p class="meta">Pensieve 1.0. These notices took effect on 2026-10-15.</p>
+
+    <nav aria-label="On this page">
+      <a href="#about">About</a><a href="#privacy">Privacy</a><a href="#ai">AI notice</a>
+      <a href="#you">Your responsibilities</a><a href="#trademarks">Trademarks</a>
+      <a href="#license">License</a><a href="#credits">Credits</a><a href="#notices">Third-party notices</a>
+    </nav>
+
+    <section id="about">
+      <h2>About Pensieve</h2>
+      <p>Pensieve is a free, unofficial personal project that adds a memory layer to your Microsoft To Do tasks. It copies your tasks to this PC, uses AI to note why each one matters and which of your goals it serves, and shows them on a board. It runs on your PC: there is no Pensieve account and no Pensieve server. Source code: <a href="https://github.com/andy-herman/pensieve" target="_blank" rel="noopener">github.com/andy-herman/pensieve</a>.</p>
+    </section>
+
+    <section id="privacy">
+      <h2>Privacy</h2>
+      <p><strong>What stays on this PC.</strong> Stored for your Windows user only:</p>
+      <ul>
+        <li>copies of your tasks and the AI-written notes about them, your goals, settings and model choices;</li>
+        <li>your Microsoft sign-in, encrypted with Windows data protection so only your Windows user can read it (your GitHub sign-in is kept by the GitHub Copilot CLI in Windows Credential Manager);</li>
+        <li>logs, which can include task titles when something goes wrong.</li>
+      </ul>
+      <p>Pensieve collects no analytics or usage telemetry and sends nothing to its author. In the installed app this lives in <code>%LOCALAPPDATA%\Pensieve</code>; uninstalling offers to delete it. More &gt; Accounts disconnects your sign-ins at any time.</p>
+      <p><strong>What leaves this PC, and only when you use the feature:</strong></p>
+      <ul>
+        <li><strong>Microsoft (Microsoft Graph).</strong> After you sign in, Pensieve reads your To Do lists and tasks, and adds a task only when you confirm one. Governed by your Microsoft account terms and the Microsoft Privacy Statement.</li>
+        <li><strong>GitHub Copilot.</strong> Task titles, notes, list names and your goals are sent to GitHub Copilot to write summaries, drafts and recaps, using your own Copilot plan under GitHub's terms and privacy statement for that plan (Copilot may route requests to model providers GitHub works with). Pensieve runs each request with all tools disabled and deletes its Copilot session afterwards; GitHub's own retention rules still apply. You choose the models in More &gt; AI models.</li>
+        <li><strong>Speech.</strong> When you use Speak a task, your voice is processed by the speech recognition service built into Microsoft Edge. Nothing is recorded by Pensieve.</li>
+        <li><strong>Fonts.</strong> The dashboard loads its typefaces from Google Fonts, which receives your IP address with the request.</li>
+        <li><strong>Optional vault bridge.</strong> If you turn it on, Pensieve writes a summary of your board into a folder you choose, and agents you run can ask it to add tasks (you approve each one). Any sync service you use copies that folder.</li>
+      </ul>
+    </section>
+
+    <section id="ai">
+      <h2>AI notice</h2>
+      <p>AI-written summaries, goal matches, task drafts and recaps can be wrong or incomplete. Review them before relying on them. They are not professional, legal, financial, medical or career advice. You are responsible for any task you add and anything you send based on Pensieve's output. Nothing is added to your task lists without your confirmation.</p>
+    </section>
+
+    <section id="you">
+      <h2>Your responsibilities</h2>
+      <p>Connect only accounts you own or are allowed to use. If you connect a work or school account, or put work information into Pensieve, follow your employer's or school's policies on AI tools and data. Keep Windows and your accounts secured: anyone who can sign in as your Windows user can open Pensieve.</p>
+    </section>
+
+    <section id="trademarks">
+      <h2>Trademarks and non-affiliation</h2>
+      <p>Pensieve is a fan-themed personal project. It is not affiliated with, sponsored or endorsed by Warner Bros. Entertainment Inc., J.K. Rowling or Wizarding World Digital. "Pensieve", "Hedwig", the Golden Snitch, the Marauder's Map, the Hogwarts houses and related names are trademarks or creations of their respective owners and are used here only as a non-commercial, personal homage.</p>
+      <p>Microsoft, Windows, Outlook, Microsoft To Do and Microsoft Edge are trademarks of the Microsoft group of companies. GitHub and GitHub Copilot are trademarks of GitHub, Inc. Obsidian is a trademark of Dynalist Inc. Pensieve is not affiliated with, sponsored or endorsed by any of them.</p>
+    </section>
+
+    <section id="license">
+      <h2>License</h2>
+      <pre>MIT License
+
+Copyright (c) 2026 Andy Herman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+    </section>
+
+    <section id="credits">
+      <h2>Credits</h2>
+      <ul>
+        <li>The Pensieve basin and the Golden Snitch were rendered in Blender for this project.</li>
+        <li>The owl, the backgrounds and the splash animation were generated with Higgsfield AI for this project.</li>
+        <li>Typefaces: Cinzel (Natanael Gama) and IM Fell English (Igino Marini), SIL Open Font License 1.1.</li>
+        <li>Semantic search uses the all-MiniLM-L6-v2 embedding model (Apache License 2.0).</li>
+      </ul>
+    </section>
+
+    <section id="notices">
+      <h2>Third-party notices</h2>
+      <p>Pensieve bundles open-source software, each under its own license. The full list and license texts:</p>
+      <pre id="notices-text">Loading...</pre>
+    </section>
+  </main>
+  <script>
+    fetch("third-party-notices.txt", { cache: "no-store" })
+      .then(r => (r.ok ? r.text() : Promise.reject(r.status)))
+      .then(t => { document.getElementById("notices-text").textContent = t; })
+      .catch(() => {
+        document.getElementById("notices-text").textContent =
+          "The notices file ships with the installed app (THIRD-PARTY-NOTICES.txt in the install folder).";
+      });
+  </script>
+</body>
+</html>

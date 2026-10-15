@@ -151,3 +151,13 @@ def test_api_dismiss(api):
     assert c.post(f"/api/bridge/requests/{rid}/dismiss").status_code == 200
     assert "status: dropped" in (root / "Agents" / "Hermes" / "Handoffs" / "req.md").read_text(encoding="utf-8")
     assert c.post("/api/bridge/requests/nope/dismiss").status_code == 404
+
+
+def test_now_note_shows_goal_names_not_ids(tmp_path):
+    root = _vault(tmp_path)
+    s = _settings(tmp_path, root)
+    m = _mem("g", "Plan the offsite", "dive", "Home")
+    m.connect_goal_ids = ["goal-1-career"]
+    bridge.write_now(s, [m], {"goal-1-career": {"id": "goal-1-career", "short_name": "Career and work"}})
+    text = (root / "Agents" / "Pensieve" / "Now.md").read_text(encoding="utf-8")
+    assert "goal: Career and work" in text and "goal-1-career" not in text
