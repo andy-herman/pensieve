@@ -73,3 +73,15 @@ def test_shipped_pages_have_no_inline_scripts():
         for tag in re.findall(r"<script\b[^>]*>", html):
             assert "src=" in tag, f"{name} has an inline <script>; the CSP would block it"
         assert not re.search(r"\son[a-z]+=", html), f"{name} has an inline event handler"
+
+
+def test_strands_come_from_the_catalog(client, tmp_path):
+    (tmp_path / "samples.json").write_text(
+        '{"strand_catalog": [{"id": "focus", "display_name": "Focused work", "kind": "deep"},'
+        ' {"id": "odd", "kind": "<b>"}]}', encoding="utf-8")
+    r = client.get("/api/strands", headers={"X-Pensieve-Token": "s3cret-token"})
+    assert r.status_code == 200
+    assert r.json()["strands"] == [
+        {"id": "focus", "display_name": "Focused work", "kind": "deep", "connect_goal_ids": []},
+        {"id": "odd", "display_name": "odd", "kind": "unknown", "connect_goal_ids": []},
+    ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -600,6 +601,24 @@ def create_app() -> FastAPI:
             return _ai_client().ping(model)
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"{model} did not answer: {e}") from e
+
+    @app.get("/api/strands")
+    def strands() -> dict[str, Any]:
+        """The strand catalog enrichment uses (samples.json), for the dashboard's pickers."""
+        try:
+            blob = json.loads(settings.samples_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"strands": []}
+        out = []
+        for s in blob.get("strand_catalog") or []:
+            if isinstance(s, dict) and s.get("id"):
+                out.append({
+                    "id": str(s["id"]),
+                    "display_name": str(s.get("display_name") or s["id"]),
+                    "kind": normalize_strand_kind(s.get("kind")) or "unknown",
+                    "connect_goal_ids": [str(g) for g in s.get("connect_goal_ids") or []],
+                })
+        return {"strands": out}
 
     @app.get("/api/healthz")
     def healthz() -> dict[str, Any]:
