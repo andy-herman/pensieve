@@ -53,5 +53,5 @@ data/garden-quests.json
 data/chroma.bak*/
 
 # Local editor / preview config
-.claude/
+.claude/settings.local.json
 
