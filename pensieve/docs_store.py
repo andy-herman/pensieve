@@ -7,6 +7,7 @@ id. First access seeds a couple of starter docs so the tab is never empty.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -129,11 +130,18 @@ def read_doc(doc_id: str, settings: Optional[Settings] = None) -> Optional[dict[
     return {"id": path.stem, "title": _title_of(content, path.stem), "content": content}
 
 
+def _write_atomic(path: Path, content: str) -> None:
+    """Write via a temp file and rename, so a crash mid-save never truncates a doc."""
+    tmp = path.with_suffix(".md.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def save_doc(doc_id: str, content: str, settings: Optional[Settings] = None) -> dict[str, Any]:
     settings = settings or get_settings()
     sid = slugify(doc_id)
     path = _docs_dir(settings) / f"{sid}.md"
-    path.write_text(content or "", encoding="utf-8")
+    _write_atomic(path, content or "")
     return {"id": sid, "title": _title_of(content, sid)}
 
 
