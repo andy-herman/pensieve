@@ -1272,6 +1272,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   transform: translateY(-2px);
   box-shadow: 0 1px 0 var(--highlight) inset, 0 6px 16px var(--shadow-med);
 }
+.card:focus-visible { box-shadow: var(--focus-ring), 0 2px 6px var(--shadow-soft); }  /* beats its own shadow */
 .card:active { cursor: grabbing; }
 .card.dragging { opacity: 0.5; transform: rotate(-1deg) scale(0.98); }
 .card.is-overdue {
