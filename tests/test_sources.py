@@ -80,3 +80,14 @@ def test_outlook_walk_subfolders_handles_no_folders():
 
     out = list(OutlookCOMSource._walk_subfolders(_Stub()))
     assert out == []
+
+
+def test_outlook_no_date_sentinel_maps_to_none():
+    """Outlook reports a missing due date as 1 January 4501; treat it as no date."""
+    from datetime import datetime
+
+    from pensieve.sources.outlook_com import _to_aware
+
+    assert _to_aware(datetime(4501, 1, 1)) is None
+    real = _to_aware(datetime(2026, 10, 20, 9, 30))
+    assert real is not None and (real.year, real.month, real.day) == (2026, 10, 20)

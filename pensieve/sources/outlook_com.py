@@ -16,6 +16,10 @@ class OutlookCOMUnavailable(RuntimeError):
     pass
 
 
+# Outlook's object model reports "no date" as 1 January 4501.
+_OUTLOOK_NO_DATE_YEAR = 4501
+
+
 def _to_aware(dt) -> Optional[datetime]:
     if dt is None:
         return None
@@ -23,6 +27,8 @@ def _to_aware(dt) -> Optional[datetime]:
         if isinstance(dt, str):
             return datetime.fromisoformat(dt)
         if hasattr(dt, "year"):
+            if dt.year >= _OUTLOOK_NO_DATE_YEAR:
+                return None
             return datetime(
                 dt.year,
                 dt.month,
