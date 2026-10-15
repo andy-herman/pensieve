@@ -32,7 +32,6 @@ html[data-theme="day"] {
   --moss: #4a5d3a;
   --plum: #4b2e57;
   --review: #b54a1d;
-  --review-soft: #d77a4a;
 
   /* The 8-House palette (lane slug -> House) */
   --house-crimson: #7a2018;     /* Gryffindor */
@@ -137,7 +136,6 @@ html[data-theme="night"] {
   --moss: #7ab06a;
   --plum: #b485d6;
   --review: #ff8b4a;
-  --review-soft: #ffa873;
 
   --house-crimson: #e07c63;
   --house-gold: #f5d77b;
@@ -209,7 +207,6 @@ html[data-theme="marauder"] {
   --moss: #4a4a2a;
   --plum: #3a1f48;
   --review: #7a2e0e;
-  --review-soft: #a4542a;
   --lane-ink-mix: 35%;          /* darker parchment needs darker House text */
 
   --field-bg: rgba(255, 246, 225, 0.4);
@@ -236,7 +233,6 @@ html[data-theme="marauder"] {
   --graph-stroke: rgba(59, 36, 16, 0.6);
   --confetti-2: #7a3a14;
   --confetti-5: #3b2410;
-  --focus-ring: 0 0 0 2px var(--parchment-1), 0 0 0 4px var(--candle-ink);
 }
 
 /* Lane slug -> House color. Applies to anything carrying data-lane:
@@ -290,6 +286,9 @@ html[data-theme="marauder"] {
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* The hidden attribute always wins, even over a component's own display */
+[hidden] { display: none !important; }
 
 html, body { margin: 0; padding: 0; min-height: 100%; }
 
@@ -396,7 +395,7 @@ html[data-theme="marauder"] body::before { display: none; }
   transition: opacity 0.8s ease;
 }
 
-/* Twinkle only when the stars are out (it used to run invisibly all day). */
+/* Twinkle only when the stars are out */
 html[data-theme="night"] .starfield { opacity: 0.9; animation: twinkle 6s ease-in-out infinite; }
 
 button, select, input, textarea { font: inherit; color: inherit; }
@@ -483,7 +482,7 @@ a:hover { color: var(--ember-ink); }
   flex: none;
   filter: drop-shadow(0 3px 6px var(--shadow-soft));
 }
-html[data-theme="night"] .brand-emblem { filter: drop-shadow(0 0 10px rgba(170, 200, 255, 0.35)); }
+html[data-theme="night"] :is(.brand-emblem, .accounts-emblem) { filter: drop-shadow(0 0 10px rgba(170, 200, 255, 0.35)); }
 html[data-theme="marauder"] .brand-emblem { filter: sepia(0.85) saturate(0.7) contrast(1.05); opacity: 0.85; }
 
 .title-block { display: flex; flex-direction: column; gap: 4px; }
@@ -672,7 +671,6 @@ html[data-theme="marauder"] .hedwig-block::before {
   pointer-events: none;
   box-shadow: 0 10px 26px var(--shadow-deep);
 }
-.board-health-tip[hidden] { display: none; }
 .board-health-tip strong { font-family: var(--font-display); font-size: 13px; }
 .board-health-tip ul { margin: 6px 0 0; padding-left: 16px; color: var(--ink-soft); }
 .board-health-tip li { margin: 1px 0; }
@@ -706,7 +704,6 @@ html[data-theme="marauder"] .hedwig-block::before {
   font-weight: 700;
   text-align: center;
 }
-.achievements-btn-count[hidden] { display: none; }
 .achievements-btn.has-new-unlock {
   border-color: var(--candle);
   animation: candle-pulse 1.2s ease-out 2;
@@ -731,25 +728,8 @@ html[data-theme="night"] .theme-toggle .theme-night-icon { display: inline; }
 .theme-day-icon { color: var(--candle-ink); }
 .theme-night-icon { color: var(--candle); }
 
-/* Hide Garden chrome + review owl on non-board pages */
-html[data-page="recap"] .board-health,
-html[data-page="graph"] .board-health,
-html[data-page="docs"]  .board-health,
-html[data-page="recap"] .achievements-btn,
-html[data-page="graph"] .achievements-btn,
-html[data-page="docs"]  .achievements-btn,
-html[data-page="recap"] .quest-panel,
-html[data-page="graph"] .quest-panel,
-html[data-page="docs"]  .quest-panel,
-html[data-page="recap"] .review-block,
-html[data-page="graph"] .review-block,
-html[data-page="docs"]  .review-block,
-html[data-page="recap"] .status-cluster,
-html[data-page="graph"] .status-cluster,
-html[data-page="docs"]  .status-cluster,
-html[data-page="recap"] .masthead-row--controls,
-html[data-page="graph"] .masthead-row--controls,
-html[data-page="docs"]  .masthead-row--controls { display: none; }
+/* Board-only chrome (status cluster, quests, controls) hides on the other pages */
+html:not([data-page="board"]) :is(.status-cluster, .quest-panel, .masthead-row--controls) { display: none; }
 
 /* ---- Garden: daily quest panel ---- */
 
@@ -763,7 +743,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
   border-radius: var(--radius-md);
   background: var(--tint);
 }
-.quest-panel[hidden] { display: none; }
 .quest-panel-header {
   display: flex;
   align-items: center;
@@ -783,7 +762,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
   font-size: 13px;
   color: var(--ember-ink);
 }
-.quest-panel-streak[hidden] { display: none; }
 .quest-panel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .quest-chip {
   display: inline-flex;
@@ -813,7 +791,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
 .quest-chip-progress { font-family: var(--font-script); color: var(--ink-faded); }
 .quest-chip.filter-active { border-color: var(--review); box-shadow: inset 0 0 0 1px var(--review); }
 .quest-panel-allDone { font-family: var(--font-script); color: var(--ok); }
-.quest-panel-allDone[hidden] { display: none; }
 .quest-panel.is-collapsed .quest-panel-chips { display: none; }
 
 /* ----- 5. Toolbar + controls ----- */
@@ -1005,7 +982,6 @@ html[data-theme="marauder"] .primary-button:hover { color: var(--on-candle); }
   letter-spacing: 0;
 }
 html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
-.cmd-pop-badge[hidden] { display: none; }
 
 .cmd-pop-panel {
   position: absolute;
@@ -1024,7 +1000,6 @@ html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
   border-radius: var(--radius-md);
   box-shadow: 0 14px 34px var(--shadow-deep);
 }
-.cmd-pop-panel[hidden] { display: none; }
 .cmd-pop-heading {
   display: block;
   margin-bottom: var(--sp-2);
@@ -1034,9 +1009,7 @@ html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
   text-transform: uppercase;
   color: var(--ink-faded);
 }
-.cmd-pop-row { flex-direction: row; gap: var(--sp-2); }
-.cmd-pop-section.cmd-pop-row { display: flex; flex-wrap: wrap; }
-.cmd-pop-panel .strand-filter { max-width: 100%; }
+.cmd-pop-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 .cmd-menu { min-width: 210px; gap: var(--sp-1); padding: var(--sp-2); }
 .cmd-menu-item {
@@ -1046,9 +1019,9 @@ html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
 }
 .cmd-menu-item:hover { border-color: var(--parchment-dark); }
 
-/* ---- Strand filter pills ---- */
+/* ---- Strand filter pills (inside the Filter popover) ---- */
 
-.strand-filter { display: flex; flex-wrap: wrap; gap: 6px; max-width: 520px; }
+.strand-filter { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .strand-pill {
   padding: 3px 11px;
@@ -1098,7 +1071,6 @@ html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
   border-top: 3px solid var(--candle);
   padding-top: 6px;
 }
-.page-tab:focus-visible { box-shadow: var(--focus-ring); }
 
 /* Page visibility driven by <html data-page> */
 #recap-page, #graph-page, #docs-page { display: none; }
@@ -1275,7 +1247,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 
 .card {
   position: relative;
-  padding: 10px 14px 10px 14px;
+  padding: 10px 14px;
   background: var(--parchment-1);
   border: 1px solid var(--parchment-dark);
   border-left: 4px solid var(--goal-color, var(--ink-soft));
@@ -1300,6 +1272,7 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   transform: translateY(-2px);
   box-shadow: 0 1px 0 var(--highlight) inset, 0 6px 16px var(--shadow-med);
 }
+.card:focus-visible { box-shadow: var(--focus-ring), 0 2px 6px var(--shadow-soft); }  /* beats its own shadow */
 .card:active { cursor: grabbing; }
 .card.dragging { opacity: 0.5; transform: rotate(-1deg) scale(0.98); }
 .card.is-overdue {
@@ -1524,7 +1497,6 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   justify-content: center;
   padding: 24px;
 }
-.modal[hidden] { display: none; }
 
 .modal-backdrop {
   position: absolute;
@@ -1604,14 +1576,10 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   transition: transform var(--t-fast) ease, box-shadow var(--t-med) ease;
 }
 .capture-mic:hover { transform: translateY(-1px); }
-.capture-mic:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.capture-mic:focus-visible { box-shadow: var(--focus-ring); }  /* beats its own drop shadow */
 .capture-mic.is-listening {
   border-color: var(--ember-ink);
   animation: capture-pulse 1.4s ease-in-out infinite;
-}
-@keyframes capture-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember-ink) 45%, transparent); }
-  50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--ember-ink) 0%, transparent); }
 }
 .capture-hint { margin: 0 0 var(--sp-2); font-family: var(--font-script); font-style: italic; font-size: 14px; color: var(--ink-soft); }
 .capture-hint.is-error { color: var(--ember-ink); font-style: normal; }
@@ -1625,14 +1593,13 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 .capture-check input { accent-color: var(--candle-ink); }
 .capture-where { margin: 0; font-family: var(--font-script); font-style: italic; font-size: 14px; color: var(--ink-soft); }
 .capture-actions { justify-content: space-between; }
-@media (max-width: 640px) { .capture-row { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .capture-mic.is-listening { animation: none; } }
 
 /* ---- Accounts (first-run "Connect your accounts") ---- */
 .accounts-modal-card { max-width: 680px; }
 .accounts-emblem { display: block; width: 64px; height: auto; margin: 0 auto var(--sp-2); filter: drop-shadow(0 3px 6px var(--shadow-soft)); }
-html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(170, 200, 255, 0.35)); }
 .accounts-title, .accounts-subtitle { text-align: center; }
+.accounts-legal { margin: var(--sp-2) 0 0; text-align: center; font-size: 13px; color: var(--ink-soft); }
+.accounts-legal a { color: inherit; }
 .account-card {
   margin: var(--sp-4) 0 0;
   padding: var(--sp-3) var(--sp-4);
@@ -1655,7 +1622,7 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
 .account-body .primary-button, .account-body .ghost-button { margin-right: var(--sp-2); }
 .account-ok, .account-error, .account-wait, .account-hint { margin: 0 0 var(--sp-2); font-size: 14px; }
 .account-ok { color: var(--ink); }
-.account-error { color: var(--ember-ink, var(--ember)); }
+.account-error { color: var(--ember-ink); }
 .account-wait { font-family: var(--font-script); font-style: italic; color: var(--ink-faded); }
 .account-hint { font-size: 12px; color: var(--ink-faded); }
 .device-code-step { margin: 0 0 var(--sp-2); font-size: 13px; color: var(--ink-soft); }
@@ -1665,7 +1632,7 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   border: 1px dashed var(--candle-ink);
   border-radius: var(--radius-sm);
   background: var(--field-bg);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 22px;
   letter-spacing: 3px;
   color: var(--ink);
@@ -1680,7 +1647,7 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   text-decoration: underline;
   cursor: pointer;
 }
-.link-button:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 2px; }
+.link-button:focus-visible { border-radius: 2px; }
 .account-source {
   margin: var(--sp-4) 0 0;
   padding: var(--sp-2) var(--sp-4) var(--sp-3);
@@ -1725,10 +1692,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   font-size: 14px;
   color: var(--ink-soft);
 }
-@media (max-width: 640px) {
-  .ai-row { grid-template-columns: 1fr auto; }
-  .ai-row-label { grid-column: 1 / -1; }
-}
 
 .modal-close {
   position: absolute;
@@ -1748,14 +1711,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   cursor: pointer;
 }
 .modal-close:hover { color: var(--ember-ink); background: var(--tint); }
-
-.modal-title {
-  margin: 0 0 6px 0;
-  font-family: var(--font-display);
-  font-size: 22px;
-  letter-spacing: 1.5px;
-  color: var(--ink);
-}
 
 .modal-title-edit {
   width: 100%;
@@ -1862,11 +1817,16 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
 .goal-input::placeholder,
 .goal-textarea::placeholder,
 .modal-title-edit::placeholder,
+.recap-field input::placeholder,
+.recap-revise-input::placeholder,
 .docs-editor::placeholder {
   color: var(--ink-faded);
   font-style: italic;
   opacity: 1;
 }
+
+.inline-select option,
+.recap-field select option { background: var(--parchment-1); color: var(--ink); }
 
 .inline-select {
   min-width: 160px;
@@ -1876,7 +1836,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   text-transform: none;
   letter-spacing: normal;
 }
-.inline-select option { background: var(--parchment-1); color: var(--ink); }
 
 /* "Needs review" line under the toggle row in the card modal */
 .review-status-line {
@@ -1897,8 +1856,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
 }
 .review-status-label { flex: 0 0 auto; }
 
-.review-pill { display: none; }  /* legacy class */
-
 .modal-section { margin-top: 14px; }
 
 .modal-label {
@@ -1908,13 +1865,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--ink-faded);
-}
-
-.modal-value {
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: var(--lh-normal);
-  color: var(--ink);
 }
 
 .modal-textarea {
@@ -2312,8 +2262,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   padding: 6px 10px;
   font-size: 15px;
 }
-.recap-field select option { background: var(--parchment-1); color: var(--ink); }
-.recap-field input::placeholder { color: var(--ink-faded); font-style: italic; }
 .recap-status { font-family: var(--font-body); font-style: italic; font-size: 14px; color: var(--ink-faded); }
 
 .recap-output { display: flex; flex-direction: column; gap: var(--sp-5); }
@@ -2400,7 +2348,7 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   transition: color var(--t-fast) ease;
 }
 .recap-sources summary:hover { color: var(--ink); }
-.recap-sources summary:focus-visible { box-shadow: var(--focus-ring); border-radius: 2px; }
+.recap-sources summary:focus-visible { border-radius: 2px; }
 .recap-sources ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-5); font-size: 14px; line-height: var(--lh-normal); color: var(--ink-soft); }
 .recap-sources li { margin: var(--sp-1) 0; }
 
@@ -2411,7 +2359,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   border: 1px solid var(--parchment-dark);
   border-radius: var(--radius-md);
 }
-.recap-history[hidden] { display: none; }
 .recap-history-list { display: flex; flex-direction: column; gap: var(--sp-1); }
 .recap-history-item {
   display: flex;
@@ -2440,14 +2387,12 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   padding-top: var(--sp-3);
   border-top: 1px dashed var(--parchment-dark);
 }
-.recap-revise[hidden] { display: none; }
 .recap-revise-input {
   width: 100%;
   padding: var(--sp-2) var(--sp-3);
   font-size: 15px;
   resize: vertical;
 }
-.recap-revise-input::placeholder { color: var(--ink-faded); font-style: italic; }
 .recap-revise-send { align-self: flex-start; }
 
 /* ----- 14. Constellation graph page ----- */
@@ -2582,7 +2527,6 @@ html[data-theme="night"] .graph-stage-wrap::before {
   text-align: center;
   color: var(--ink-faded);
 }
-.graph-empty[hidden] { display: none; }
 
 /* ----- 15. Documents page ----- */
 
@@ -2659,7 +2603,6 @@ html[data-theme="night"] .graph-stage-wrap::before {
   line-height: var(--lh-normal);
   resize: vertical;
 }
-.docs-editor[hidden], .docs-view[hidden] { display: none; }
 .docs-empty { padding: var(--sp-6); font-family: var(--font-body); font-style: italic; text-align: center; color: var(--ink-faded); }
 
 /* Minimal markdown rendering */
@@ -2679,8 +2622,8 @@ html[data-theme="night"] .graph-stage-wrap::before {
 /* ----- 16. The golden Snitch ----- */
 
 /* The Snitch rests off-screen and flits across now and then: pensieve.js
-   adds .is-flying for one 28s pass (see initAmbientMotion). Wing flaps are
-   SVG animations the compositor cannot take over, so they only run in flight. */
+   adds .is-flying for one 28s pass (see initAmbientMotion), and it only
+   flutters while in flight. */
 .snitch {
   position: fixed;
   top: 20%;
@@ -2720,7 +2663,6 @@ html[data-theme="marauder"] .snitch { display: none; }
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast[hidden] { display: none; }
 
 /* ----- 18. Footer ----- */
 
@@ -2746,7 +2688,6 @@ html[data-theme="marauder"] .snitch { display: none; }
 /* ----- 19. Marauder's Map overrides ----- */
 
 html[data-theme="marauder"] .title { font-family: var(--font-script); letter-spacing: 1px; }
-html[data-theme="marauder"] .card { border-style: solid; }
 html[data-theme="marauder"] .column-header { border-bottom-style: dotted; }
 html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bottom-width: 2px; }
 
@@ -2799,6 +2740,11 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
 @keyframes vial-chevron-pulse {
   0%, 100% { opacity: 0; }
   50%      { opacity: 1; }
+}
+
+@keyframes capture-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember-ink) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 14px color-mix(in srgb, var(--ember-ink) 0%, transparent); }
 }
 
 @keyframes modal-fade {
@@ -2879,7 +2825,6 @@ html.theme-switching *::after { transition: none !important; }
 @media (max-width: 680px) {
   .board { grid-template-columns: 1fr; }
   .masthead { padding: 16px 4px 12px; }
-  .strand-filter { max-width: 100%; }
   .modal { padding: var(--sp-4); }
   .modal-card { padding: var(--sp-5) var(--sp-4); }
   .recap-page, .graph-page, .docs-page { padding-inline: var(--sp-3); }
@@ -2889,6 +2834,12 @@ html.theme-switching *::after { transition: none !important; }
   .recap-field input { min-width: 0; width: 100%; }
   .graph-legend { margin-left: 0; }
   .page-tab { padding-inline: 10px; font-size: 12px; }
+}
+
+@media (max-width: 640px) {
+  .capture-row { grid-template-columns: 1fr; }
+  .ai-row { grid-template-columns: 1fr auto; }
+  .ai-row-label { grid-column: 1 / -1; }
 }
 
 /* ----- 22. Reduced motion: tone down animation for sensitive users ----- */

@@ -1,10 +1,13 @@
 /* ============================================================
    The Pensieve - dashboard JS (v4, parchment edition)
-   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Houses (Connect goals)
-   - Connect goals editable via in-app modal (persisted in localStorage)
+   - Board: Lifecycle view (Memory / Dive / Review / Closed) or Houses view
+     (one column per Connect goal), drag and drop, card + Vial modals
+   - Garden: board health pill, daily quests, achievements
+   - Pages: Board, Recap, Constellation graph, Docs
+   - Modals: goals editor (with PDF import), Speak a task, From your agents,
+     Accounts, AI models, achievements
    - Themes: day / night (toggle) + marauder (easter egg), persisted in localStorage
    - Hedwig review counter, footprint trail on drag, golden Snitch
-   - Drag-and-drop kanban, semantic search, PDF goals import, Recap, Constellation, Docs
    Data model note: goals carry a neutral `lane` slug (crimson, gold, ...). The
    House names and glyphs below are presentation only; ids, data attributes and
    API fields stay neutral.
@@ -102,208 +105,17 @@ function houseGlyph(lane) {
   return h ? h.glyph : "✦︎";
 }
 
-const STRANDS = [
-  { id: "dora-rfi", display_name: "DORA RFI Responses", kind: "deep", connect_goal_ids: ["goal-1-dora-deep-dive"] },
-  { id: "nis2-mapping", display_name: "NIS2 Crosswalk", kind: "deep", connect_goal_ids: ["goal-3-nis2-foundation", "goal-1-dora-deep-dive"] },
-  { id: "uk-ctp-domain", display_name: "UK CTP Domain Write-up", kind: "deep", connect_goal_ids: ["goal-2-uk-ctp"] },
-  { id: "argus-build", display_name: "Argus Build", kind: "deep", connect_goal_ids: ["goal-4-ai-transformation"] },
-  { id: "pensieve-build", display_name: "Pensieve Build", kind: "deep", connect_goal_ids: ["goal-4-ai-transformation"] },
-  { id: "ai-program-launch", display_name: "AI Program Launch", kind: "deep", connect_goal_ids: ["goal-4-ai-transformation"] },
-  { id: "1on1-prep", display_name: "1:1 + Team Mgmt", kind: "tactical", connect_goal_ids: [] },
-  { id: "leadership-update", display_name: "Leadership Updates", kind: "writing", connect_goal_ids: ["goal-2-uk-ctp", "goal-1-dora-deep-dive", "goal-3-nis2-foundation", "goal-4-ai-transformation"] },
-  { id: "ic5-promo-evidence", display_name: "Promo Evidence", kind: "writing", connect_goal_ids: [] },
-  { id: "learning-ai", display_name: "Learning (AI / Foundry)", kind: "learning", connect_goal_ids: ["goal-4-ai-transformation"] },
-  { id: "ops-chores", display_name: "Ops + Admin", kind: "tactical", connect_goal_ids: [] },
-];
-
-// ----- 3. Seed memories (from Phase 0 smoke test + 2 extras for column coverage) -----
-
-const SEED_MEMORIES = [
-  {
-    id: "mem_todo_sample_01",
-    title: "JET RFI 0107: Article 6 ICT risk framework mapping",
-    suggested_strand: "dora-rfi",
-    needs_human_strand_review: false,
-    why: "JET requested explicit mapping of DORA Article 6 to my internal ICT risk policy, with Azure and M365 product owner confirmation before submission. Hard deadline this Thursday.",
-    impact: "Closes RFI 0107 on schedule and protects the no-gap streak on DORA deep dive responses.",
-    strand_kind: "deep",
-    confidence_strand: 0.96, confidence_impact: 0.85,
-    connect_goal_ids: ["goal-1-dora-deep-dive"],
-    connect_alignment_confidence: 0.97,
-    connect_alignment_note: "Direct work on JET deep dive responses, the headline commitment of Goal #1.",
-    column: "dive",
-  },
-  {
-    id: "mem_todo_sample_02",
-    title: "NIS2 Article 21 to DORA Article 6 crosswalk deck",
-    suggested_strand: "nis2-mapping",
-    needs_human_strand_review: false,
-    why: "Building a two-column NIS2 to DORA crosswalk for the next CISO GRC sync, reusing existing DORA evidence to minimize new asks on product teams.",
-    impact: "Shows the team how much of NIS2 we already cover via DORA, and surfaces the genuine gaps that need new evidence work.",
-    strand_kind: "deep",
-    confidence_strand: 0.95, confidence_impact: 0.80,
-    connect_goal_ids: ["goal-3-nis2-foundation", "goal-1-dora-deep-dive"],
-    connect_alignment_confidence: 0.90,
-    connect_alignment_note: "Primary NIS2 scoping (Goal #3) with explicit DORA playbook reuse (Goal #1 leverage).",
-    column: "dive",
-  },
-  {
-    id: "mem_todo_sample_03",
-    title: "1:1 prep with manager",
-    suggested_strand: "1on1-prep",
-    needs_human_strand_review: false,
-    why: "Standing 1:1 with manager, need to cover this week's program risks and decisions that need air cover.",
-    impact: "Keeps manager informed on weekly program state and ensures escalations are surfaced before they become blockers.",
-    strand_kind: "tactical",
-    confidence_strand: 0.92, confidence_impact: 0.62,
-    connect_goal_ids: [],
-    connect_alignment_confidence: 0.85,
-    connect_alignment_note: "Recurring team management task with no direct Connect goal alignment.",
-    column: "memory",
-  },
-  {
-    id: "mem_todo_sample_04",
-    title: "Rewrite enrich-memory-prompt.md to handle empty notes",
-    suggested_strand: "pensieve-build",
-    needs_human_strand_review: false,
-    why: "Three of ten samples have empty notes and the prompt currently leans on them, so output quality drops. Need explicit fallback to title plus recent context.",
-    impact: "Makes Pensieve enrichment reliable on sparse tasks and reduces avoidable review-queue churn.",
-    strand_kind: "deep",
-    confidence_strand: 0.97, confidence_impact: 0.88,
-    connect_goal_ids: ["goal-4-ai-transformation"],
-    connect_alignment_confidence: 0.94,
-    connect_alignment_note: "Direct Pensieve build, a productivity multiplier under the AI program.",
-    column: "dive",
-  },
-  {
-    id: "mem_todo_sample_05",
-    title: "Foundry Agent Framework deep-dive evaluation",
-    suggested_strand: "learning-ai",
-    needs_human_strand_review: false,
-    why: "45-minute BUILD 2026 session on Foundry Agent Framework. Specifically evaluating whether Foundry agents could replace Pensieve's hand-rolled prompt routing.",
-    impact: "Decides whether to keep building Pensieve on raw Azure OpenAI calls or migrate to a managed agent framework.",
-    strand_kind: "learning",
-    confidence_strand: 0.92, confidence_impact: 0.75,
-    connect_goal_ids: ["goal-4-ai-transformation"],
-    connect_alignment_confidence: 0.85,
-    connect_alignment_note: "Direct R&D for the AI program; informs build-vs-buy on tooling.",
-    column: "memory",
-  },
-  {
-    id: "mem_todo_sample_06",
-    title: "Approve Argus production VM invoice",
-    suggested_strand: "ops-chores",
-    needs_human_strand_review: false,
-    why: "Standard monthly Azure spend for the Argus production VM. Routes to manager for cost-center confirmation when above the approval threshold.",
-    impact: "Keeps Argus paid and running with the right approval path if monthly spend is above threshold.",
-    strand_kind: "tactical",
-    confidence_strand: 0.90, confidence_impact: 0.85,
-    connect_goal_ids: [],
-    connect_alignment_confidence: 0.90,
-    connect_alignment_note: "Argus is named but this is operational invoice handling, not direct Goal #4 delivery work.",
-    column: "memory",
-  },
-  {
-    id: "mem_todo_sample_07",
-    title: "H1 self-reflection: stack rank top 6 moments",
-    suggested_strand: "ic5-promo-evidence",
-    needs_human_strand_review: false,
-    why: "Pulling from notes, prior reviews, and peer feedback to stack-rank the strongest contributions since October 2025 for promo case and Connect refresh.",
-    impact: "Creates a sharper evidence base for the Connect narrative and promo case.",
-    strand_kind: "writing",
-    confidence_strand: 0.98, confidence_impact: 0.88,
-    connect_goal_ids: [],
-    connect_alignment_confidence: 0.86,
-    connect_alignment_note: "Promo work supports performance packaging but does not directly advance a specific Connect deliverable.",
-    column: "dive",
-  },
-  {
-    id: "mem_todo_sample_08",
-    title: "Fix Argus regulator-detail crash on missing acronym",
-    suggested_strand: "argus-build",
-    needs_human_strand_review: false,
-    why: "A reviewer from Legal hit a render crash on the Argus regulator detail page for BaFin. Page should fall back to short_name instead of crashing.",
-    impact: "Restores a working regulator persona experience in Argus and removes a visible bug that would undermine confidence in demos.",
-    strand_kind: "deep",
-    confidence_strand: 0.97, confidence_impact: 0.84,
-    connect_goal_ids: ["goal-4-ai-transformation"],
-    connect_alignment_confidence: 0.96,
-    connect_alignment_note: "Direct Argus product work, clearly advances Goal #4.",
-    column: "closed",
-  },
-  {
-    id: "mem_todo_sample_09",
-    title: "Renew passport before October trip",
-    suggested_strand: null,
-    needs_human_strand_review: true,
-    why: "Passport renewal needed before an October trip; expedite if the fee is cheaper than the flight-rebooking risk.",
-    impact: "Keeps the trip viable and avoids last-minute rebooking costs.",
-    strand_kind: "tactical",
-    confidence_strand: 0.10, confidence_impact: 0.70,
-    connect_goal_ids: [],
-    connect_alignment_confidence: 0.99,
-    connect_alignment_note: "Personal admin with no work-goal alignment.",
-    notes_for_user: "Personal task in the Pensieve queue. Consider routing the Personal list to a separate lane.",
-    column: "memory",
-  },
-  {
-    id: "mem_todo_sample_10",
-    title: "Review direct report's H2 growth plan draft",
-    suggested_strand: "1on1-prep",
-    needs_human_strand_review: false,
-    why: "Direct report sent their self-authored growth plan covering 3 stretch goals plus a cross-team rotation interest. Need feedback before Friday's 1:1.",
-    impact: "Gives the direct report clear development feedback and makes the 1:1 concrete rather than reactive.",
-    strand_kind: "tactical",
-    confidence_strand: 0.96, confidence_impact: 0.84,
-    connect_goal_ids: [],
-    connect_alignment_confidence: 0.94,
-    connect_alignment_note: "Direct-report management with no specific Connect goal alignment.",
-    column: "memory",
-  },
-  // Two extras to populate Review + Closed columns
-  {
-    id: "mem_seed_11",
-    title: "Friday update to manager: AI program status",
-    suggested_strand: "leadership-update",
-    needs_human_strand_review: false,
-    why: "Weekly Friday update to manager, timed for the Monday leadership sync that follows. Covers AI program governance progress, Argus pilot demos, and Pensieve internal use.",
-    impact: "Maintains the structured leadership visibility cadence and ensures the AI program shows up in the broader team's view of the org.",
-    strand_kind: "writing",
-    confidence_strand: 0.97, confidence_impact: 0.86,
-    connect_goal_ids: ["goal-4-ai-transformation", "goal-2-uk-ctp"],
-    connect_alignment_confidence: 0.88,
-    connect_alignment_note: "Cross-program leadership update; weights to Goal #4 (program theme this week) and Goal #2 (UK CTP cadence anchor).",
-    column: "review",
-  },
-  {
-    id: "mem_seed_12",
-    title: "UK CTP Domain 9 self-assessment write-up: shipped",
-    suggested_strand: "uk-ctp-domain",
-    needs_human_strand_review: false,
-    why: "Closed the final UK CTP Year 1 self-assessment domain (Domain 9) with sign-off from Legal and the domain SME. All 9 of 9 domains now in submission-ready state.",
-    impact: "Completes the Year 1 Self-Assessment evidence base ahead of designation, making the 3-month post-designation submission window comfortable rather than tight.",
-    strand_kind: "writing",
-    confidence_strand: 0.98, confidence_impact: 0.94,
-    connect_goal_ids: ["goal-2-uk-ctp"],
-    connect_alignment_confidence: 0.99,
-    connect_alignment_note: "Direct Year 1 deliverable for Goal #2.",
-    column: "closed",
-  },
-];
+// The strand catalog the backend enriches with (samples.json), loaded from
+// /api/strands on the first successful board load.
+let STRANDS = [];
 
 // ----- 4. State -----
 
-const API_BASE = (() => {
-  try {
-    const saved = localStorage.getItem("pensieve-api-base");
-    if (saved) return saved.replace(/\/$/, "");
-  } catch (e) { /* ignore */ }
-  // When opened over http(s) on the same origin, use same origin; otherwise localhost
-  if (window.location.protocol === "http:" || window.location.protocol === "https:") {
-    return window.location.origin;
-  }
-  return "http://127.0.0.1:8765";
-})();
+// The dashboard is always served by its own backend, so the API is same-origin.
+const API_BASE = window.location.origin;
+
+// Shown wherever a feature needs the backend and it is not answering.
+const OFFLINE_HINT = "Pensieve's engine is not running. Close this window and open Pensieve again.";
 
 const STATE = {
   goals: loadGoals(),
@@ -326,7 +138,6 @@ const STATE = {
   inkNextRender: true,    // play the ink-in animation on the next board render
   filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
-  semanticQuery: "",
   apiConnected: false,
   apiSourceLabel: "seed",
   boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
@@ -339,9 +150,11 @@ const STATE = {
     } catch (e) { /* fall through */ }
     return new Set();
   })(),
+  lastRecap: null,         // the recap on screen (export and revise read it)
+  lastScope: "all",        // the scope it was generated with
 };
 
-// Active card drag (see section 9). Declared up here so everything can read it.
+// Active card drag (see section 15). Declared up here so everything can read it.
 let DRAG = { id: null, fromCol: null, el: null, overCol: null };
 
 function loadGoals() {
@@ -387,6 +200,17 @@ function prefersReducedMotion() {
 
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+
+// Click, Enter, or Space runs `fn` (for the role="button" status widgets).
+function onActivate(el, fn) {
+  el.addEventListener("click", fn);
+  el.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
+    }
+  });
+}
 
 function getGoal(id) { return STATE.goals.find(g => g.id === id); }
 function getStrand(id) { return STRANDS.find(s => s.id === id); }
@@ -476,24 +300,48 @@ function passesWeeklyFilter(m, colId) {
 }
 
 function applyWeeklyFilterState() {
-  const btn = $("#weekly-filter-btn");
-  if (btn) btn.classList.toggle("active", !!STATE.weeklyFilter);
+  $("#weekly-filter-btn").classList.toggle("active", !!STATE.weeklyFilter);
   updateFilterBadge();
 }
 
-// ----- 5b. API client + remote sync -----
+// ----- 6. API client, Garden, auto-refresh, writes -----
+
+// The message for a failed response: FastAPI's `detail` when the server sent
+// one, else the HTTP status.
+async function errorDetail(res) {
+  const data = await res.json().catch(() => null);
+  return data && typeof data.detail === "string" ? data.detail : `API ${res.status} ${res.statusText}`.trim();
+}
+
+async function apiFetch(path, opts) {
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if (!res.ok) throw new Error(await errorDetail(res));
+  return res;
+}
 
 async function fetchJson(path, opts = {}) {
-  const url = `${API_BASE}${path}`;
-  const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
+  return (await apiFetch(path, opts)).json();
 }
 
 async function fetchText(path, opts = {}) {
-  const res = await fetch(`${API_BASE}${path}`, opts);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.text();
+  return (await apiFetch(path, opts)).text();
+}
+
+// Every JSON write (POST / PUT / PATCH / DELETE) goes through here. Returns
+// the parsed reply, or {} when there is none.
+async function sendJson(method, path, body) {
+  const init = { method };
+  if (body !== undefined) {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const res = await apiFetch(path, init);
+  return (await res.json().catch(() => null)) || {};
+}
+
+// Path of one memory's API resource (dashboard ids carry a "mem_" prefix).
+function memoryPath(memoryId) {
+  return `/api/memories/${encodeURIComponent(apiIdOf(memoryId))}`;
 }
 
 // Requests where only the newest answer matters (semantic search, graph,
@@ -508,8 +356,10 @@ function supersede(key) {
 }
 function isAbortError(e) { return !!e && e.name === "AbortError"; }
 
-// Dashboard ids are "mem_<source id>"; the API expects the bare source id.
+// Dashboard ids are "mem_<source id>"; the API expects (and quests list) the
+// bare source id.
 function apiIdOf(memoryId) { return String(memoryId).replace(/^mem_/, ""); }
+function dashboardIdOf(apiId) { return `mem_${apiIdOf(apiId)}`; }
 
 function setFooterSource() {
   const el = $("#api-source-label");
@@ -538,11 +388,13 @@ function mergeServerMemory(memory) {
 async function loadMemoriesFromApi({ garden = true } = {}) {
   const epoch = STATE.mutationEpoch;
   try {
-    const [health, memText, goalsResp] = await Promise.all([
+    const [health, memText, goalsResp, strandsResp] = await Promise.all([
       fetchJson("/api/healthz").catch(() => null),
       fetchText("/api/memories"),
       fetchJson("/api/goals").catch(() => null),  // keep local goals on failure
+      STRANDS.length ? null : fetchJson("/api/strands").catch(() => null),
     ]);
+    if (strandsResp && Array.isArray(strandsResp.strands)) STRANDS = strandsResp.strands;
     STATE.apiConnected = true;
     STATE.booting = false;
     const data = JSON.parse(memText);
@@ -561,24 +413,21 @@ async function loadMemoriesFromApi({ garden = true } = {}) {
     }
     STATE.apiSourceLabel = (Array.isArray(data.memories) && data.memories.length > 0)
       ? `${(health && health.default_source) || "live"} (${data.count} memories)`
-      : "API connected (0 memories, run `pensieve sync`)";
+      : "connected (no tasks yet: use Pull from To Do)";
     if (garden) refreshGarden();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
     if (STATE.booting) {
-      // Never reached the API this session: show the bundled demo memories.
+      // Never reached the API this session: nothing to show yet.
       STATE.booting = false;
-      STATE.memories = SEED_MEMORIES.map(m => ({ ...m }));
       STATE.boardChanged = true;
-      STATE.apiSourceLabel = "offline (seed data)";
+      STATE.apiSourceLabel = "offline";
     } else {
       STATE.boardChanged = false;  // keep whatever is on screen
-      if (STATE.apiSourceLabel !== "offline (seed data)") {
-        STATE.apiSourceLabel = "offline (showing last refresh)";
-      }
+      STATE.apiSourceLabel = "offline (showing last refresh)";
     }
-    console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}. Using seed data.`);
+    console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}`);
     return false;
   }
 }
@@ -603,44 +452,38 @@ async function loadBoardHealth() {
 }
 
 function renderBoardHealth() {
-  const el = document.getElementById("board-health");
-  if (!el) return;
-  const scoreEl = document.getElementById("board-health-score");
-  const tipEl = document.getElementById("board-health-tip");
+  const el = $("#board-health");
+  const scoreEl = $("#board-health-score");
+  const tipEl = $("#board-health-tip");
   const h = STATE.boardHealth;
   if (!h) {
     el.removeAttribute("data-tier");
-    if (scoreEl) scoreEl.textContent = "--";
-    if (tipEl) { tipEl.hidden = true; tipEl.innerHTML = ""; }
+    scoreEl.textContent = "--";
+    tipEl.hidden = true;
+    tipEl.innerHTML = "";
     return;
   }
   el.dataset.tier = h.tier || "yellow";
-  if (scoreEl) scoreEl.textContent = String(h.score);
+  scoreEl.textContent = String(h.score);
   el.classList.toggle("filter-active", !!STATE.filter.boardHealthOffenders);
-  if (tipEl) {
-    const t = h.terms || {};
-    const c = h.counts || {};
-    const streakD = t.clean_streak_d || 0;
-    const questB = t.quest_bonus || 0;
-    const lines = [
-      `<strong>Board Health: ${h.score}/100</strong>`,
-      `<ul>`,
-      `<li>open: ${c.open ?? 0} / closed: ${c.closed ?? 0}</li>`,
-      `<li>stale: ${t.stale_count ?? 0} (-${Math.round((t.stale_pct ?? 0) * 30)} pts)</li>`,
-      `<li>ghost: ${t.ghost_count ?? 0} (-${(t.ghost_count ?? 0) * 10} pts)</li>`,
-      `<li>overdue: ${t.overdue_count ?? 0} (-${(t.overdue_count ?? 0) * 5} pts)</li>`,
-      `<li>capture: ${Math.round((t.capture_pct ?? 0) * 100)}% (+${Math.round((t.capture_pct ?? 0) * 10)} pts)</li>`,
-    ];
-    if (streakD > 0) {
-      lines.push(`<li>clean streak: ${streakD}d (+${Math.min(10, streakD)} pts)</li>`);
-    }
-    if (questB > 0) {
-      lines.push(`<li>quests: all done (+${questB} pts)</li>`);
-    }
-    lines.push(`</ul>`);
-    lines.push(`<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`);
-    tipEl.innerHTML = lines.join("");
-  }
+  const t = h.terms || {};
+  const c = h.counts || {};
+  const streakD = t.clean_streak_d || 0;
+  const questB = t.quest_bonus || 0;
+  const lines = [
+    `<strong>Board Health: ${h.score}/100</strong>`,
+    `<ul>`,
+    `<li>open: ${c.open ?? 0} / closed: ${c.closed ?? 0}</li>`,
+    `<li>stale: ${t.stale_count ?? 0} (-${Math.round((t.stale_pct ?? 0) * 30)} pts)</li>`,
+    `<li>ghost: ${t.ghost_count ?? 0} (-${(t.ghost_count ?? 0) * 10} pts)</li>`,
+    `<li>overdue: ${t.overdue_count ?? 0} (-${(t.overdue_count ?? 0) * 5} pts)</li>`,
+    `<li>capture: ${Math.round((t.capture_pct ?? 0) * 100)}% (+${Math.round((t.capture_pct ?? 0) * 10)} pts)</li>`,
+  ];
+  if (streakD > 0) lines.push(`<li>clean streak: ${streakD}d (+${Math.min(10, streakD)} pts)</li>`);
+  if (questB > 0) lines.push(`<li>quests: all done (+${questB} pts)</li>`);
+  lines.push(`</ul>`);
+  lines.push(`<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`);
+  tipEl.innerHTML = lines.join("");
 }
 
 function toggleBoardHealthFilter() {
@@ -664,76 +507,58 @@ async function loadQuests() {
 }
 
 function renderQuestPanel() {
-  const panel = document.getElementById("quest-panel");
-  if (!panel) return;
-  const chipsEl = document.getElementById("quest-panel-chips");
-  const streakEl = document.getElementById("quest-panel-streak");
-  const allDoneEl = document.getElementById("quest-panel-alldone");
+  const panel = $("#quest-panel");
+  const chipsEl = $("#quest-panel-chips");
+  const streakEl = $("#quest-panel-streak");
+  const allDoneEl = $("#quest-panel-alldone");
   const q = STATE.quests;
   const list = q && q.today && Array.isArray(q.today.quests) ? q.today.quests : [];
-  if (!q || list.length === 0) {
+  chipsEl.innerHTML = "";
+  if (list.length === 0) {
     panel.hidden = true;
-    if (chipsEl) chipsEl.innerHTML = "";
-    if (streakEl) { streakEl.hidden = true; streakEl.textContent = ""; }
-    if (allDoneEl) allDoneEl.hidden = true;
+    streakEl.hidden = true;
+    allDoneEl.hidden = true;
     panel.classList.remove("is-collapsed");
     return;
   }
   panel.hidden = false;
 
-  if (streakEl) {
-    const streak = Number(q.clean_streak_d || 0);
-    if (streak > 0) {
-      streakEl.hidden = false;
-      streakEl.textContent = `\u{1F525} ${streak}-day clean streak`;
-    } else {
-      streakEl.hidden = true;
-      streakEl.textContent = "";
-    }
-  }
+  const streak = Number(q.clean_streak_d || 0);
+  streakEl.hidden = streak <= 0;
+  streakEl.textContent = streak > 0 ? `\u{1F525} ${streak}-day clean streak` : "";
 
   const allDone = !!q.all_done;
-  if (allDoneEl) allDoneEl.hidden = !allDone;
+  allDoneEl.hidden = !allDone;
   panel.classList.toggle("is-collapsed", allDone);
 
-  if (chipsEl) {
-    chipsEl.innerHTML = "";
-    for (const quest of list) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "quest-chip" + (quest.completed_at ? " is-complete" : "");
-      chip.dataset.questId = quest.id;
-      chip.dataset.targetIds = (quest.target_memory_ids || []).join(",");
-      const progress = questProgressFor(quest);
-      const icon = quest.completed_at ? "\u2705" : "\u25A2";
-      chip.title = quest.description || quest.title || "";
-      chip.innerHTML =
-        `<span class="quest-chip-icon">${icon}</span>` +
-        `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
-        (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
-      // Filter board to this quest's targets when clicked (if it has targets
-      // and is not already complete - completed quests just show status).
-      const filterIds = (quest.target_memory_ids || []).filter(Boolean);
-      const isActiveFilter =
-        STATE.filter.questTargetIds &&
-        filterIds.length > 0 &&
-        filterIds.every(id => STATE.filter.questTargetIds.has(id)) &&
-        STATE.filter.questTargetIds.size === filterIds.length;
-      if (isActiveFilter) chip.classList.add("filter-active");
-      chip.addEventListener("click", () => {
-        if (filterIds.length === 0) return;
-        toggleQuestFilter(filterIds);
-      });
-      chipsEl.appendChild(chip);
-    }
+  for (const quest of list) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "quest-chip" + (quest.completed_at ? " is-complete" : "");
+    const progress = questProgressFor(quest);
+    const icon = quest.completed_at ? "\u2705" : "\u25A2";
+    chip.title = quest.description || quest.title || "";
+    chip.innerHTML =
+      `<span class="quest-chip-icon">${icon}</span>` +
+      `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
+      (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
+    // Clicking a quest that has targets filters the board to them.
+    const filterIds = (quest.target_memory_ids || []).filter(Boolean).map(dashboardIdOf);
+    const isActiveFilter =
+      STATE.filter.questTargetIds &&
+      filterIds.length > 0 &&
+      filterIds.every(id => STATE.filter.questTargetIds.has(id)) &&
+      STATE.filter.questTargetIds.size === filterIds.length;
+    if (isActiveFilter) chip.classList.add("filter-active");
+    chip.addEventListener("click", () => toggleQuestFilter(filterIds));
+    chipsEl.appendChild(chip);
   }
 }
 
 function questProgressFor(quest) {
-  const targets = quest.target_memory_ids || [];
+  const targets = (quest.target_memory_ids || []).map(dashboardIdOf);
   if (!targets.length) return "";
   if (quest.completed_at) return `${targets.length}/${targets.length}`;
-  if (!STATE.memories) return `0/${targets.length}`;
   const byId = new Map(STATE.memories.map(m => [m.id, m]));
   let done = 0;
   for (const id of targets) {
@@ -777,7 +602,7 @@ function toggleQuestFilter(targetIds) {
 }
 
 // --- Garden v3: achievements + confetti ---------------------------------
-async function loadAchievements({ allowConfetti = true } = {}) {
+async function loadAchievements() {
   if (!STATE.apiConnected) return;
   try {
     STATE.achievements = await fetchJson("/api/achievements");
@@ -786,7 +611,6 @@ async function loadAchievements({ allowConfetti = true } = {}) {
   }
   renderAchievementsButton();
   if (
-    allowConfetti &&
     STATE.achievements &&
     Array.isArray(STATE.achievements.new_unlocks) &&
     STATE.achievements.new_unlocks.length > 0
@@ -795,31 +619,30 @@ async function loadAchievements({ allowConfetti = true } = {}) {
       id => !STATE.achievementsSeenIds.has(id)
     );
     if (unseen.length > 0) {
-      const btn = document.getElementById("achievements-btn");
-      if (btn) {
-        btn.classList.add("has-new-unlock");
-        setTimeout(() => btn.classList.remove("has-new-unlock"), 2600);
-        burstConfettiAt(btn);
-      }
+      const btn = $("#achievements-btn");
+      btn.classList.add("has-new-unlock");
+      setTimeout(() => btn.classList.remove("has-new-unlock"), 2600);
+      burstConfettiAt(btn);
       const names = unseen.map(id => {
         const def = STATE.achievements.achievements.find(a => a.id === id);
         return def ? `${def.emoji} ${def.name}` : id;
       }).join(", ");
       toast(`Unlocked: ${names}`);
       unseen.forEach(id => STATE.achievementsSeenIds.add(id));
-      try {
-        localStorage.setItem(
-          "pensieve-ach-seen",
-          JSON.stringify(Array.from(STATE.achievementsSeenIds)),
-        );
-      } catch (e) { /* ignore quota */ }
+      saveSeenAchievements();
     }
   }
 }
 
+// Badges already celebrated, so confetti fires once per unlock.
+function saveSeenAchievements() {
+  try {
+    localStorage.setItem("pensieve-ach-seen", JSON.stringify(Array.from(STATE.achievementsSeenIds)));
+  } catch (e) { /* storage blocked or full */ }
+}
+
 function renderAchievementsButton() {
-  const countEl = document.getElementById("achievements-btn-count");
-  if (!countEl) return;
+  const countEl = $("#achievements-btn-count");
   const a = STATE.achievements;
   if (!a || !a.total) {
     countEl.hidden = true;
@@ -831,19 +654,18 @@ function renderAchievementsButton() {
 }
 
 function renderAchievementsModal() {
-  const grid = document.getElementById("achievements-grid");
-  const summary = document.getElementById("achievements-summary");
-  if (!grid) return;
+  const grid = $("#achievements-grid");
+  const summary = $("#achievements-summary");
   const a = STATE.achievements;
   if (!a || !Array.isArray(a.achievements)) {
     grid.innerHTML = "<p style='opacity:.6'>No achievement data yet.</p>";
-    if (summary) summary.textContent = "";
+    summary.textContent = "";
     return;
   }
   grid.innerHTML = a.achievements.map(def => {
     const state = def.unlocked ? "unlocked" : "locked";
     const when = def.unlocked_at
-      ? `<div class="achievement-unlocked-at">${_formatUnlockedDate(def.unlocked_at)}</div>`
+      ? `<div class="achievement-unlocked-at">${formatUnlockedDate(def.unlocked_at)}</div>`
       : "";
     const safeName = escapeHtml(def.name);
     const safeDesc = escapeHtml(def.description || "");
@@ -854,48 +676,34 @@ function renderAchievementsModal() {
       ${when}
     </div>`;
   }).join("");
-  if (summary) {
-    summary.textContent = `${a.unlocked_count} of ${a.total} unlocked.`;
-  }
+  summary.textContent = `${a.unlocked_count} of ${a.total} unlocked.`;
 }
 
-function _formatUnlockedDate(iso) {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch (e) { return ""; }
+function formatUnlockedDate(iso) {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function openAchievementsModal() {
-  const modal = document.getElementById("achievements-modal");
-  if (!modal) return;
   renderAchievementsModal();
-  modal.hidden = false;
-  // Reset the new-unlock styling on the button once the user has seen them.
+  $("#achievements-modal").hidden = false;
+  // Every badge shown here counts as seen, so none of them fires confetti later.
   if (STATE.achievements && Array.isArray(STATE.achievements.achievements)) {
     STATE.achievements.achievements.forEach(def => {
       if (def.unlocked) STATE.achievementsSeenIds.add(def.id);
     });
-    try {
-      localStorage.setItem(
-        "pensieve-ach-seen",
-        JSON.stringify(Array.from(STATE.achievementsSeenIds)),
-      );
-    } catch (e) { /* ignore */ }
+    saveSeenAchievements();
   }
 }
 
 function closeAchievementsModal() {
-  const modal = document.getElementById("achievements-modal");
-  if (modal) modal.hidden = true;
+  $("#achievements-modal").hidden = true;
 }
 
-// Hand-rolled canvas confetti burst centered on the target element. ~30 lines
-// so we avoid an external library. Particles fall under gravity for ~1s.
+// Hand-rolled canvas confetti burst centered on the target element (no
+// library). Particles fall under gravity for ~1s.
 function burstConfettiAt(targetEl) {
-  const canvas = document.getElementById("confetti-canvas");
-  if (!canvas || !targetEl) return;
+  const canvas = $("#confetti-canvas");
   const rect = targetEl.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
@@ -919,7 +727,6 @@ function burstConfettiAt(targetEl) {
       vy: Math.sin(angle) * speed - 2,
       size: 4 + Math.random() * 4,
       color: colors[Math.floor(Math.random() * colors.length)],
-      life: 0,
     };
   });
   const start = performance.now();
@@ -930,7 +737,6 @@ function burstConfettiAt(targetEl) {
       p.vy += 0.18;
       p.x += p.vx;
       p.y += p.vy;
-      p.life = t;
       ctx.globalAlpha = Math.max(0, 1 - t / 1100);
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x, p.y, p.size, p.size);
@@ -946,19 +752,16 @@ function burstConfettiAt(targetEl) {
 }
 
 // --- Auto-refresh poll ---------------------------------------------------
-// The backend has an auto-sync scheduler (PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS,
-// default 120s) that pulls fresh Microsoft To-Do data and writes enrichments
-// to Chroma. To surface those updates without a manual page reload, the
-// dashboard polls /api/memories every AUTO_REFRESH_MS. The poll bails out
-// in any situation where a re-render would clobber unsaved UI state:
-//   - the user is editing a card (`#card-modal` open)
-//   - the user is editing Connect goals (`#goals-modal` open)
-//   - the user is viewing achievements (`#achievements-modal` open)
+// The backend's auto-sync scheduler writes fresh To-Do data and enrichments
+// to Chroma. To surface them without a reload, the dashboard polls
+// /api/memories every AUTO_REFRESH_MS. The poll stands down whenever a
+// re-render could clobber UI state:
+//   - any modal is open (see anyModalOpen)
 //   - a card is mid-drag (DRAG.id set)
-//   - a PATCH from the dashboard is in flight (patchesInFlight > 0)
-//   - the document is hidden (Page Visibility API) - saves API calls when the tab is in the background
+//   - a write from the dashboard is in flight (patchesInFlight > 0)
+//   - the tab is hidden (it refreshes as soon as it is visible again)
 //   - another page (Recap, Graph, Docs) is showing; switching back to Board refreshes
-// `pollInFlight` prevents stacked refreshes if the network call takes longer than the interval.
+// `pollInFlight` prevents stacked refreshes when a request outlasts the interval.
 // An unchanged snapshot skips the re-render entirely, and a changed one only
 // touches the cards that differ (see renderBoard), so scroll, focus, hover,
 // and open menus survive a refresh. The Garden refetches when the board
@@ -999,11 +802,8 @@ async function refreshMemoriesIfSafe() {
       renderStrandFilter();
       renderBoard();
     }
-  } catch (_) {
-    // soft-fail; the next tick will try again. loadMemoriesFromApi already
-    // logs its own warning to the console.
   } finally {
-    pollInFlight = false;
+    pollInFlight = false;  // loadMemoriesFromApi never throws; a failed tick just waits for the next
   }
 }
 
@@ -1018,26 +818,16 @@ function startAutoRefreshLoop() {
 
 async function regenerateMemory(memoryId) {
   if (!STATE.apiConnected) {
-    toast("Regenerate needs the API server (run `pensieve serve`)");
+    toast(OFFLINE_HINT);
     return;
   }
   const btn = $("#edit-regen");
-  const original = btn ? btn.innerHTML : "";
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add("is-regenerating");
-    btn.innerHTML = "&#x2728; Brewing...";
-  }
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add("is-regenerating");
+  btn.innerHTML = "&#x2728; Brewing...";
   try {
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/regenerate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`${res.status}: ${text.slice(0, 160)}`);
-    }
-    const body = await res.json();
+    const body = await sendJson("POST", `${memoryPath(memoryId)}/regenerate`);
     const fresh = body.memory;
     if (!fresh) throw new Error("API returned no memory");
     const newId = `mem_${fresh.source_task_id || fresh.id}`;
@@ -1055,7 +845,7 @@ async function regenerateMemory(memoryId) {
     toast(`Regenerated (+${body.tokens_used || 0} tokens)`);
   } catch (e) {
     toast(`Regenerate failed: ${e.message}`);
-    if (btn && btn.isConnected) {
+    if (btn.isConnected) {  // the modal may have been re-rendered or closed meanwhile
       btn.disabled = false;
       btn.classList.remove("is-regenerating");
       btn.innerHTML = original;
@@ -1100,24 +890,14 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
 // payload. Throws with a short message on failure.
 async function patchMemoryApi(memoryId, suffix, body) {
   return trackPatch(async () => {
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}${suffix}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status}: ${text.slice(0, 120)}`);
-    }
-    // The API returns the enriched memory so freshness updates in place
-    // (the dot must refresh, not just the score pill). Best-effort parse.
-    const payload = (await res.json().catch(() => null)) || {};
+    const payload = await sendJson("PATCH", `${memoryPath(memoryId)}${suffix}`, body);
+    // The reply carries the enriched memory, so the freshness dot updates in place.
     if (payload.memory) mergeServerMemory(payload.memory);
-    // If we got here, the API is up. Flip the flag so UI affordances that
-    // gate on apiConnected (e.g. semantic search) work without a reload.
+    // The API answered, so features gated on apiConnected (e.g. semantic
+    // search) start working without a reload.
     if (!STATE.apiConnected) {
       STATE.apiConnected = true;
-      if (STATE.apiSourceLabel === "offline (seed data)") {
+      if (STATE.apiSourceLabel.startsWith("offline")) {
         STATE.apiSourceLabel = "live (reconnected)";
         setFooterSource();
       }
@@ -1127,11 +907,8 @@ async function patchMemoryApi(memoryId, suffix, body) {
 }
 
 async function persistColumnChange(memoryId, column) {
-  // Always attempt the PATCH. Gating this on `apiConnected` caused silent data
-  // loss when the dashboard first loaded against a down server (apiConnected
-  // stuck on false), the user later dragged cards, and then Pull-from-To-Do
-  // succeeded and triggered loadMemoriesFromApi which overwrote the un-saved
-  // local drags with Chroma's columns.
+  // Always attempt the PATCH, even when apiConnected is false: the server may
+  // be back, and a skipped save would be overwritten by the next refresh.
   try {
     const payload = await patchMemoryApi(memoryId, "/column", { column });
     // Surface the completion-mirror outcome so the user knows whether the
@@ -1156,8 +933,7 @@ async function persistColumnChange(memoryId, column) {
   }
 }
 
-// Houses view drop: persist the new Connect alignment (it used to live only
-// in the browser and silently revert on the next 30s refresh).
+// Houses view drop: persist the card's new Connect alignment.
 async function persistGoalAlignment(memoryId, goalIds) {
   try {
     await patchMemoryApi(memoryId, "", { connect_goal_ids: goalIds });
@@ -1172,19 +948,17 @@ async function runSemanticSearch(q) {
   if (!q || !q.trim()) {
     supersede("search");  // drop any query still in flight
     STATE.semanticResultIds = null;
-    STATE.semanticQuery = "";
     renderBoard();
     return;
   }
   if (!STATE.apiConnected) {
-    toast("Semantic search needs the API server (run `pensieve serve`)");
+    toast(OFFLINE_HINT);
     return;
   }
   const signal = supersede("search");
   try {
     const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}&top_k=20`, { signal });
     STATE.semanticResultIds = new Set((data.memories || []).map(m => m.id));
-    STATE.semanticQuery = q;
     if (STATE.semanticResultIds.size === 0) {
       toast(`No semantic matches for "${q}"`);
     }
@@ -1194,18 +968,15 @@ async function runSemanticSearch(q) {
   }
 }
 
-// ----- 6. Rendering -----
+// ----- 7. Rendering -----
 
 function applyTheme() {
   document.documentElement.setAttribute("data-theme", STATE.theme);
-  const label = $("#theme-label");
-  if (label) label.textContent = `${STATE.theme} mode`;
+  $("#theme-label").textContent = `${STATE.theme} mode`;
   const btn = $("#theme-toggle");
-  if (btn) {
-    const next = STATE.theme === "day" ? "night" : "day";
-    btn.setAttribute("aria-label", `Switch to ${next} mode`);
-    btn.title = STATE.theme === "marauder" ? "Mischief managed: back to day" : `Switch to ${next} mode`;
-  }
+  const next = STATE.theme === "day" ? "night" : "day";  // the toggle folds marauder back to day
+  btn.setAttribute("aria-label", `Switch to ${next} mode`);
+  btn.title = STATE.theme === "marauder" ? "Mischief managed: back to day" : `Switch to ${next} mode`;
   // Canvas colors come from theme tokens; drop the cached palette and repaint
   // the Constellation if it is visible and settled.
   GRAPH.pal = null;
@@ -1265,7 +1036,7 @@ function renderStrandFilter() {
   updateFilterBadge();
 }
 
-// ----- 6a. Board rendering (keyed reconcile) -----
+// ----- 7a. Board rendering (keyed reconcile) -----
 // renderBoard reconciles instead of rebuilding. Column shells are reused while
 // the column set is unchanged, and each column keeps its card elements keyed
 // by memory id plus the card's full markup. Only cards whose markup changed
@@ -1485,7 +1256,7 @@ function cardParts(m) {
   const goalsHtml = (m.connect_goal_ids || []).map(gid => {
     const g = getGoal(gid);
     if (!g) return "";
-    return `<span class="goal-chip" data-lane="${escapeHtml(g.lane || "")}" title="${escapeHtml(g.name)} (${escapeHtml(houseName(g.lane))})"><span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${g.number} ${escapeHtml(g.short_name)}</span>`;
+    return `<span class="goal-chip" data-lane="${escapeHtml(g.lane || "")}" title="${escapeHtml(g.name)} (${escapeHtml(houseName(g.lane))})"><span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${escapeHtml(g.number)} ${escapeHtml(g.short_name)}</span>`;
   }).join("");
 
   const due = formatDueDate(m.due_date);
@@ -1498,7 +1269,7 @@ function cardParts(m) {
     ${review ? `<div class="wax-seal" title="Needs review" aria-label="Needs review">R</div>` : ""}
     <h3 class="card-title" title="${escapeHtml(fullTitle)}">${escapeHtml(fullTitle)}</h3>
     <div class="card-meta">
-      <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
+      <span class="card-strand" data-kind="${escapeHtml(strandKind || "")}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
       ${dueHtml}
     </div>
     <p class="card-why">${escapeHtml(m.why)}</p>
@@ -1554,22 +1325,16 @@ function updateMemoryCount() {
 // when the queue is empty.
 function updateReviewIndicator() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
-  const count = $("#hedwig-count");
-  const label = $("#review-count");
+  $("#hedwig-count").textContent = reviewing > 99 ? "99+" : String(reviewing);
+  $("#review-count").textContent = STATE.booting
+    ? "Awaiting post"
+    : STATE.filter.reviewOnly
+      ? "Showing review"
+      : (reviewing === 0 ? "All clear" : `${reviewing} need review`);
   const block = $(".review-block");
-  if (count) count.textContent = reviewing > 99 ? "99+" : String(reviewing);
-  if (label) {
-    label.textContent = STATE.booting
-      ? "Awaiting post"
-      : STATE.filter.reviewOnly
-        ? "Showing review"
-        : (reviewing === 0 ? "All clear" : `${reviewing} need review`);
-  }
-  if (block) {
-    block.classList.toggle("has-review", reviewing > 0);
-    block.classList.toggle("filter-active", !!STATE.filter.reviewOnly);
-    block.setAttribute("aria-pressed", STATE.filter.reviewOnly ? "true" : "false");
-  }
+  block.classList.toggle("has-review", reviewing > 0);
+  block.classList.toggle("filter-active", !!STATE.filter.reviewOnly);
+  block.setAttribute("aria-pressed", STATE.filter.reviewOnly ? "true" : "false");
 }
 
 // Click handler for Hedwig (the masthead review indicator): toggles a
@@ -1581,14 +1346,7 @@ function toggleReviewOnlyFilter() {
   renderBoard();
 }
 
-// ----- 7. Modal -----
-
-const LIFECYCLE_OPTIONS = [
-  { id: "memory", label: "Memory" },
-  { id: "dive", label: "Dive" },
-  { id: "review", label: "Review" },
-  { id: "closed", label: "Closed" },
-];
+// ----- 8. Card modal -----
 
 // Format a Date or ISO string as a YYYY-MM-DD value for <input type="date">.
 function toInputDate(d) {
@@ -1601,12 +1359,6 @@ function toInputDate(d) {
 }
 
 // Default due date for a card with none set: ~2 weeks from today.
-function defaultDueDate() {
-  const d = new Date();
-  d.setDate(d.getDate() + 14);
-  return toInputDate(d);
-}
-
 // Card modal bookkeeping: which memory it shows, and what had focus before it
 // opened (focus returns there on close, so keyboard users keep their place).
 const CARD_MODAL = { memoryId: null, returnFocus: null };
@@ -1630,17 +1382,17 @@ function openModal(m) {
     CARD_MODAL.returnFocus = active && active !== document.body ? active : null;
   }
   CARD_MODAL.memoryId = m.id;
-  // Pre-fill the due field with the card's existing due date, or default to
-  // ~2 weeks out so saving a card without one sets it roughly two weeks ahead.
-  const dueValue = m.due_date ? toInputDate(m.due_date) : defaultDueDate();
+  // Pre-fill the due field with the card's existing due date; leave it empty
+  // otherwise, so saving an edit never invents a deadline.
+  const dueValue = m.due_date ? toInputDate(m.due_date) : "";
 
   const strandOptions = [`<option value="">&lt;unstranded&gt;</option>`]
     .concat(STRANDS.map(s =>
       `<option value="${escapeHtml(s.id)}" ${m.suggested_strand === s.id ? "selected" : ""}>${escapeHtml(s.display_name)} (${escapeHtml(s.kind)})</option>`
     )).join("");
 
-  const colOptions = LIFECYCLE_OPTIONS.map(c =>
-    `<option value="${c.id}" ${m.column === c.id ? "selected" : ""}>${c.label}</option>`
+  const colOptions = LIFECYCLE_COLUMNS.map(c =>
+    `<option value="${c.id}" ${m.column === c.id ? "selected" : ""}>${c.title}</option>`
   ).join("");
 
   const goalCheckboxes = STATE.goals.map(g => {
@@ -1649,7 +1401,7 @@ function openModal(m) {
       <label class="goal-check" data-lane="${escapeHtml(g.lane || "")}">
         <input type="checkbox" data-goal-id="${escapeHtml(g.id)}" ${checked ? "checked" : ""} />
         <span class="goal-chip" data-lane="${escapeHtml(g.lane || "")}" title="${escapeHtml(g.name)} (${escapeHtml(houseName(g.lane))})">
-          <span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${g.number} ${escapeHtml(g.short_name)}
+          <span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${escapeHtml(g.number)} ${escapeHtml(g.short_name)}
         </span>
       </label>`;
   }).join("");
@@ -1716,18 +1468,14 @@ function openModal(m) {
 
   $("#edit-save").addEventListener("click", () => saveMemoryEdit(m.id));
   $("#edit-cancel").addEventListener("click", closeModal);
-  const regenBtn = $("#edit-regen");
-  if (regenBtn) regenBtn.addEventListener("click", () => regenerateMemory(m.id));
+  $("#edit-regen").addEventListener("click", () => regenerateMemory(m.id));
 
-  // Auto-focus the display-title field so the user can edit immediately
-  // without a mouse click. setTimeout lets the layout settle first so the
-  // focus ring renders against the visible modal.
+  // Focus the display-title field so the user can type right away (after
+  // layout settles, so the focus ring renders against the visible modal).
   setTimeout(() => {
-    const titleEl = document.getElementById("edit-title");
-    if (titleEl) {
-      titleEl.focus();
-      titleEl.select();
-    }
+    const titleEl = $("#edit-title");
+    titleEl.focus();
+    titleEl.select();
   }, 0);
 }
 
@@ -1803,7 +1551,7 @@ function restoreFocus(el) {
   if (el && el.isConnected && typeof el.focus === "function") el.focus({ preventScroll: true });
 }
 
-// ----- 7b. Vial modal (closure capture) -----
+// ----- 9. Vial modal (closure capture) -----
 
 const VIAL = { memoryId: null, saving: false };
 
@@ -1811,13 +1559,11 @@ function openVialModal(memoryId) {
   const m = STATE.memories.find(x => x.id === memoryId);
   if (!m) return;
   VIAL.memoryId = memoryId;
-  const titleText = m.display_title || m.title || "(untitled)";
-  const ctx = $("#vial-context");
-  if (ctx) ctx.textContent = titleText;
+  $("#vial-context").textContent = m.display_title || m.title || "(untitled)";
   const ta = $("#vial-text");
-  if (ta) { ta.value = ""; }
+  ta.value = "";
   $("#vial-modal").hidden = false;
-  setTimeout(() => { if (ta) ta.focus(); }, 0);
+  setTimeout(() => ta.focus(), 0);
 }
 
 function closeVialModal() {
@@ -1840,15 +1586,10 @@ async function saveVial(kind) {
   buttons.forEach(b => { if (b) b.disabled = true; });
   try {
     await trackPatch(async () => {
-      const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/vials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+      await sendJson("POST", `${memoryPath(memoryId)}/vials`, {
+        captured_text: kind === "captured" ? text : "",
+        capture_kind: kind,
       });
-      if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`${res.status}: ${detail}`);
-      }
       noteLocalMutation();
       closeVialModal();
       toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
@@ -1863,7 +1604,7 @@ async function saveVial(kind) {
   }
 }
 
-// ----- 6c. Voice capture ("Speak a task") -----
+// ----- 10. Voice capture ("Speak a task") -----
 // Speech is recognized by the browser's built-in recognizer (Edge sends audio
 // to Microsoft's online speech service). The transcript goes to
 // POST /api/capture/parse for a draft; nothing is created until the person
@@ -1894,16 +1635,21 @@ async function openCapture() {
   setCaptureHint(speechRecognizer()
     ? "Listening starts when you click the microphone. Say the task, for example \"Send the status report to my manager by Friday.\""
     : "Speech is not available in this browser; type the task instead.");
-  try {
-    CAPTURE.info = await fetchJson("/api/capture");
-  } catch (_) {
-    CAPTURE.info = { enabled: false, lists: [], error: "Pensieve is offline." };
-  }
+  await loadCaptureInfo();
   if (!CAPTURE.info.enabled) {
     setCaptureHint(CAPTURE.info.error || "Adding tasks is switched off for this source.", true);
   }
   if (speechRecognizer() && CAPTURE.info.enabled) startListening();
   else $("#capture-text").focus();
+}
+
+// Whether adding tasks is on, and which lists the confirm card offers.
+async function loadCaptureInfo() {
+  try {
+    CAPTURE.info = await fetchJson("/api/capture");
+  } catch (_) {
+    CAPTURE.info = { enabled: false, lists: [], error: "Pensieve is offline." };
+  }
 }
 
 function closeCapture() {
@@ -1975,14 +1721,10 @@ async function understandCapture() {
   btn.disabled = true;
   setCaptureHint("Turning that into a task...");
   try {
-    const res = await fetch(`${API_BASE}/api/capture/parse`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, lists: (CAPTURE.info && CAPTURE.info.lists) || [] }),
-    });
-    const draft = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(draft.detail || `${res.status}`);
-    showCaptureDraft(draft);
+    showCaptureDraft(await sendJson("POST", "/api/capture/parse", {
+      text,
+      lists: (CAPTURE.info && CAPTURE.info.lists) || [],
+    }));
   } catch (e) {
     setCaptureHint(`Could not read that: ${e.message}`, true);
   } finally {
@@ -2000,16 +1742,11 @@ function showCaptureDraft(draft) {
   $("#cap-list").innerHTML = (info.lists || []).map(n =>
     `<option value="${escapeHtml(n)}"${n === chosen ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
   const where = info.source === "personal_graph" ? "Microsoft To Do" : "Outlook";
-  if (CAPTURE.request) {
-    $("#capture-where").textContent = `Requested by ${CAPTURE.request.from}. It will be added to ${where}, and their note will say you added it.`;
-    $("#capture-listen").hidden = true;
-    $("#capture-draft").hidden = false;
-    $("#cap-title").focus();
-    return;
-  }
-  $("#capture-where").textContent = draft.ai === false
-    ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
-    : `It will be added to ${where}. Check it, then Add.`;
+  $("#capture-where").textContent = CAPTURE.request
+    ? `Requested by ${agentName(CAPTURE.request.from)}. It will be added to ${where}, and their note will say you added it.`
+    : draft.ai === false
+      ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
+      : `It will be added to ${where}. Check it, then Add.`;
   $("#capture-listen").hidden = true;
   $("#capture-draft").hidden = false;
   $("#cap-title").focus();
@@ -2020,22 +1757,16 @@ async function addCapturedTask(e) {
   const btn = $("#capture-add");
   btn.disabled = true;
   try {
-    const url = CAPTURE.request
-      ? `${API_BASE}/api/bridge/requests/${encodeURIComponent(CAPTURE.request.id)}/add`
-      : `${API_BASE}/api/capture/add`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: $("#cap-title").value,
-        notes: $("#cap-notes").value,
-        due_date: $("#cap-due").value || null,
-        list_name: $("#cap-list").value || null,
-        importance: $("#cap-high").checked ? "high" : "normal",
-      }),
+    const path = CAPTURE.request
+      ? `/api/bridge/requests/${encodeURIComponent(CAPTURE.request.id)}/add`
+      : "/api/capture/add";
+    const body = await sendJson("POST", path, {
+      title: $("#cap-title").value,
+      notes: $("#cap-notes").value,
+      due_date: $("#cap-due").value || null,
+      list_name: $("#cap-list").value || null,
+      importance: $("#cap-high").checked ? "high" : "normal",
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
     closeCapture();
     toast(`Added to ${body.list_name || "your list"}. It will surface on the board in a moment.`);
     if (body.request) refreshAgentRequests();
@@ -2060,7 +1791,7 @@ async function refreshAfterSync() {
   refreshMemoriesIfSafe();
 }
 
-// ----- 6d. From your agents (vault bridge, see pensieve/bridge.py) -----
+// ----- 11. From your agents (vault bridge, see pensieve/bridge.py) -----
 // Other agents (Yor, Luna, Loid) file `to: pensieve` task notes in the vault.
 // They show up here; Review opens the Speak-a-task confirm card, and Pensieve
 // writes the outcome back to the agent's note.
@@ -2127,19 +1858,14 @@ async function reviewAgentRequest(id) {
   CAPTURE.request = r;
   $("#capture-title").textContent = `Task from ${agentName(r.from)}`;
   $("#capture-modal").hidden = false;
-  try {
-    CAPTURE.info = await fetchJson("/api/capture");
-  } catch (_) {
-    CAPTURE.info = { enabled: false, lists: [] };
-  }
-  showCaptureDraft({ ...r, ai: true });
+  await loadCaptureInfo();
+  showCaptureDraft(r);
 }
 
 async function dismissAgentRequest(id, btn) {
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/bridge/requests/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
-    if (!res.ok) throw new Error(`${res.status}`);
+    await sendJson("POST", `/api/bridge/requests/${encodeURIComponent(id)}/dismiss`);
     toast("Dismissed. The agent's note now says so.");
   } catch (e) {
     toast(`Could not dismiss: ${e.message}`);
@@ -2147,7 +1873,7 @@ async function dismissAgentRequest(id, btn) {
   refreshAgentRequests();
 }
 
-// ----- 7a. Accounts ("Connect your accounts") -----
+// ----- 12. Accounts ("Connect your accounts") -----
 // First-run screen and More > Accounts. Each person connects their own
 // Microsoft To Do and GitHub Copilot on their own PC (see pensieve/connections.py).
 // Sign-ins use device codes: Pensieve shows a code, the person approves it in
@@ -2259,17 +1985,6 @@ function renderAccounts(st) {
   }
 }
 
-async function accountsPost(path, body = {}, method = "POST") {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `${res.status}`);
-  return data;
-}
-
 async function onAccountsClick(e) {
   const t = e.target;
   if (t.dataset.close === "accounts") { closeAccounts(); return; }
@@ -2283,20 +1998,19 @@ async function onAccountsClick(e) {
       const provider = connect.dataset.acctConnect;
       connect.disabled = true;
       connect.textContent = provider === "github" ? "Asking GitHub for a code..." : "Asking Microsoft for a code...";
-      await accountsPost(`/api/connect/${provider}/start`);
+      await sendJson("POST", `/api/connect/${provider}/start`);
       if (provider === "microsoft" && ACCOUNTS.status && ACCOUNTS.status.source !== "personal_graph") {
-        await accountsPost("/api/connect/source", { source: "personal_graph" }, "PUT");
+        await sendJson("PUT", "/api/connect/source", { source: "personal_graph" });
       }
       await refreshAccounts();
     } else if (disconnect) {
-      renderAccounts(await accountsPost(`/api/connect/${disconnect.dataset.acctDisconnect}/disconnect`));
+      renderAccounts(await sendJson("POST", `/api/connect/${disconnect.dataset.acctDisconnect}/disconnect`));
     } else if (cancel) {
-      renderAccounts(await accountsPost(`/api/connect/${cancel.dataset.acctCancel}/cancel`));
+      renderAccounts(await sendJson("POST", `/api/connect/${cancel.dataset.acctCancel}/cancel`));
     } else if (open) {
-      await accountsPost("/api/connect/open", { url: open.dataset.acctOpen });
+      await sendJson("POST", "/api/connect/open", { url: open.dataset.acctOpen });
     } else if (copy) {
-      await navigator.clipboard.writeText(copy.dataset.acctCopy);
-      toast("Code copied");
+      toast(await copyToClipboard(copy.dataset.acctCopy) ? "Code copied" : "Copy failed");
     }
   } catch (err) {
     toast(`Accounts: ${err.message}`);
@@ -2306,17 +2020,16 @@ async function onAccountsClick(e) {
 
 async function finishAccounts(dismissOnly) {
   try {
-    await accountsPost("/api/connect/finish");
+    await sendJson("POST", "/api/connect/finish");
   } catch (_) { /* closing is still fine */ }
   closeAccounts();
   if (!dismissOnly) {
     toast("All set. Pulling your tasks now...");
-    fetch(`${API_BASE}/api/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .catch(() => {});
+    sendJson("POST", "/api/sync", {}).catch(() => {});
   }
 }
 
-// ----- 7b. AI models panel -----
+// ----- 13. AI models panel -----
 // Picks the GitHub Copilot model for each job (GET/PUT /api/ai). Choices
 // apply on the backend's next AI call; blank selects inherit the default.
 const AI_EDIT = { state: null, models: [] };
@@ -2404,13 +2117,7 @@ async function testAiModel(btn) {
   btn.disabled = true;
   out.textContent = `Asking ${model}...`;
   try {
-    const res = await fetch(`${API_BASE}/api/ai/test`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    const body = await sendJson("POST", "/api/ai/test", { model });
     out.textContent = body.ok
       ? `${body.model} answered in ${body.seconds} s.`
       : `${body.model} replied, but not as expected: "${body.reply}"`;
@@ -2430,13 +2137,7 @@ async function saveAiModels() {
   const btn = $("#ai-save");
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/ai`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    const body = await sendJson("PUT", "/api/ai", payload);
     AI_EDIT.state = body;
     const summary = body.purposes.map(p => `${p.label.split(" ")[0]}: ${p.effective}`).join(", ");
     toast(`AI models saved. ${summary}`);
@@ -2448,19 +2149,17 @@ async function saveAiModels() {
   }
 }
 
-// ----- 8. Goals editor -----
+// ----- 14. Goals (Houses) editor -----
 
-// The editor works on a draft copy. STATE.goals (and so the board) only
-// changes on Save; closing the modal discards the draft. Before, + Add goal,
-// delete, reset, and PDF import edited STATE.goals directly, so a cancelled
-// edit still left a blank or deleted House on the board.
+// The editor works on a draft copy: + Add goal, delete, reset, and PDF import
+// all edit the draft. STATE.goals (and so the board) only changes on Save;
+// closing the modal discards the draft.
 const GOALS_EDIT = { draft: [], meta: {} };
 
 function openGoalsEditor() {
   GOALS_EDIT.draft = STATE.goals.map(g => ({ ...g }));
   GOALS_EDIT.meta = { ...(STATE.goalsMeta || {}) };
-  const status = $("#goals-import-status");
-  if (status) status.textContent = "";
+  $("#goals-import-status").textContent = "";
   renderGoalsEditor();
   $("#goals-modal").hidden = false;
 }
@@ -2476,7 +2175,7 @@ function renderGoalsEditor() {
       <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
         <span class="goal-lane-pill" data-lane="${escapeHtml(g.lane || "")}" style="--goal-color:${escapeHtml(g.color_primary || "")}" title="Lane: ${escapeHtml(g.lane || "none")}"><span aria-hidden="true">${houseGlyph(g.lane)}</span> ${escapeHtml(houseName(g.lane))}</span>
-        <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number || idx + 1}</strong>
+        <strong style="font-family:var(--font-display);font-size:13px">Goal #${escapeHtml(g.number || idx + 1)}</strong>
       </div>
       <label class="goal-input-label">Short name</label>
       <input class="goal-input" data-field="short_name" data-idx="${idx}" value="${escapeHtml(g.short_name || "")}" />
@@ -2506,19 +2205,7 @@ async function saveGoalsFromEditor() {
 
   if (STATE.apiConnected) {
     try {
-      const res = await fetch(`${API_BASE}/api/goals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          _meta: STATE.goalsMeta || {},
-          goals: STATE.goals,
-        }),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`${res.status}: ${txt.slice(0, 160)}`);
-      }
-      const body = await res.json();
+      const body = await sendJson("POST", "/api/goals", { _meta: STATE.goalsMeta || {}, goals: STATE.goals });
       toast(`Saved ${body.saved || STATE.goals.length} goals to server`);
     } catch (e) {
       toast(`Saved locally (server save failed: ${e.message})`);
@@ -2538,7 +2225,7 @@ function resetGoals() {
   toast("Defaults loaded. Save goals to keep them.");
 }
 
-function addGoalToState() {
+function addGoalToDraft() {
   collectEditorIntoDraft();
   const number = (GOALS_EDIT.draft.length || 0) + 1;
   const palette = LANE_PALETTE[(number - 1) % LANE_PALETTE.length];
@@ -2575,26 +2262,21 @@ async function uploadConnectPdf(file) {
   const status = $("#goals-import-status");
   const btn = $("#goals-import-btn");
   if (!STATE.apiConnected) {
-    if (status) status.textContent = "Need the API server (run `pensieve serve`)";
+    status.textContent = OFFLINE_HINT;
     return;
   }
-  if (!file) return;
   if (file.size > 5 * 1024 * 1024) {
-    if (status) status.textContent = "PDF too large (max 5 MB)";
+    status.textContent = "PDF too large (max 5 MB)";
     return;
   }
-  if (status) status.textContent = "Reading PDF and asking the AI...";
-  if (btn) { btn.disabled = true; btn.classList.add("is-parsing"); }
+  status.textContent = "Reading PDF and asking the AI...";
+  btn.disabled = true;
+  btn.classList.add("is-parsing");
 
   try {
     const fd = new FormData();
     fd.append("file", file, file.name);
-    const res = await fetch(`${API_BASE}/api/goals/import`, { method: "POST", body: fd });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const body = await res.json();
+    const body = await fetchJson("/api/goals/import", { method: "POST", body: fd });
     const proposal = body.proposal || {};
     const goals = Array.isArray(proposal.goals) ? proposal.goals : [];
     if (!goals.length) throw new Error("No goals found in PDF");
@@ -2602,18 +2284,17 @@ async function uploadConnectPdf(file) {
     GOALS_EDIT.draft = goals.map(g => ({ ...g }));
     GOALS_EDIT.meta = proposal._meta || {};
     renderGoalsEditor();
-    if (status) {
-      const notes = (proposal._meta && proposal._meta.extraction_notes) || "";
-      status.textContent = `Parsed ${goals.length} goals. Review and Save.` + (notes ? ` (${notes})` : "");
-    }
+    const notes = (proposal._meta && proposal._meta.extraction_notes) || "";
+    status.textContent = `Parsed ${goals.length} goals. Review and Save.` + (notes ? ` (${notes})` : "");
   } catch (e) {
-    if (status) status.textContent = `Parse failed: ${e.message}`;
+    status.textContent = `Parse failed: ${e.message}`;
   } finally {
-    if (btn) { btn.disabled = false; btn.classList.remove("is-parsing"); }
+    btn.disabled = false;
+    btn.classList.remove("is-parsing");
   }
 }
 
-// ----- 9. Drag + drop -----
+// ----- 15. Drag + drop -----
 // All card and column listeners are delegated from #board and bound once in
 // wireBoardEvents, so re-renders never re-bind (or leak) handlers.
 
@@ -2646,8 +2327,12 @@ function wireBoardEvents() {
   const board = $("#board");
 
   board.addEventListener("click", e => {
-    // Chevron / badge clicks open the Vial modal (document-level delegate).
-    if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
+    // A card's Vial chevron or badge opens the Vial modal, not the card.
+    const vial = e.target.closest(".card-vial-chevron, .card-vial-badge");
+    if (vial) {
+      openVialModal(vial.dataset.memoryId);
+      return;
+    }
     const card = e.target.closest(".card");
     if (!card || card.classList.contains("dragging")) return;
     openCardById(card.dataset.memoryId);
@@ -2755,7 +2440,7 @@ document.addEventListener("dragover", e => {
   setTimeout(() => fp.remove(), 1800);  // backstop if the animation never runs
 });
 
-// ----- 9a. Ambient motion: the Snitch's flights -----
+// ----- 15a. Ambient motion: the Snitch's flights -----
 // The Snitch only animates while it is actually on screen: it rests
 // off-screen and flits across now and then (CSS .snitch.is-flying), so the
 // page is not producing frames all day while nothing visible changes.
@@ -2782,7 +2467,7 @@ function initAmbientMotion() {
   }
 }
 
-// ----- 9b. Easter egg: the Marauder's Map -----
+// ----- 15b. Easter egg: the Marauder's Map -----
 // Type the oath anywhere outside a text field to reveal the map; type
 // "mischief managed" to fold it away again.
 
@@ -2807,18 +2492,17 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// ----- 10. Toast -----
+// ----- 16. Toast -----
 
 let toastTimer = null;
 let toastHideTimer = null;
 function toast(msg) {
   const t = $("#toast");
-  if (!t) return;
   t.textContent = msg;
   t.hidden = false;
   requestAnimationFrame(() => t.classList.add("show"));
-  // Cancel both timers: a toast fired during the previous one's fade-out used
-  // to be hidden 350ms later by that fade's leftover timer.
+  // Cancel both timers so a toast fired during the previous one's fade-out
+  // is not hidden by that fade's leftover timer.
   clearTimeout(toastTimer);
   clearTimeout(toastHideTimer);
   toastTimer = setTimeout(() => {
@@ -2827,7 +2511,7 @@ function toast(msg) {
   }, 2200);
 }
 
-// ----- 12. Wire up -----
+// ----- 17. Wire up -----
 
 function init() {
   // Start the API round trip first so it overlaps with the first render.
@@ -2842,23 +2526,18 @@ function init() {
   applyView();
   applyWeeklyFilterState();
   initHeaderPopovers();
-  updateFilterBadge();
   initAmbientMotion();
 
   firstLoad.then(ok => {
     renderStrandFilter();
     STATE.inkNextRender = true;  // ink the live memories onto the page
     renderBoard();
-    try { performance.mark("pensieve:board-live"); } catch (_) { /* ignore */ }
     setFooterSource();
     if (ok) maybeOpenAccountsOnFirstRun();
-    if (!ok) {
-      toast(`API offline, using seed data. Start with: pensieve serve`);
-    }
+    else toast(OFFLINE_HINT);
   });
 
-  // Begin the auto-refresh loop (see refreshMemoriesIfSafe for guards).
-  startAutoRefreshLoop();
+  startAutoRefreshLoop();  // see refreshMemoriesIfSafe for when it stands down
 
   // Text filter (fast in-memory match), coalesced so a burst of keystrokes
   // costs one board pass.
@@ -2880,49 +2559,32 @@ function init() {
     renderBoard();
   });
 
-  // Semantic search (Enter key on the search input runs a Chroma query)
+  // Semantic search: Enter in the search box, or the magnifier button
   $("#search").addEventListener("keydown", e => {
     if (e.key === "Enter") {
       e.preventDefault();
       runSemanticSearch(e.target.value);
     }
   });
+  $("#semantic-btn").addEventListener("click", () => runSemanticSearch($("#search").value));
 
-  // Semantic-search button (header)
-  const semBtn = $("#semantic-btn");
-  if (semBtn) {
-    semBtn.addEventListener("click", () => {
-      runSemanticSearch($("#search").value);
-    });
-  }
-
-  // Click filter from Board Health pill -> show only stale/ghost/overdue
-  const boardHealthEl = document.getElementById("board-health");
-  if (boardHealthEl) {
-    boardHealthEl.addEventListener("click", toggleBoardHealthFilter);
-    boardHealthEl.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleBoardHealthFilter();
-      }
-    });
-    const tipEl = document.getElementById("board-health-tip");
-    if (tipEl) {
-      const show = () => { tipEl.hidden = false; };
-      const hide = () => { tipEl.hidden = true; };
-      boardHealthEl.addEventListener("mouseenter", show);
-      boardHealthEl.addEventListener("mouseleave", hide);
-      boardHealthEl.addEventListener("focus", show);
-      boardHealthEl.addEventListener("blur", hide);
-    }
-  }
+  // Board Health pill: click (or Enter/Space) filters to stale, ghost, or
+  // overdue cards; hover or focus shows the score breakdown.
+  const boardHealthEl = $("#board-health");
+  onActivate(boardHealthEl, toggleBoardHealthFilter);
+  const tipEl = $("#board-health-tip");
+  const showTip = () => { tipEl.hidden = false; };
+  const hideTip = () => { tipEl.hidden = true; };
+  boardHealthEl.addEventListener("mouseenter", showTip);
+  boardHealthEl.addEventListener("mouseleave", hideTip);
+  boardHealthEl.addEventListener("focus", showTip);
+  boardHealthEl.addEventListener("blur", hideTip);
 
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
     STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null };
     supersede("search");  // a semantic query still in flight must not re-apply itself
     STATE.semanticResultIds = null;
-    STATE.semanticQuery = "";
     $("#search").value = "";
     renderStrandFilter();
     renderBoardHealth();
@@ -2931,81 +2593,53 @@ function init() {
   });
 
   // Click (or Enter/Space on) Hedwig to filter the board to review-flagged cards.
-  const reviewBlock = document.querySelector(".review-block");
-  if (reviewBlock) {
-    reviewBlock.addEventListener("click", toggleReviewOnlyFilter);
-    reviewBlock.addEventListener("keydown", e => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleReviewOnlyFilter();
-      }
-    });
-  }
+  onActivate($(".review-block"), toggleReviewOnlyFilter);
 
   // Weekly filter toggle (Closed column rolls over each Monday)
-  const weeklyBtn = $("#weekly-filter-btn");
-  if (weeklyBtn) {
-    weeklyBtn.addEventListener("click", () => {
-      STATE.weeklyFilter = !STATE.weeklyFilter;
-      try { localStorage.setItem("pensieve-weekly", STATE.weeklyFilter ? "1" : "0"); } catch (e) { /* ignore */ }
-      applyWeeklyFilterState();
-      renderBoard();
-      toast(STATE.weeklyFilter ? "Showing Closed from this week only" : "Showing all Closed tasks");
-    });
-  }
+  $("#weekly-filter-btn").addEventListener("click", () => {
+    STATE.weeklyFilter = !STATE.weeklyFilter;
+    try { localStorage.setItem("pensieve-weekly", STATE.weeklyFilter ? "1" : "0"); } catch (e) { /* ignore */ }
+    applyWeeklyFilterState();
+    renderBoard();
+    toast(STATE.weeklyFilter ? "Showing Closed from this week only" : "Showing all Closed tasks");
+  });
 
   // Refresh from API
-  const refreshBtn = $("#refresh-btn");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", async () => {
-      toast("Refreshing from API...");
+  $("#refresh-btn").addEventListener("click", async () => {
+    toast("Refreshing from API...");
+    await loadMemoriesFromApi();
+    renderStrandFilter();
+    renderBoard();
+    setFooterSource();
+    toast(STATE.apiConnected ? "Memories refreshed" : "API offline");
+  });
+
+  // Pull from Microsoft To-Do (Outlook) -> kicks off backend sync
+  const pullTodoBtn = $("#pull-todo-btn");
+  pullTodoBtn.addEventListener("click", async () => {
+    if (pullTodoBtn.disabled) return;
+    pullTodoBtn.disabled = true;
+    const original = pullTodoBtn.innerHTML;
+    pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
+    pullTodoBtn.classList.add("is-pulling");
+    try {
+      const body = await sendJson("POST", "/api/sync", {});
+      toast(body.already_running
+        ? "A sync is already in flight - waiting for it to finish"
+        : "Pulling from Microsoft To-Do...");
+      await pollSyncUntilDone(pullTodoBtn);
       await loadMemoriesFromApi();
       renderStrandFilter();
       renderBoard();
       setFooterSource();
-      toast(STATE.apiConnected ? "Memories refreshed" : "API offline");
-    });
-  }
-
-  // Pull from Microsoft To-Do (Outlook) -> kicks off backend sync
-  const pullTodoBtn = $("#pull-todo-btn");
-  if (pullTodoBtn) {
-    pullTodoBtn.addEventListener("click", async () => {
-      if (pullTodoBtn.disabled) return;
-      pullTodoBtn.disabled = true;
-      const original = pullTodoBtn.innerHTML;
-      pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
-      pullTodoBtn.classList.add("is-pulling");
-      try {
-        const res = await fetch(`${API_BASE}/api/sync`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ source: "outlook_com" }),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`${res.status}: ${text.slice(0, 120)}`);
-        }
-        const body = await res.json();
-        if (body.already_running) {
-          toast("A sync is already in flight - waiting for it to finish");
-        } else {
-          toast("Pulling from Microsoft To-Do...");
-        }
-        await pollSyncUntilDone(pullTodoBtn);
-        await loadMemoriesFromApi();
-        renderStrandFilter();
-        renderBoard();
-        setFooterSource();
-      } catch (e) {
-        toast(`Pull failed: ${e.message}`);
-      } finally {
-        pullTodoBtn.disabled = false;
-        pullTodoBtn.innerHTML = original;
-        pullTodoBtn.classList.remove("is-pulling");
-      }
-    });
-  }
+    } catch (e) {
+      toast(`Pull failed: ${e.message}`);
+    } finally {
+      pullTodoBtn.disabled = false;
+      pullTodoBtn.innerHTML = original;
+      pullTodoBtn.classList.remove("is-pulling");
+    }
+  });
 
   // View toggle
   $$(".view-btn").forEach(btn => {
@@ -3017,13 +2651,10 @@ function init() {
   });
 
   // Theme toggle (day <-> night; marauder is easter-egg only, the toggle folds it back to day)
-  const themeBtn = $("#theme-toggle");
-  if (themeBtn) {
-    themeBtn.addEventListener("click", () => {
-      const next = STATE.theme === "day" ? "night" : "day";
-      setTheme(next, `${next} mode`);
-    });
-  }
+  $("#theme-toggle").addEventListener("click", () => {
+    const next = STATE.theme === "day" ? "night" : "day";
+    setTheme(next, `${next} mode`);
+  });
 
   // From your agents
   $("#agents-btn").addEventListener("click", openAgentRequests);
@@ -3056,7 +2687,7 @@ function init() {
   $("#accounts-modal").addEventListener("change", async e => {
     if (e.target.name !== "task-source") return;
     try {
-      renderAccounts(await accountsPost("/api/connect/source", { source: e.target.value }, "PUT"));
+      renderAccounts(await sendJson("PUT", "/api/connect/source", { source: e.target.value }));
     } catch (err) {
       toast(`Accounts: ${err.message}`);
     }
@@ -3080,61 +2711,45 @@ function init() {
   $("#open-goals").addEventListener("click", openGoalsEditor);
   $("#goals-save").addEventListener("click", saveGoalsFromEditor);
   $("#goals-reset").addEventListener("click", resetGoals);
-  const addBtn = $("#goals-add");
-  if (addBtn) addBtn.addEventListener("click", addGoalToState);
+  $("#goals-add").addEventListener("click", addGoalToDraft);
 
   // PDF import
   const pdfInput = $("#goals-pdf-input");
   const importBtn = $("#goals-import-btn");
-  const status = $("#goals-import-status");
-  if (pdfInput && importBtn) {
-    pdfInput.addEventListener("change", e => {
-      const file = e.target.files && e.target.files[0];
-      importBtn.disabled = !file;
-      if (status) status.textContent = file ? `Ready: ${file.name}` : "";
-    });
-    importBtn.addEventListener("click", () => {
-      const file = pdfInput.files && pdfInput.files[0];
-      if (file) uploadConnectPdf(file);
-    });
-  }
+  pdfInput.addEventListener("change", () => {
+    const file = pdfInput.files && pdfInput.files[0];
+    importBtn.disabled = !file;
+    $("#goals-import-status").textContent = file ? `Ready: ${file.name}` : "";
+  });
+  importBtn.addEventListener("click", () => {
+    const file = pdfInput.files && pdfInput.files[0];
+    if (file) uploadConnectPdf(file);
+  });
 
-  // Page tabs (Board / Recap)
+  // Page tabs + Recap page
   $$(".page-tab").forEach(btn => {
     btn.addEventListener("click", () => switchPage(btn.dataset.page));
   });
-  const recapGen = $("#recap-generate");
-  if (recapGen) recapGen.addEventListener("click", generateRecap);
-  const recapExport = $("#recap-export");
-  if (recapExport) recapExport.addEventListener("click", exportRecapDocx);
-  const recapHistBtn = $("#recap-history-btn");
-  if (recapHistBtn) recapHistBtn.addEventListener("click", toggleRecapHistory);
+  $("#recap-generate").addEventListener("click", generateRecap);
+  $("#recap-copy-all").addEventListener("click", copyWholeRecap);
+  $("#recap-export").addEventListener("click", exportRecapDocx);
+  $("#recap-history-btn").addEventListener("click", toggleRecapHistory);
 
   // Graph page controls
   wireGraphInteraction();
   const gThresh = $("#graph-threshold");
-  if (gThresh) {
-    gThresh.addEventListener("input", () => {
-      const v = parseFloat(gThresh.value).toFixed(2);
-      const label = $("#graph-threshold-val");
-      if (label) label.textContent = v;
-    });
-    gThresh.addEventListener("change", () => { if (STATE.page === "graph") loadGraph(); });
-  }
-  const gRefresh = $("#graph-refresh");
-  if (gRefresh) gRefresh.addEventListener("click", loadGraph);
+  gThresh.addEventListener("input", () => {
+    $("#graph-threshold-val").textContent = parseFloat(gThresh.value).toFixed(2);
+  });
+  gThresh.addEventListener("change", () => { if (STATE.page === "graph") loadGraph(); });
+  $("#graph-refresh").addEventListener("click", loadGraph);
 
   // Docs page controls
-  const docsNew = $("#docs-new");
-  if (docsNew) docsNew.addEventListener("click", newDoc);
-  const docsEdit = $("#docs-edit");
-  if (docsEdit) docsEdit.addEventListener("click", () => { setDocsMode(true); $("#docs-editor").focus(); });
-  const docsSave = $("#docs-save");
-  if (docsSave) docsSave.addEventListener("click", saveDoc);
-  const docsCancel = $("#docs-cancel");
-  if (docsCancel) docsCancel.addEventListener("click", () => { if (DOCS.current) openDoc(DOCS.current); });
-  const docsDelete = $("#docs-delete");
-  if (docsDelete) docsDelete.addEventListener("click", deleteDoc);
+  $("#docs-new").addEventListener("click", newDoc);
+  $("#docs-edit").addEventListener("click", () => { setDocsMode(true); $("#docs-editor").focus(); });
+  $("#docs-save").addEventListener("click", saveDoc);
+  $("#docs-cancel").addEventListener("click", () => { if (DOCS.current) openDoc(DOCS.current); });
+  $("#docs-delete").addEventListener("click", deleteDoc);
 
   // Modal close
   $("#card-modal").addEventListener("click", e => {
@@ -3156,23 +2771,11 @@ function init() {
   $("#vial-skip").addEventListener("click", () => saveVial("skipped"));
 
   // Garden v3: achievements button + modal.
-  const achBtn = document.getElementById("achievements-btn");
-  if (achBtn) achBtn.addEventListener("click", openAchievementsModal);
-  const achModal = document.getElementById("achievements-modal");
-  if (achModal) {
-    achModal.addEventListener("click", e => {
-      if (e.target.dataset.close === "achievements") closeAchievementsModal();
-    });
-  }
-
-  // Delegate chevron/badge clicks on the kanban board
-  document.addEventListener("click", e => {
-    const chevron = e.target.closest(".card-vial-chevron, .card-vial-badge");
-    if (chevron) {
-      e.stopPropagation();
-      openVialModal(chevron.dataset.memoryId);
-    }
+  $("#achievements-btn").addEventListener("click", openAchievementsModal);
+  $("#achievements-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "achievements") closeAchievementsModal();
   });
+
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       closeModal();
@@ -3187,7 +2790,7 @@ function init() {
   });
 }
 
-// ----- Recap page (Phase 3: Connect recap) -----
+// ----- 18. Page switching + Recap page -----
 
 function switchPage(page) {
   const known = ["recap", "graph", "docs"];
@@ -3246,7 +2849,7 @@ async function generateRecap() {
   const status = $("#recap-status");
   const output = $("#recap-output");
   if (!STATE.apiConnected) {
-    toast("Recap needs the Pensieve API. Start `pensieve serve` and refresh.");
+    toast(OFFLINE_HINT);
     return;
   }
   const scope = $("#recap-scope").value || "all";
@@ -3254,31 +2857,22 @@ async function generateRecap() {
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = "Drafting...";
-  if (status) status.textContent = "Calling the model, this can take a moment...";
+  status.textContent = "Calling the model, this can take a moment...";
   try {
-    const res = await fetch(`${API_BASE}/api/recap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope, period_label: period }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-    const data = await res.json();
-    STATE.lastRecap = data.recap;
+    const data = await sendJson("POST", "/api/recap", { scope, period_label: period });
     STATE.lastScope = scope;
     renderRecap(data.recap);
     const r = data.recap || {};
-    if (status) {
-      const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
-        ? ` Lists: ${r.list_names_applied.join(", ")}.`
-        : "";
-      status.textContent =
-        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
-        `${r.tokens_used || 0} tokens.`;
-    }
+    const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
+      ? ` Lists: ${r.list_names_applied.join(", ")}.`
+      : "";
+    status.textContent =
+      `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
+      `${r.tokens_used || 0} tokens.`;
     refreshRecapHistory();
   } catch (e) {
-    if (status) status.textContent = "";
-    output.innerHTML = `<p class="recap-empty">Recap failed: ${e.message}</p>`;
+    status.textContent = "";
+    output.innerHTML = `<p class="recap-empty">Recap failed: ${escapeHtml(e.message)}</p>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = original;
@@ -3319,16 +2913,13 @@ async function reviseSection(section, s) {
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = "Rewriting...";
   try {
-    const res = await fetch(`${API_BASE}/api/recap/revise`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal_id: s.goal_id, feedback, scope: STATE.lastScope || "all" }),
+    const data = await sendJson("POST", "/api/recap/revise", {
+      goal_id: s.goal_id,
+      feedback,
+      scope: STATE.lastScope || "all",
     });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-    const data = await res.json();
-    const newSection = data.section;
-    // update in-memory recap + re-render this section's blocks
-    s.accomplishments = newSection.accomplishments || [];
+    // Update the in-memory recap, then re-render this section's blocks.
+    s.accomplishments = data.section.accomplishments || [];
     if (STATE.lastRecap && STATE.lastRecap.sections) {
       const idx = STATE.lastRecap.sections.findIndex(x => x.goal_id === s.goal_id);
       if (idx >= 0) STATE.lastRecap.sections[idx] = s;
@@ -3347,16 +2938,14 @@ async function reviseSection(section, s) {
 
 function renderRecap(recap) {
   const output = $("#recap-output");
-  const copyAll = $("#recap-copy-all");
-  const exportBtn = $("#recap-export");
   STATE.lastRecap = recap;
   output.innerHTML = "";
   const sections = (recap && recap.sections) || [];
+  $("#recap-copy-all").hidden = sections.length === 0;
+  $("#recap-export").hidden = sections.length === 0;
   if (sections.length === 0) {
     output.innerHTML =
       `<p class="recap-empty">No tasks matched this scope. Try "All tasks", or sync more from To-Do.</p>`;
-    if (copyAll) copyAll.hidden = true;
-    if (exportBtn) exportBtn.hidden = true;
     return;
   }
 
@@ -3404,15 +2993,12 @@ function renderRecap(recap) {
 
     output.appendChild(section);
   });
+}
 
-  if (copyAll) {
-    copyAll.hidden = false;
-    copyAll.onclick = async () => {
-      const ok = await copyToClipboard(recapToText(recap));
-      toast(ok ? "Full recap copied" : "Copy failed");
-    };
-  }
-  if (exportBtn) exportBtn.hidden = false;
+async function copyWholeRecap() {
+  if (!STATE.lastRecap) return;
+  const ok = await copyToClipboard(recapToText(STATE.lastRecap));
+  toast(ok ? "Full recap copied" : "Copy failed");
 }
 
 async function exportRecapDocx() {
@@ -3420,12 +3006,11 @@ async function exportRecapDocx() {
     toast("Generate a recap first."); return;
   }
   try {
-    const res = await fetch(`${API_BASE}/api/recap/export`, {
+    const res = await apiFetch("/api/recap/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recap: STATE.lastRecap }),
     });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -3441,15 +3026,13 @@ async function exportRecapDocx() {
   }
 }
 
+// Refresh the history list only while it is open.
 async function refreshRecapHistory() {
-  const panel = $("#recap-history");
-  if (!panel || panel.hidden) return;  // only refresh when visible
-  await renderRecapHistory();
+  if (!$("#recap-history").hidden) await renderRecapHistory();
 }
 
 async function renderRecapHistory() {
   const panel = $("#recap-history");
-  if (!panel) return;
   try {
     const data = await fetchJson("/api/recap/history");
     const runs = data.runs || [];
@@ -3458,7 +3041,7 @@ async function renderRecapHistory() {
       return;
     }
     panel.innerHTML = `<div class="recap-history-list">` + runs.map(r => `
-      <button class="recap-history-item" data-id="${r.id}">
+      <button class="recap-history-item" data-id="${escapeHtml(r.id)}">
         <span class="rh-date">${escapeHtml((r.created_at || "").replace("T", " ").slice(0, 16))}</span>
         <span class="rh-meta">${escapeHtml(r.scope || "all")} &middot; ${r.section_count || 0} sections &middot; ${r.memories_considered || 0} tasks</span>
         ${r.period_label ? `<span class="rh-period">${escapeHtml(r.period_label)}</span>` : ""}
@@ -3478,8 +3061,7 @@ async function loadHistoryRun(id) {
     if (!recap) { toast("Could not load that run."); return; }
     STATE.lastScope = recap.scope || "all";
     renderRecap(recap);
-    const status = $("#recap-status");
-    if (status) status.textContent = `Loaded saved recap from ${(data.record.created_at || "").replace("T", " ").slice(0, 16)}.`;
+    $("#recap-status").textContent = `Loaded saved recap from ${(data.record.created_at || "").replace("T", " ").slice(0, 16)}.`;
     $("#recap-history").hidden = true;
   } catch (e) {
     toast(`Load failed: ${e.message}`);
@@ -3488,19 +3070,19 @@ async function loadHistoryRun(id) {
 
 function toggleRecapHistory() {
   const panel = $("#recap-history");
-  if (!panel) return;
   panel.hidden = !panel.hidden;
   if (!panel.hidden) renderRecapHistory();
 }
 
-// ----- Constellation graph page -----
+// ----- 19. Constellation graph page -----
 
 const GRAPH = {
   nodes: [], edges: [], byId: {},
   raf: null, dragging: null, hover: null, downAt: null, moved: false,
   width: 1200, height: 620, dpr: 1,
   ticksLeft: 0, calmFrames: 0,
-  pal: null,  // cached theme palette; applyTheme clears it
+  warm: false,  // every node was already placed: a short settle is enough
+  pal: null,    // cached theme palette; applyTheme clears it
 };
 
 // The simulation stops early once every node moves less than ~0.1px a frame
@@ -3513,17 +3095,15 @@ function stopGraphAnim() {
 }
 
 async function loadGraph() {
-  const canvas = $("#graph-canvas");
   const empty = $("#graph-empty");
-  if (!canvas) return;
   // If the user opens Graph before the initial API load finished, try once.
   if (!STATE.apiConnected) await loadMemoriesFromApi();
   if (!STATE.apiConnected) {
     empty.hidden = false;
-    empty.textContent = "Graph needs the Pensieve API. Start `pensieve serve` and refresh.";
+    empty.textContent = OFFLINE_HINT;
     return;
   }
-  const threshold = parseFloat(($("#graph-threshold") || {}).value || "0.6");
+  const threshold = parseFloat($("#graph-threshold").value);
   const signal = supersede("graph");
   try {
     const data = await fetchJson(`/api/graph?threshold=${threshold}`, { signal });
@@ -3596,7 +3176,7 @@ function initGraphLayout(g) {
   GRAPH.nodes = g.nodes;
   GRAPH.edges = g.edges;
   GRAPH.byId = placed;
-  GRAPH.warm = known === g.nodes.length;  // nothing new: a short settle is enough
+  GRAPH.warm = known === g.nodes.length;
 }
 
 function tickGraph() {
@@ -3657,8 +3237,7 @@ function nodeRadius(n) {
 }
 
 // Theme-aware canvas palette, read from the CSS tokens on <html> so the
-// Constellation matches day / night / marauder. Cached between frames (it
-// used to be re-read with getComputedStyle on every animation frame);
+// Constellation matches day / night / marauder. Cached between frames;
 // applyTheme clears the cache so a theme switch repaints correctly.
 function graphPalette() {
   if (GRAPH.pal) return GRAPH.pal;
@@ -3814,7 +3393,6 @@ function graphMousePos(evt) {
 
 function renderGraphStats(stats) {
   const root = $("#graph-stats");
-  if (!root) return;
   const col = stats.by_column || {};
   const tiles = [
     { label: "Tasks", value: stats.total_tasks || 0 },
@@ -3842,7 +3420,6 @@ function openNodeModal(node) {
 function wireGraphInteraction() {
   const canvas = $("#graph-canvas");
   const tip = $("#graph-tooltip");
-  if (!canvas) return;
   canvas.addEventListener("mousedown", e => {
     const p = graphMousePos(e);
     GRAPH.dragging = graphNodeAt(p.x, p.y);
@@ -3865,19 +3442,19 @@ function wireGraphInteraction() {
     GRAPH.hover = n;
     canvas.style.cursor = n ? "pointer" : "grab";
     if (changed && !GRAPH.raf) drawGraph();  // reflect hover when sim is settled
-    if (n && tip) {
+    if (n) {
       tip.style.display = "block";
       tip.style.left = `${p.x + 14}px`;
       tip.style.top = `${p.y + 14}px`;
       const meta = n.type === "goal" ? `Connect goal, House ${houseName(n.lane)}` :
         `${n.column || ""}${n.completed ? " / done" : ""}`;
       tip.innerHTML = `<strong>${escapeHtml(n.label)}</strong><br><span style="color:var(--ink-faded);font-style:italic">${escapeHtml(meta)}</span>`;
-    } else if (tip) {
+    } else {
       tip.style.display = "none";
     }
   });
   canvas.addEventListener("mouseleave", () => {
-    if (tip) tip.style.display = "none";
+    tip.style.display = "none";
     GRAPH.hover = null;
     if (!GRAPH.raf) drawGraph();
   });
@@ -3894,13 +3471,14 @@ function wireGraphInteraction() {
   });
 }
 
-// ----- Documents page (SOPs + tool docs) -----
+// ----- 20. Documents page (SOPs + tool docs) -----
 
 const DOCS = { current: null, list: [] };
 
-// Tiny, safe markdown renderer (escapes first, then applies a subset).
+// Tiny, safe markdown renderer (escapes first, then applies a subset). Quotes
+// are escaped too, so a link URL cannot break out of its href attribute.
 function renderMarkdown(md) {
-  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = escapeHtml;
   const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
   let html = "";
   let inUl = false, inOl = false, inCode = false;
@@ -3939,7 +3517,7 @@ async function loadDocs() {
   const listEl = $("#docs-list");
   if (!STATE.apiConnected) await loadMemoriesFromApi();
   if (!STATE.apiConnected) {
-    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs need the Pensieve API.</p>`;
+    listEl.innerHTML = `<p class="docs-empty">Docs need the Pensieve API.</p>`;
     return;
   }
   try {
@@ -3948,13 +3526,12 @@ async function loadDocs() {
     renderDocsList();
     if (DOCS.list.length && !DOCS.current) openDoc(DOCS.list[0].id);
   } catch (e) {
-    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs failed: ${escapeHtml(e.message)}</p>`;
+    listEl.innerHTML = `<p class="docs-empty">Docs failed: ${escapeHtml(e.message)}</p>`;
   }
 }
 
 function renderDocsList() {
   const listEl = $("#docs-list");
-  if (!listEl) return;
   if (!DOCS.list.length) {
     listEl.innerHTML = `<p class="docs-empty">No documents yet.</p>`;
     return;
@@ -3997,12 +3574,7 @@ async function saveDoc() {
   if (!DOCS.current) return;
   const content = $("#docs-editor").value;
   try {
-    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(DOCS.current)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    await sendJson("PUT", `/api/docs/${encodeURIComponent(DOCS.current)}`, { content });
     await loadDocs();
     await openDoc(DOCS.current);
     toast("Document saved");
@@ -4015,13 +3587,7 @@ async function newDoc() {
   const title = prompt("New document title:");
   if (!title || !title.trim()) return;
   try {
-    const res = await fetch(`${API_BASE}/api/docs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}`);
-    const data = await res.json();
+    const data = await sendJson("POST", "/api/docs", { title: title.trim() });
     DOCS.current = data.doc.id;
     await loadDocs();
     await openDoc(data.doc.id);
@@ -4037,8 +3603,7 @@ async function deleteDoc() {
   if (!confirm("Delete this document? This cannot be undone.")) return;
   const id = DOCS.current;
   try {
-    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(id)}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    await sendJson("DELETE", `/api/docs/${encodeURIComponent(id)}`);
     DOCS.current = null;
     $("#docs-current-title").textContent = "Select a document";
     $("#docs-view").innerHTML = "";
@@ -4050,14 +3615,14 @@ async function deleteDoc() {
   }
 }
 
-// ----- Masthead popovers (Filter + overflow) + filter badge -----
+// ----- 21. Masthead popovers (Filter + More), filter badge, card density -----
 
 function initHeaderPopovers() {
-  const pops = [
-    { btn: $("#filter-pop-btn"), panel: $("#filter-pop-panel"), wrap: $("#filter-pop-wrap") },
-    { btn: $("#more-pop-btn"), panel: $("#more-pop-panel"), wrap: $("#more-pop-wrap") },
-  ].filter(p => p.btn && p.panel && p.wrap);
-  if (!pops.length) return;
+  const pops = ["filter", "more"].map(name => ({
+    btn: $(`#${name}-pop-btn`),
+    panel: $(`#${name}-pop-panel`),
+    wrap: $(`#${name}-pop-wrap`),
+  }));
 
   const close = p => { p.panel.hidden = true; p.btn.setAttribute("aria-expanded", "false"); };
   const open = p => {
@@ -4077,45 +3642,39 @@ function initHeaderPopovers() {
   document.addEventListener("click", e => {
     if (!pops.some(p => p.wrap.contains(e.target))) closeAll();
   });
+  // Escape closes the open popover and returns focus to its button.
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && pops.some(p => !p.panel.hidden)) {
-      closeAll();
-      (pops.find(p => p.btn) || {}).btn?.focus();
-    }
+    const openPop = e.key === "Escape" && pops.find(p => !p.panel.hidden);
+    if (!openPop) return;
+    closeAll();
+    openPop.btn.focus();
   });
 }
 
 function updateFilterBadge() {
   const badge = $("#filter-active-badge");
-  if (!badge) return;
   let n = 0;
-  if (STATE.filter && STATE.filter.strand) n++;
+  if (STATE.filter.strand) n++;
   if (STATE.weeklyFilter) n++;
   badge.textContent = String(n);
   badge.hidden = n === 0;
 }
 
-// Card density: "comfortable" (default, clamped description) | "compact" (no description).
+// Card density: "compact" (default, no description) | "comfortable" (two-line description).
 function initDensityToggle() {
   const KEY = "pensieve-density";
   const btn = $("#density-toggle");
   let mode = (() => { try { return localStorage.getItem(KEY) === "comfortable" ? "comfortable" : "compact"; } catch (e) { return "compact"; } })();
-  const apply = m => {
-    document.documentElement.setAttribute("data-density", m);
-    if (btn) {
-      const compact = m === "compact";
-      btn.setAttribute("aria-pressed", String(compact));
-      btn.textContent = compact ? "Density: Compact" : "Density: Comfortable";
-    }
+  const apply = () => {
+    document.documentElement.setAttribute("data-density", mode);
+    btn.textContent = mode === "compact" ? "Density: Compact" : "Density: Comfortable";
   };
-  apply(mode);
-  if (btn) {
-    btn.addEventListener("click", () => {
-      mode = mode === "compact" ? "comfortable" : "compact";
-      try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
-      apply(mode);
-    });
-  }
+  apply();
+  btn.addEventListener("click", () => {
+    mode = mode === "compact" ? "comfortable" : "compact";
+    try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
+    apply();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);
