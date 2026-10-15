@@ -299,7 +299,7 @@ def test_upsert_preserving_user_fields_keeps_user_tend(tmp_path, monkeypatch):
         source_task_id="m1",
         title="seeded",
         column="dive",
-        notes_for_user="andy note",
+        notes_for_user="user note",
         last_tended_at=user_tend_time,
     )
     store.upsert_memory(seeded)
@@ -316,10 +316,10 @@ def test_upsert_preserving_user_fields_keeps_user_tend(tmp_path, monkeypatch):
     store.upsert_memory_preserving_user_fields(stale_copy)
     rebuilt = store.get_memory("m1")
     assert rebuilt is not None
-    # Title CHANGES (sync rewrote it — that's fine, it's enrichment output)
+    # Title CHANGES (sync rewrote it - that's fine, it's enrichment output)
     assert rebuilt.title == "sync rewritten title"
     # But user-owned fields are preserved from the latest persisted row:
     assert rebuilt.column == "dive"
-    assert rebuilt.notes_for_user == "andy note"
+    assert rebuilt.notes_for_user == "user note"
     assert rebuilt.last_tended_at is not None
     assert abs((rebuilt.last_tended_at - user_tend_time).total_seconds()) < 1

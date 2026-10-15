@@ -24,11 +24,10 @@ Writes are atomic (tmp+replace+fsync) so a crash mid-write never leaves
 an empty or half-JSON state file. The atomic-write pattern matches
 ``data/connect-goals.json`` (see ``pensieve.api.server.save_goals``).
 
-Concurrency note: this is a single-user single-process app. Two near-
-simultaneous tend bumps may both read the file and both write
-``completed_at`` for the same quest — the writes are idempotent
-(``completed_at`` stays approximately the same), and the second write
-wins. No locking required.
+Concurrency note: this module does no locking itself. The API layer wraps
+every read-modify-write of this file (and of ``achievements.json``) in one
+lock, because the dashboard calls those endpoints in parallel and a failed
+read on Windows would look like "no state yet" and reset the streak.
 """
 
 from __future__ import annotations

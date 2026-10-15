@@ -1,4 +1,4 @@
-"""Pensieve CLI — typer entry point."""
+"""Pensieve CLI - typer entry point."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from pensieve.config import Settings, get_settings
+from pensieve.connections import effective_source
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.store import ChromaMemoryStore
 from pensieve.sync import run_sync
@@ -22,7 +23,12 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 # Module-level singletons for typer defaults to satisfy ruff B008
-_OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com | personal_graph (default from .env)")
+_OPT_SOURCE = typer.Option(
+    None,
+    "--source",
+    "-s",
+    help="sample_file | outlook_com | personal_graph (default: the source chosen in Accounts, else .env)",
+)
 _OPT_LIST = typer.Option(
     None,
     "--list",
@@ -112,8 +118,17 @@ def init() -> None:
     console.print("[cyan]Pensieve init[/cyan]")
     console.print(f"  data_dir   = {s.data_dir}")
     console.print(f"  chroma_dir = {s.chroma_dir}")
-    console.print(f"  endpoint   = {s.azure_openai_endpoint or '[red]not set[/red]'}")
-    console.print(f"  deployment = {s.azure_openai_deployment}")
+    console.print(f"  provider   = {s.llm_provider}")
+    if s.llm_provider == "github_copilot":
+        from pensieve import ai_prefs
+
+        console.print(f"  model      = {ai_prefs.model_for(s, 'enrichment')} (change in More > AI models)")
+    elif s.llm_provider == "azure_openai":
+        console.print(f"  endpoint   = {s.azure_openai_endpoint or '[red]not set[/red]'}")
+        console.print(f"  deployment = {s.azure_openai_deployment}")
+    else:
+        console.print(f"  model      = {s.github_models_model}")
+    console.print(f"  source     = {effective_source(s)}")
     console.print(
         f"  goals file = {s.connect_goals_path} ({'OK' if s.connect_goals_path.exists() else 'missing'})"
     )
@@ -132,8 +147,6 @@ def sync(
 ) -> None:
     """Pull tasks from source, enrich, upsert to Chroma."""
     settings = get_settings()
-    from pensieve.connections import effective_source
-
     src_name = source or effective_source(settings)
     src = _build_source(src_name, list_names=list_name)
     list_label = ",".join(list_name) if list_name else "(all)"

@@ -256,7 +256,7 @@ def test_completion_idempotent_when_already_done():
         target_memory_ids=["any"],
         completed_at=NOW - timedelta(hours=1),
     )
-    # No targets exist, but already complete — must return True.
+    # No targets exist, but already complete - must return True.
     assert quests.check_completion(
         q, now=NOW, all_memories=[], captured_counts={}
     )

@@ -48,7 +48,7 @@ class SyncJobTracker:
         must arrange for finish_ok/finish_error to be called. ``False`` means
         another sync was already in flight and the caller MUST NOT start a
         second one (Chroma is single-writer). Either way, ``snapshot`` is the
-        current state — callers can inspect ``status`` to discriminate.
+        current state - callers can inspect ``status`` to discriminate.
         """
         with self._lock:
             if self._state.status == "running":

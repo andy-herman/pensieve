@@ -7,17 +7,17 @@ read-only invariant on `OutlookCOMSource` stays unchanged (the
 
 Two writeback channels, both opt-in via their own env flag:
 
-- ``set_column_tag`` / ``clear_column_tag`` — touches only ``.Categories``
+- ``set_column_tag`` / ``clear_column_tag`` - touches only ``.Categories``
   entries whose string starts with the configured prefix (default
   ``pensieve/col:``). User-authored categories are preserved byte for byte.
-- ``set_completion`` — calls ``TaskItem.MarkComplete()`` (preferred) or
+- ``set_completion`` - calls ``TaskItem.MarkComplete()`` (preferred) or
   flips ``item.Complete`` as a fallback, then ``Save()``. Used only when
   ``PENSIEVE_MIRROR_COMPLETION`` is enabled.
 
 All three public methods wrap their COM work in a per-thread
 ``CoInitialize`` / ``CoUninitialize`` bracket. FastAPI dispatches sync
 routes onto worker threads from a pool, and pywin32 requires each thread
-that touches COM to own its own apartment — without this bracket the
+that touches COM to own its own apartment - without this bracket the
 first writeback from a fresh worker thread fails with
 ``CoInitialize has not been called.``
 """
@@ -169,7 +169,7 @@ class OutlookCOMSink(TaskSink):
     def _set_completion_unguarded(self, task_id: str, completed: bool) -> bool:
         """Flip the source task's completed flag.
 
-        Prefers ``TaskItem.MarkComplete()`` (the canonical Outlook call —
+        Prefers ``TaskItem.MarkComplete()`` (the canonical Outlook call -
         sets ``Complete``, ``PercentComplete=100``, ``DateCompleted=now``,
         and ``Status=olTaskComplete`` atomically). Falls back to
         ``item.Complete = bool(completed)`` for MailItems-flagged-as-tasks

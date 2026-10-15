@@ -2,7 +2,7 @@
 
 Covers both the initial-build path (`_build_memory`) and the re-enrich
 overlay (`overlay_regeneration`) with the source-wins-on-newer policy
-Andy confirmed on 2026-06-02.
+described in AGENTS.md.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def _existing(column: str = "memory", enriched_at: datetime | None = None) -> Me
         connect_goal_ids=[],
         connect_alignment_confidence=0.6,
         connect_alignment_note="note",
-        notes_for_user="ANDY PRIVATE",
+        notes_for_user="USER PRIVATE",
         column=column,
         source_created_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
         source_last_modified=datetime(2026, 5, 2, tzinfo=timezone.utc),
@@ -137,7 +137,7 @@ def test_overlay_source_wins_when_tag_newer_than_local():
     merged = overlay_regeneration(existing, task, _result())
     assert merged.column == "dive"
     # private note still preserved
-    assert merged.notes_for_user == "ANDY PRIVATE"
+    assert merged.notes_for_user == "USER PRIVATE"
 
 
 def test_overlay_local_wins_when_local_newer_than_source():

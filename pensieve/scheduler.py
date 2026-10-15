@@ -4,7 +4,7 @@ Periodically calls the same sync code path as ``POST /api/sync`` so the
 kanban stays current without manual "Pull from To-Do" clicks. Both the
 HTTP route and the scheduler funnel through :func:`start_sync_job`, which
 in turn relies on :meth:`pensieve.sync_state.SyncJobTracker.try_begin`
-for an atomic single-job gate — so manual and scheduled syncs never
+for an atomic single-job gate - so manual and scheduled syncs never
 collide on Chroma's single-writer constraint.
 
 Design notes:
@@ -13,12 +13,11 @@ Design notes:
   ITS OWN sync worker thread (so the scheduler is free to keep ticking
   while a long sync runs). The worker thread handles its own COM
   ``CoInitialize`` / ``CoUninitialize`` bracket, identical to the
-  manual-route runner — pywin32 requires per-thread apartments.
-- The ``sample_file`` source is silently skipped because re-syncing a
-  static JSON fixture every N minutes is pointless. A clear log line
-  fires on startup so the operator sees this (helps Andy whose default
-  source is sample_file but who runs against outlook_com via the
-  ``PENSIEVE_AUTO_SYNC_SOURCE`` override).
+  manual-route runner - pywin32 requires per-thread apartments.
+- The source is ``PENSIEVE_AUTO_SYNC_SOURCE`` if set, else the one chosen
+  in the Accounts screen (see :func:`pensieve.connections.effective_source`).
+  ``sample_file`` is silently skipped because re-syncing a static JSON
+  fixture every N minutes is pointless; a log line says so on startup.
 - Repeated identical errors (e.g. Outlook closed for an hour) are
   collapsed so the console isn't spammed.
 - Shutdown sets a stop event AND ``thread.join``s with a bounded
@@ -166,7 +165,7 @@ def start_sync_job(
 ) -> Optional[threading.Thread]:
     """Atomically start a sync worker thread, or return None if one's already running.
 
-    The atomicity guarantee comes from :meth:`SyncJobTracker.try_begin` —
+    The atomicity guarantee comes from :meth:`SyncJobTracker.try_begin` -
     if it returns ``transitioned=False``, ANOTHER caller has already won
     the race and this caller MUST NOT spawn a thread (Chroma is
     single-writer; the second sync would corrupt the store and double-pay

@@ -52,7 +52,7 @@ class TaskSource(ABC):
         Used by the sync orchestrator's deletion sweep: a task previously
         ingested from list X should only be considered "deleted at source" if
         we actually scanned list X this run. Returning ``None`` means the
-        source covers EVERY list — any memory of this source not in the
+        source covers EVERY list - any memory of this source not in the
         current pull is fair game for deletion.
 
         Implementations that filter (e.g. OutlookCOMSource with ``list_names``)

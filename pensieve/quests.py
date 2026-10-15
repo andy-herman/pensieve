@@ -1,4 +1,4 @@
-"""Garden v2: daily quests — pure-function generation + completion check.
+"""Garden v2: daily quests - pure-function generation + completion check.
 
 No I/O, no global state. The persistence layer (today's row, clean-day
 history) lives in :mod:`pensieve.quest_state`. The API layer
@@ -11,10 +11,10 @@ Design notes (see ``brainstorms/02-board-tending-game.md``):
 - Generator selects up to 3 quests per day, ranked by board impact:
   ghost > stale > yesterday-closures > triage-inbox > hit-95-health.
 - Each quest is finishable in <10 minutes of real work.
-- Quests do NOT carry over — today's misses are tomorrow's clean slate.
+- Quests do NOT carry over - today's misses are tomorrow's clean slate.
 - Completing all 3 grants a +5 transient board-health bonus (wired
   into ``compute_board_health`` via the ``quest_bonus`` kwarg).
-- Target-memory disappearance is treated as "tended" — if sync drops
+- Target-memory disappearance is treated as "tended" - if sync drops
   a target from the store, the quest still completes (rather than
   blocking forever on a phantom row).
 """
@@ -130,7 +130,7 @@ def _pick_stale_cluster(
 
     Returns (column_name, cards). The column with the highest stale count wins;
     ties broken alphabetically. Returns ``(None, [])`` when no column has
-    ≥2 stale cards (we don't generate a single-stale tend quest — that's just
+    ≥2 stale cards (we don't generate a single-stale tend quest - that's just
     "tend a card", which isn't interesting).
     """
     by_col: dict[str, list[Memory]] = {}
@@ -195,7 +195,7 @@ def generate_quests(
 ) -> list[Quest]:
     """Generate up to MAX_QUESTS_PER_DAY quests for today.
 
-    Selection is deterministic given the input — same board produces the same
+    Selection is deterministic given the input - same board produces the same
     quest list within the same day. ``current_health`` is the latest computed
     board-health score; only the ``hit-95-health`` quest uses it.
     """
@@ -209,7 +209,7 @@ def generate_quests(
     quests: list[Quest] = []
     already_targeted: set[str] = set()  # don't double-target the same memory_id
 
-    # 1) Ghost — single highest-priority target.
+    # 1) Ghost - single highest-priority target.
     ghost = _pick_ghost_target(open_mems, now_u)
     if ghost is not None:
         title = "Bury or revive a ghost"
@@ -227,7 +227,7 @@ def generate_quests(
         ))
         already_targeted.add(ghost.id)
 
-    # 2) Stale cluster — up to 3 cards in the worst column.
+    # 2) Stale cluster - up to 3 cards in the worst column.
     if len(quests) < MAX_QUESTS_PER_DAY:
         col, cards = _pick_stale_cluster(open_mems, now_u)
         # Exclude any card already targeted (e.g. by the ghost quest).
@@ -268,7 +268,7 @@ def generate_quests(
             ))
             already_targeted.update(m.id for m in closures)
 
-    # 4) Inbox triage — single oldest "memory" card untended >3d
+    # 4) Inbox triage - single oldest "memory" card untended >3d
     #    (must not already be targeted by another quest).
     if len(quests) < MAX_QUESTS_PER_DAY:
         triage = _pick_triage_target(open_mems, now_u)
@@ -280,13 +280,13 @@ def generate_quests(
                 description=(
                     f"'{(triage.display_title or triage.title or 'untitled')[:80]}' "
                     "has been in the inbox without attention. Move it to dive, "
-                    "review, or closed — or edit it to plan next steps."
+                    "review, or closed, or edit it to plan next steps."
                 ),
                 target_memory_ids=[triage.id],
             ))
             already_targeted.add(triage.id)
 
-    # 5) Hit 95+ health — only when close (90..94).
+    # 5) Hit 95+ health - only when close (90..94).
     if (
         len(quests) < MAX_QUESTS_PER_DAY
         and current_health is not None
@@ -319,7 +319,7 @@ def check_completion(
 ) -> bool:
     """Return True iff the quest is complete right now.
 
-    Idempotent — safe to call on already-completed quests. Auto-completes
+    Idempotent - safe to call on already-completed quests. Auto-completes
     when targets disappear (sync removed them), so a deleted source task
     can't block a quest forever.
     """

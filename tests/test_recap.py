@@ -198,7 +198,7 @@ def test_filter_by_list_names_empty_returns_everything():
 
 
 def test_generate_recap_settings_default_filters_out_non_ciso_grc_tasks():
-    """Default Settings.recap_list_names = 'CISO GRC' — tasks in other lists
+    """Default Settings.recap_list_names = 'CISO GRC' - tasks in other lists
     must not appear in the recap input."""
     from pensieve.config import Settings
 

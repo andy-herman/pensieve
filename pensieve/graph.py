@@ -19,7 +19,7 @@ from pensieve.store.schema import Memory
 
 # Lane slug -> display color is owned by the frontend; here we just pass the
 # goal's color_primary through so the canvas can paint without a lookup.
-_DEFAULT_TASK_COLOR = "#42c8f5"  # --cyan
+_DEFAULT_TASK_COLOR = "#42c8f5"  # unaligned tasks, or goals without a color_primary
 _UNASSIGNED_LANE = "unassigned"
 
 

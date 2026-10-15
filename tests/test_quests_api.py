@@ -184,7 +184,7 @@ def test_capture_yesterday_closure_completes_via_vial_post(seed, client):
 
 def test_skipped_vial_does_not_complete_capture_quest(seed, client):
     """Skipping a Vial bumps tended (administrative), but a skip is NOT a capture
-    — so the capture-yesterday-closures quest must remain pending."""
+    - so the capture-yesterday-closures quest must remain pending."""
     yesterday = datetime.now(UTC) - timedelta(days=1)
     seed(
         "c1", column="closed", completed_at=yesterday, last_tended_at=yesterday,

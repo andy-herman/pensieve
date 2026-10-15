@@ -72,7 +72,7 @@ def test_snapshot_from_freezes_memory_context():
 
 def test_snapshot_does_not_follow_memory_edits():
     """The Vial's snapshot must NOT change when the source Memory is later
-    edited — that's the entire point of snapshotting at closure-time."""
+    edited - that's the entire point of snapshotting at closure-time."""
     m = _mk_closed_memory()
     v = Vial.snapshot_from(m, captured_text="captured at v1")
     original_title_snapshot = v.title_snapshot
@@ -144,7 +144,7 @@ def test_list_vials_for_memory_scopes_to_one_memory(tmp_stores):
 
 
 def test_captured_count_excludes_skipped(tmp_stores):
-    """captured_count_by_memory must not count Skip markers — only real
+    """captured_count_by_memory must not count Skip markers - only real
     captured Vials count toward the badge."""
     _, vials = tmp_stores
     vials.upsert_vial(Vial(memory_id="m1", captured_text="real one"))
@@ -155,7 +155,7 @@ def test_captured_count_excludes_skipped(tmp_stores):
 
 
 def test_has_any_vial_includes_skipped(tmp_stores):
-    """has_any_vial_by_memory must include skips — Skip clears the chevron."""
+    """has_any_vial_by_memory must include skips - Skip clears the chevron."""
     _, vials = tmp_stores
     vials.upsert_vial(Vial(memory_id="m1", capture_kind="skipped", captured_text=""))
     vials.upsert_vial(Vial(memory_id="m2", captured_text="real"))

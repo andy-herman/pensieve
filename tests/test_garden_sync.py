@@ -100,7 +100,7 @@ def test_sync_auto_close_path_does_not_bump_tended(tmp_path):
     )
     store.upsert_memory(seeded)
 
-    # Now the source says it's complete — sync should auto-close via the
+    # Now the source says it's complete - sync should auto-close via the
     # column-only path (no LLM call).
     _write_sample(samples, [{
         "id": "m1",
@@ -133,7 +133,7 @@ def test_sync_reenrich_preserves_user_tend(tmp_path, monkeypatch):
         source_task_id="m1",
         title="OLD TITLE",
         column="dive",
-        notes_for_user="andy private note",
+        notes_for_user="user private note",
         last_tended_at=user_tend_time,
     )
     store.upsert_memory(seeded)
@@ -164,7 +164,7 @@ def test_sync_reenrich_preserves_user_tend(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr("pensieve.sync.enrich_task", _fake_enrich)
-    # Don't actually construct an Azure client either — patch it to None.
+    # Don't construct a real chat client either - patch it to None.
     monkeypatch.setattr(
         "pensieve.sync.get_chat_client",
         lambda settings=None: None,
@@ -180,6 +180,6 @@ def test_sync_reenrich_preserves_user_tend(tmp_path, monkeypatch):
     assert rebuilt.why == "new why"
     # User-owned fields ALL preserved:
     assert rebuilt.column == "dive"
-    assert rebuilt.notes_for_user == "andy private note"
+    assert rebuilt.notes_for_user == "user private note"
     assert rebuilt.last_tended_at is not None
     assert abs((rebuilt.last_tended_at - user_tend_time).total_seconds()) < 1

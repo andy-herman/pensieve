@@ -13,18 +13,6 @@ from pensieve.store import read_cache
 from pensieve.store.embedding import get_embedding_function
 from pensieve.store.schema import Memory
 
-# Fields that are owned by the user (set via the Pensieve UI) and must
-# never be silently overwritten by an auto-sync write. ``sync.py`` uses
-# ``upsert_memory_preserving_user_fields`` to merge these from whatever
-# is currently persisted at WRITE time (not just read time, which leaves
-# a race window between sync's read-enrich-write cycle and a concurrent
-# user tend). See plan.md adopted-critique fix #1.
-_USER_OWNED_FIELDS: tuple[str, ...] = (
-    "column",
-    "notes_for_user",
-    "last_tended_at",
-)
-
 
 def _parse_iso(value: object) -> Optional[datetime]:
     """Parse an ISO datetime string from Chroma metadata; None if blank/invalid."""
@@ -82,8 +70,9 @@ class ChromaMemoryStore:
         Auto-sync follows a read-enrich-write cycle. If a user tends the
         card while enrichment is running, a bare ``upsert_memory`` would
         clobber that tend with the older value. This helper closes that
-        race by re-reading ``_USER_OWNED_FIELDS`` from the currently
-        persisted row immediately before writing.
+        race by re-reading the user-owned fields (``column``,
+        ``notes_for_user``, ``last_tended_at``) from the currently persisted
+        row immediately before writing.
         """
         existing = self._memories.get(ids=[memory.id], include=["metadatas"])
         if existing and existing.get("ids"):
@@ -128,7 +117,7 @@ class ChromaMemoryStore:
     def bump_tended_at(self, memory_id: str, when: Optional[datetime] = None) -> bool:
         """Mark a Memory as deliberately tended right now (Garden v1).
 
-        Thin wrapper over ``update_meta`` — cheap because Chroma only
+        Thin wrapper over ``update_meta`` - cheap because Chroma only
         rewrites the metadata blob (no document rebuild, no embedding
         recompute). Auto-sync must NEVER call this.
         """
@@ -212,7 +201,7 @@ class ChromaMemoryStore:
         Scoped to ``source`` so a sync of Outlook never deletes sample-data
         memories (or vice versa). When ``covered_lists`` is provided (a set of
         list_name strings the current sync was responsible for), the scan is
-        further narrowed to those lists — so syncing only "Agentic AI work"
+        further narrowed to those lists - so syncing only "Agentic AI work"
         cannot orphan tasks in "CISO GRC" lists we didn't pull from.
 
         Closed memories are never orphaned: they are the record of finished

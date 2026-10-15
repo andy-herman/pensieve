@@ -38,7 +38,7 @@ class ChromaVialStore:
     """Wraps the ``vials`` Chroma collection.
 
     Vials are durable promo evidence. They deliberately do NOT cascade-delete
-    when a parent Memory is removed — if the upstream To-Do task is later
+    when a parent Memory is removed - if the upstream To-Do task is later
     deleted (orphan sweep) the Vial remains as historical record. Snapshot
     fields on each Vial preserve closure-time context for promo/recap use
     even if the Memory is gone.
@@ -117,7 +117,7 @@ class ChromaVialStore:
     def captured_count_by_memory(self) -> dict[str, int]:
         """One bulk query returning {memory_id: count_of_captured_vials}.
 
-        Skipped Vials are excluded — they exist only to clear the
+        Skipped Vials are excluded - they exist only to clear the
         ``pending_closure_capture`` chevron, not to count as evidence.
         """
         res = self._all_rows()

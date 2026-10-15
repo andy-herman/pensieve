@@ -1,4 +1,4 @@
-"""FastAPI app — HTTP layer over ChromaMemoryStore + sync trigger."""
+"""FastAPI app - HTTP layer over ChromaMemoryStore + sync trigger."""
 
 from __future__ import annotations
 
@@ -301,7 +301,7 @@ def create_app() -> FastAPI:
         v1 is **close-only**: when the user drags a card to ``closed``, we
         call ``sink.set_completion(task_id, True)`` on the upstream system
         (e.g. Outlook ``MarkComplete()``). Dragging OUT of ``closed`` does
-        NOT reopen the task — the user reopens in Outlook, and the next
+        NOT reopen the task - the user reopens in Outlook, and the next
         sync flips the card back to ``memory`` via the existing
         completion-drift handling in ``pensieve.sync``. This is a deliberate
         safety cut to avoid a stray drag silently un-completing a real task.
@@ -691,14 +691,14 @@ def create_app() -> FastAPI:
         """Load achievement state, evaluate predicates, persist new unlocks.
 
         Returns ``(state, new_ids)`` so the API surface can render confetti
-        triggers when ``new_ids`` is non-empty. Idempotent — repeated calls
+        triggers when ``new_ids`` is non-empty. Idempotent - repeated calls
         without any predicate flipping return ``(state, set())``.
         """
         mems = store.list_memories()
         vials = vial_store.list_vials()
         # Use the post-rollover quest_state so the clean-day history is current.
         q_state = _get_or_init_quest_state(now)
-        # Use INTRINSIC health (no quest_bonus) to gate Sharpshooter — earning
+        # Use INTRINSIC health (no quest_bonus) to gate Sharpshooter - earning
         # a +5 quest bonus shouldn't shortcut the 95 threshold.
         captured_counts = vial_store.captured_count_by_memory()
         live = garden.compute_board_health(
@@ -753,7 +753,7 @@ def create_app() -> FastAPI:
     def level_summary() -> dict[str, Any]:
         """Garden v3: trailing-7-days roll-up.
 
-        Designed for the Friday digest (Issue #3) to consume — exposed
+        Designed for the Friday digest (Issue #3) to consume - exposed
         standalone here so the dashboard can also show a "this week"
         block. Returns counts + capture rate + week-over-week health
         delta + streak data. Reads day-snapshot history from
@@ -1350,7 +1350,7 @@ def create_app() -> FastAPI:
 
 
 # Module-level `app` for uvicorn (`pensieve.api.server:app`), built lazily.
-# Importing this module must NOT construct the app or open the Chroma store —
+# Importing this module must NOT construct the app or open the Chroma store -
 # tests import `create_app` from here, and an eager build would read the real
 # data dir at collection time (so a bad store would break test collection).
 # uvicorn accesses the `app` attribute, which triggers construction on demand.

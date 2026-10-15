@@ -175,7 +175,7 @@ def test_level_summary_endpoint_shape_on_empty_board(client):
     assert body["closed_prev_week"] == 0
     assert body["captured_this_week"] == 0
     # current_streak_d may be 0 OR 1 depending on whether the day-rollover
-    # has recorded yesterday's empty-board cleanliness yet — both are valid.
+    # has recorded yesterday's empty-board cleanliness yet - both are valid.
     assert body["current_streak_d"] in (0, 1)
 
 
@@ -208,7 +208,7 @@ def test_sharpshooter_uses_intrinsic_health_not_quest_bonus(seed, client):
 
     Board with a single fresh memory scores 100 intrinsically anyway, so we
     test the negative: a board that scores 92 intrinsically + 5 bonus would
-    technically reach 97 — but Sharpshooter should NOT fire (uses intrinsic).
+    technically reach 97 - but Sharpshooter should NOT fire (uses intrinsic).
     """
     seed_memory, _ = seed
     # 10 fresh memories all in 'memory' (triage-inbox candidate). One stale.
@@ -216,7 +216,7 @@ def test_sharpshooter_uses_intrinsic_health_not_quest_bonus(seed, client):
         seed_memory(f"fresh{i}", last_tended_at=datetime.now(UTC))
     seed_memory("stale1", last_tended_at=datetime.now(UTC) - timedelta(days=10))
     # Stale penalty: 1/11 = ~0.09 → 30 * 0.09 = ~2.7 deducted; 0 ghosts, no
-    # overdues. Capture_pct 0. Score ~ 97. Bonus shouldn't matter yet — but
+    # overdues. Capture_pct 0. Score ~ 97. Bonus shouldn't matter yet - but
     # critically, achievements endpoint should NOT fire on a +5 nudge alone.
     body = client.get("/api/achievements").json()
     # We just verify the endpoint resolves; precise health depends on the

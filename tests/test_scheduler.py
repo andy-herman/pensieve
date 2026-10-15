@@ -69,7 +69,7 @@ def test_start_sync_job_returns_thread_when_idle():
 
 
 def test_start_sync_job_returns_none_when_already_running():
-    """The second caller must NOT spawn a second worker thread — Chroma is
+    """The second caller must NOT spawn a second worker thread - Chroma is
     single-writer and a concurrent run would corrupt the store + double-pay
     Outlook + LLM costs."""
     tracker = SyncJobTracker()
@@ -105,7 +105,7 @@ def test_start_sync_job_returns_none_when_already_running():
 
 
 def test_concurrent_starts_only_one_wins():
-    """Race test — fire 10 threads at start_sync_job simultaneously and
+    """Race test - fire 10 threads at start_sync_job simultaneously and
     assert that exactly one transitions the tracker."""
     tracker = SyncJobTracker()
     settings = _settings(default_source="outlook_com")
@@ -210,7 +210,7 @@ def test_scheduler_disabled_when_interval_is_zero():
 
 
 def test_scheduler_skips_sample_file_source():
-    """sample_file ticks must be silent no-ops — re-syncing a static JSON
+    """sample_file ticks must be silent no-ops - re-syncing a static JSON
     fixture every N minutes is pointless and would spam the logs."""
     tracker = SyncJobTracker()
     settings = _settings(

@@ -28,7 +28,7 @@ def _existing_memory() -> Memory:
         connect_goal_ids=["goal-old"],
         connect_alignment_confidence=0.7,
         connect_alignment_note="old alignment",
-        notes_for_user="ANDY'S PRIVATE NOTE",
+        notes_for_user="USER'S PRIVATE NOTE",
         column="dive",  # user dragged it
         source_created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         source_last_modified=datetime(2025, 1, 1, tzinfo=timezone.utc),
@@ -72,9 +72,9 @@ def _fresh_result() -> EnrichmentResult:
 def test_overlay_preserves_user_column_and_private_note():
     existing = _existing_memory()
     merged = overlay_regeneration(existing, _refreshed_task(), _fresh_result())
-    # USER-ONLY FIELDS — must survive a re-enrich
+    # USER-ONLY FIELDS - must survive a re-enrich
     assert merged.column == "dive", "user-dragged column was clobbered on re-enrich"
-    assert merged.notes_for_user == "ANDY'S PRIVATE NOTE", "private note was clobbered on re-enrich"
+    assert merged.notes_for_user == "USER'S PRIVATE NOTE", "private note was clobbered on re-enrich"
 
 
 def test_overlay_refreshes_source_and_enrichment_fields():

@@ -17,7 +17,7 @@ from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.enrichment.prompt import load_system_prompt
 from pensieve.store.schema import Memory
 
-# Scope -> human label, kept in sync with the frontend selector.
+# Recap scopes; keep in sync with the frontend selector.
 SCOPES = ("all", "completed", "review")
 
 _COLUMN_STATUS = {
@@ -238,7 +238,7 @@ def generate_recap(
     """Generate a Connect-format recap from enriched memories.
 
     :param memories: all Memory records to consider (already loaded from store).
-    :param scope: "all" | "completed" | "review" — which memories to include.
+    :param scope: "all" | "completed" | "review" - which memories to include.
     :param goal_ids: optional restriction to specific Connect goal ids.
     :param list_names: optional restriction to specific source list_name values
         (e.g. ``["CISO GRC"]``). ``None`` = use the configured default from

@@ -107,9 +107,9 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     (private note). This is what makes 'edit title in To-Do then refresh' safe:
     your dragged column and private notes survive re-enrichment.
 
-    EXCEPTION: when the source task is completed and the user has not already
-    moved it to a terminal column (vial / closed), auto-promote to "closed"
-    so the kanban reflects the source's completion state.
+    EXCEPTION: when the source task is completed and the card is not already
+    in "closed", auto-promote it to "closed" so the kanban reflects the
+    source's completion state.
     """
     existing.title = task.title
     if result.display_title:
@@ -138,7 +138,7 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     # a `pensieve/col:<col>` tag whose value differs from the local column AND
     # the source was modified after we last enriched this memory, the other PC
     # is the newer writer; honor its view. This is the "source-wins-on-newer"
-    # conflict policy Andy confirmed on 2026-06-02. Runs BEFORE the completion
+    # conflict policy in AGENTS.md. Runs BEFORE the completion
     # promotion below so a hard "task completed at source" signal still wins.
     settings = get_settings()
     mirrored = _column_from_task(task, settings.mirror_tag_prefix)
@@ -205,7 +205,7 @@ def run_sync(
     # whose id is NOT in the live pull (and is in a list we just covered)
     # has been deleted at the source. Honour that and remove from Chroma.
     # Scoping to ``covered_lists`` is critical when the user filters to
-    # specific lists (Outlook ``list_names``) — without it, a narrow sync
+    # specific lists (Outlook ``list_names``) - without it, a narrow sync
     # would erase memories from lists we didn't even read.
     live_ids = {t.id for t in tasks}
     covered = source.covered_lists()
@@ -277,7 +277,7 @@ def run_sync(
 
     # Apply column-only updates immediately (no LLM, no concurrency needed).
     # Use update_meta (atomic single-call metadata write) instead of
-    # upsert_memory — this is a metadata-only change, no embedding rebuild,
+    # upsert_memory - this is a metadata-only change, no embedding rebuild,
     # and critically does NOT touch last_tended_at (Garden v1: auto-sync
     # must never bump the user's tending timestamp).
     for t in column_only_updates:

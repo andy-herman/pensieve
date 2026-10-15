@@ -4,19 +4,19 @@ Pure-function module. No I/O, no global state. Called from the API layer
 to enrich dashboard payloads (``freshness`` + ``is_overdue``) and to back
 the ``GET /api/board/health`` endpoint.
 
-Design notes (see ``brainstorms/02-board-tending-game.md`` + plan):
+Design notes (see ``brainstorms/02-board-tending-game.md``):
 - Freshness is DERIVED from ``Memory.last_tended_at`` (backfilled to
   ``enriched_at`` when missing during reconstruction). It is NOT stored
-  on the Memory model — keeps the schema clean of Garden concepts.
+  on the Memory model - keeps the schema clean of Garden concepts.
 - "Tending" = a deliberate user action (column move, edit, vial post/skip,
   regenerate). Auto-sync must NEVER bump ``last_tended_at``.
 - Closed cards are NEUTRAL freshness-wise. They get ``closed`` (no Vial yet,
   pending-closure-capture chevron is the signal) or ``closed_vialed`` (a
-  CAPTURED Vial exists — skipped Vials do not earn this state).
+  CAPTURED Vial exists - skipped Vials do not earn this state).
 - ``capture_pct`` in the health formula counts only CAPTURED Vials. Skipping
   every closure must not artificially inflate the score.
-- ``clean_streak_d`` is wired through as a parameter but always 0 in v1.
-  Real daily-snapshot streak tracking lands in v2 alongside quest state.
+- ``clean_streak_d`` and ``quest_bonus`` are passed in by the API layer
+  from the clean-day history and today's quests (:mod:`pensieve.quest_state`).
 """
 
 from __future__ import annotations
