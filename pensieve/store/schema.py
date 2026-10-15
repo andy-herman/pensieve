@@ -19,6 +19,20 @@ def _utcnow() -> datetime:
 STRAND_KINDS = frozenset({"deep", "tactical", "learning", "writing", "unknown"})
 
 
+# Enrichment fields a person can edit on the card. Once edited, automatic
+# re-enrichment (a sync after the task changed in To Do) keeps the person's
+# value; only an explicit Regenerate replaces it.
+USER_EDITABLE_ENRICHMENT = (
+    "display_title",
+    "why",
+    "impact",
+    "suggested_strand",
+    "strand_kind",
+    "connect_goal_ids",
+    "connect_alignment_note",
+)
+
+
 def normalize_strand_kind(value: Any) -> Optional[str]:
     if value is None or str(value).strip() == "":
         return None
@@ -49,6 +63,8 @@ class Memory(BaseModel):
     connect_alignment_confidence: float = 0.0
     connect_alignment_note: str = ""
     notes_for_user: str = ""
+    # Which USER_EDITABLE_ENRICHMENT fields were edited by hand.
+    user_edited: list[str] = Field(default_factory=list)
 
     # Lifecycle (for the kanban; user can drag to update)
     column: str = "memory"
@@ -99,6 +115,7 @@ class Memory(BaseModel):
             "connect_alignment_confidence": float(self.connect_alignment_confidence),
             "connect_alignment_note": self.connect_alignment_note,
             "notes_for_user": self.notes_for_user,
+            "user_edited_csv": ",".join(self.user_edited),
             "categories_csv": ",".join(self.categories),
             "column": self.column,
             "source_created_at": (

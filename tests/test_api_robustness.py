@@ -187,3 +187,11 @@ def test_parallel_garden_requests_serialize_state_files(client, monkeypatch):
     saved = json.loads(state_path.read_text(encoding="utf-8"))
     assert [h["date"] for h in saved["history"]][: len(old_days)] == old_days
     assert saved["today"]["date"] == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def test_patch_marks_only_fields_that_changed_as_hand_edited(client):
+    _seed("ue1", "Plan the quarter")
+    body = {"display_title": "Plan the quarter", "why": "why", "impact": "My impact", "column": "dive"}
+    r = client.patch("/api/memories/ue1", json=body)
+    assert r.status_code == 200
+    assert ChromaMemoryStore().get_memory("ue1").user_edited == ["impact"]

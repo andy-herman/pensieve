@@ -125,3 +125,24 @@ def test_overlay_does_not_force_closed_when_task_is_not_completed():
     merged = overlay_regeneration(existing, _refreshed_task(completed=False), _fresh_result())
     assert merged.column == "dive", "open task should preserve user-placed column"
     assert merged.completed is False
+
+
+def test_overlay_keeps_fields_the_user_edited():
+    existing = _existing_memory()
+    existing.why = "MY OWN WHY"
+    existing.connect_goal_ids = ["goal-mine"]
+    existing.user_edited = ["why", "connect_goal_ids"]
+    merged = overlay_regeneration(existing, _refreshed_task(), _fresh_result())
+    assert merged.why == "MY OWN WHY"
+    assert merged.connect_goal_ids == ["goal-mine"]
+    assert merged.impact == _fresh_result().impact  # not edited: regenerated
+    assert merged.user_edited == ["connect_goal_ids", "why"]
+
+
+def test_explicit_regenerate_replaces_user_edits():
+    existing = _existing_memory()
+    existing.why = "MY OWN WHY"
+    existing.user_edited = ["why"]
+    merged = overlay_regeneration(existing, _refreshed_task(), _fresh_result(), keep_user_edits=False)
+    assert merged.why == _fresh_result().why
+    assert merged.user_edited == []

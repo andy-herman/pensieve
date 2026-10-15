@@ -81,6 +81,11 @@ class ChromaMemoryStore:
                 memory.column = current_meta["column"]
             if "notes_for_user" in current_meta:
                 memory.notes_for_user = current_meta.get("notes_for_user", "") or ""
+            # A card edited while this enrichment ran keeps the person's values.
+            current = self._reconstruct(memory.id, current_meta, "")
+            for name in current.user_edited:
+                setattr(memory, name, getattr(current, name))
+            memory.user_edited = sorted(set(memory.user_edited) | set(current.user_edited))
             current_tended = _parse_iso(current_meta.get("last_tended_at"))
             if current_tended is not None:
                 memory.last_tended_at = current_tended
@@ -269,6 +274,7 @@ class ChromaMemoryStore:
             connect_alignment_confidence=float(meta.get("connect_alignment_confidence", 0.0) or 0.0),
             connect_alignment_note=meta.get("connect_alignment_note", ""),
             notes_for_user=meta.get("notes_for_user", ""),
+            user_edited=[f for f in (meta.get("user_edited_csv") or "").split(",") if f],
             categories=cats,
             column=column,
             source_created_at=_parse_iso(meta.get("source_created_at")),

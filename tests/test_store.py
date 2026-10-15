@@ -237,3 +237,18 @@ def test_strand_kind_is_limited_to_known_values():
     assert odd.strand_kind == "unknown"
     assert Memory(**{**m.model_dump(), "strand_kind": " Writing "}).strand_kind == "writing"
     assert Memory(**{**m.model_dump(), "strand_kind": ""}).strand_kind is None
+
+
+def test_user_edited_round_trips_and_survives_a_racing_enrichment(tmp_store):
+    m = _mk_memory(id_="e1")
+    tmp_store.upsert_memory(m)
+    # The person edits the card while a sync is enriching the old copy.
+    edited = tmp_store.get_memory("e1")
+    edited.why = "Edited by hand."
+    edited.user_edited = ["why"]
+    tmp_store.upsert_memory(edited)
+    stale = _mk_memory(id_="e1", why="Fresh AI why.")
+    tmp_store.upsert_memory_preserving_user_fields(stale)
+    got = tmp_store.get_memory("e1")
+    assert got.why == "Edited by hand."
+    assert got.user_edited == ["why"]

@@ -98,7 +98,7 @@ def _build_memory(task: RawTask, result) -> Memory:
     )
 
 
-def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
+def overlay_regeneration(existing: Memory, task: RawTask, result, *, keep_user_edits: bool = True) -> Memory:
     """Merge a fresh enrichment + source snapshot onto an existing Memory.
 
     Regenerates: title, original_notes, list_name, source dates, completion,
@@ -107,10 +107,15 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     (private note). This is what makes 'edit title in To-Do then refresh' safe:
     your dragged column and private notes survive re-enrichment.
 
+    Enrichment fields the user edited by hand (``existing.user_edited``) keep
+    their values unless ``keep_user_edits`` is False, which is what an explicit
+    Regenerate asks for.
+
     EXCEPTION: when the source task is completed and the card is not already
     in "closed", auto-promote it to "closed" so the kanban reflects the
     source's completion state.
     """
+    kept = {name: getattr(existing, name) for name in existing.user_edited} if keep_user_edits else {}
     existing.title = task.title
     if result.display_title:
         existing.display_title = result.display_title
@@ -133,7 +138,11 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     existing.connect_goal_ids = list(result.connect_goal_ids or [])
     existing.connect_alignment_confidence = result.connect_alignment_confidence
     existing.connect_alignment_note = result.connect_alignment_note
-    # PRESERVED on purpose: existing.column, existing.notes_for_user
+    # PRESERVED on purpose: existing.column, existing.notes_for_user, and any
+    # enrichment field the user edited by hand.
+    for name, value in kept.items():
+        setattr(existing, name, value)
+    existing.user_edited = sorted(kept)
     # Mirror tag override (Phase 2 TaskSink writeback). When the source carries
     # a `pensieve/col:<col>` tag whose value differs from the local column AND
     # the source was modified after we last enriched this memory, the other PC

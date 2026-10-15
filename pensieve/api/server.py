@@ -29,7 +29,7 @@ from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sources.outlook_com_sink import get_sink_for_source
 from pensieve.sources.sink import TaskSink
 from pensieve.store import ChromaMemoryStore, ChromaVialStore
-from pensieve.store.schema import Vial, normalize_strand_kind
+from pensieve.store.schema import USER_EDITABLE_ENRICHMENT, Vial, normalize_strand_kind
 from pensieve.sync_state import get_tracker
 
 
@@ -838,12 +838,20 @@ def create_app() -> FastAPI:
             "notes_for_user",
             "column",
         }
+        before = {name: getattr(mem, name) for name in USER_EDITABLE_ENRICHMENT}
         for key in editable_str:
             if key in body and body[key] is not None:
                 setattr(mem, key, str(body[key]))
         mem.strand_kind = normalize_strand_kind(mem.strand_kind)
         if "connect_goal_ids" in body and isinstance(body["connect_goal_ids"], list):
             mem.connect_goal_ids = [str(g) for g in body["connect_goal_ids"] if g]
+        # The editor always sends every field (the title box falls back to the
+        # source title), so only values that actually differ count as edits.
+        def shown(name: str, value: Any) -> Any:
+            return (value or mem.title) if name == "display_title" else value
+
+        changed = {name for name in USER_EDITABLE_ENRICHMENT if shown(name, getattr(mem, name)) != shown(name, before[name])}
+        mem.user_edited = sorted(set(mem.user_edited) | changed)
         if "needs_human_strand_review" in body:
             mem.needs_human_strand_review = bool(body["needs_human_strand_review"])
         if "due_date" in body:
@@ -1173,7 +1181,7 @@ def create_app() -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Enrichment failed: {e}") from e
 
-        merged = overlay_regeneration(existing, task, result)
+        merged = overlay_regeneration(existing, task, result, keep_user_edits=False)
         # Garden v1: regenerate is a deliberate user-initiated tend.
         # Set BEFORE upsert (full-blob write would race with a post-bump).
         merged.last_tended_at = _now_utc()
