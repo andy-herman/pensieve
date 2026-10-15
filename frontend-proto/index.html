@@ -26,9 +26,12 @@
   <header class="masthead masthead--tiered">
     <!-- Row 1: identity (left) + status cluster and theme toggle (right) -->
     <div class="masthead-row masthead-row--identity">
-      <div class="title-block">
-        <h1 class="title">The Pensieve</h1>
-        <p class="tagline">Stir the surface and look within.</p>
+      <div class="brand">
+        <img class="brand-emblem" src="assets/emblem.webp" alt="" width="62" height="74" decoding="async" />
+        <div class="title-block">
+          <h1 class="title">The Pensieve</h1>
+          <p class="tagline">Stir the surface and look within.</p>
+        </div>
       </div>
 
       <div class="masthead-aside">
@@ -36,19 +39,10 @@
           <div class="review-block hedwig-block" role="button" tabindex="0"
                aria-label="Memories that need your review. Click to show only those."
                title="Memories that need your review. Click to show only those.">
-            <svg class="hedwig" viewBox="0 0 80 70" width="52" height="46" aria-hidden="true">
-              <ellipse cx="40" cy="40" rx="22" ry="26" class="hedwig-body" />
-              <ellipse cx="40" cy="22" rx="16" ry="14" class="hedwig-head" />
-              <path d="M32,40 Q12,30 8,52 Q22,52 34,46 Z" class="hedwig-wing" />
-              <path d="M48,40 Q68,30 72,52 Q58,52 46,46 Z" class="hedwig-wing" />
-              <circle cx="34" cy="22" r="3.4" class="hedwig-eye-bg" />
-              <circle cx="46" cy="22" r="3.4" class="hedwig-eye-bg" />
-              <circle cx="34" cy="22" r="1.6" class="hedwig-eye" />
-              <circle cx="46" cy="22" r="1.6" class="hedwig-eye" />
-              <polygon points="38,26 42,26 40,30" class="hedwig-beak" />
-              <rect x="26" y="44" width="28" height="8" rx="1" class="hedwig-letter" />
-              <text x="40" y="51" text-anchor="middle" class="hedwig-letter-text" id="hedwig-count">0</text>
-            </svg>
+            <span class="hedwig" aria-hidden="true">
+              <img class="hedwig-art" src="assets/owl.webp" alt="" width="58" height="54" decoding="async" />
+              <span class="hedwig-seal" id="hedwig-count">0</span>
+            </span>
             <span class="hedwig-label" id="review-count" aria-live="polite">Awaiting post</span>
           </div>
           <div class="board-health" id="board-health" role="button" tabindex="0"
@@ -302,11 +296,7 @@
   </div>
 
   <div class="snitch" aria-hidden="true">
-    <svg viewBox="0 0 60 30" width="48" height="24">
-      <ellipse cx="30" cy="15" rx="6" ry="6" class="snitch-body" />
-      <path d="M24,15 Q12,4 4,12 Q12,16 24,17 Z" class="snitch-wing" />
-      <path d="M36,15 Q48,4 56,12 Q48,16 36,17 Z" class="snitch-wing" />
-    </svg>
+    <img src="assets/snitch.webp" alt="" width="60" height="40" decoding="async" />
   </div>
 
   <canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>

@@ -67,6 +67,8 @@ html[data-theme="day"] {
   /* Atmosphere */
   --bg-vignette-1: radial-gradient(ellipse at top, rgba(255, 220, 150, 0.35), transparent 65%);
   --bg-vignette-2: radial-gradient(ellipse at bottom, rgba(40, 18, 4, 0.25), transparent 70%);
+  --bg-art: url("assets/bg-parchment.webp");
+  --bg-art-wash: rgba(240, 227, 196, 0.38);   /* calms the painted edges behind the board */
   --paper-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.18  0 0 0 0 0.11  0 0 0 0 0.04  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   --candle-light-1: rgba(255, 200, 120, 0.18);
   --candle-light-2: rgba(255, 200, 120, 0.16);
@@ -166,7 +168,9 @@ html[data-theme="night"] {
   --danger: #ff9d66;
 
   --bg-vignette-1: radial-gradient(ellipse at top, rgba(80, 60, 140, 0.45), transparent 70%);
-  --bg-vignette-2: radial-gradient(ellipse at bottom, rgba(10, 5, 20, 0.85), transparent 75%);
+  --bg-vignette-2: radial-gradient(ellipse at bottom, rgba(10, 5, 20, 0.6), transparent 75%);
+  --bg-art: url("assets/bg-night.webp");
+  --bg-art-wash: rgba(13, 20, 36, 0.12);
   --candle-light-1: rgba(255, 220, 150, 0.12);
   --candle-light-2: rgba(255, 220, 150, 0.10);
 
@@ -220,6 +224,7 @@ html[data-theme="marauder"] {
 
   --bg-vignette-1: radial-gradient(ellipse at top, rgba(120, 60, 20, 0.30), transparent 65%);
   --bg-vignette-2: radial-gradient(ellipse at bottom, rgba(40, 20, 4, 0.45), transparent 70%);
+  --bg-art: url("assets/bg-map.webp");
   --paper-noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='m'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.20  0 0 0 0 0.10  0 0 0 0 0.04  0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23m)'/></svg>");
 
   --graph-bg: radial-gradient(ellipse at 50% 35%, rgba(240, 222, 178, 0.85), transparent 70%), linear-gradient(180deg, #e3cd98, #cdb076);
@@ -322,9 +327,13 @@ body::after {
     var(--bg-vignette-1),
     var(--bg-vignette-2),
     var(--paper-noise),
+    linear-gradient(var(--bg-art-wash), var(--bg-art-wash)),
+    var(--bg-art),
     linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
-  background-blend-mode: multiply, normal, soft-light, normal;
-  background-size: cover, cover, 220px 220px, cover;
+  background-blend-mode: multiply, normal, soft-light, normal, normal, normal;
+  background-size: cover, cover, 220px 220px, cover, cover, cover;
+  background-position: center;
+  background-repeat: no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat;
   transition: background-color 0.6s ease;
 }
 
@@ -346,10 +355,12 @@ html[data-theme="marauder"] body::after {
     var(--bg-vignette-1),
     var(--bg-vignette-2),
     var(--paper-noise),
-    repeating-linear-gradient(0deg, rgba(80, 50, 20, 0.04) 0 2px, transparent 2px 7px),
+    linear-gradient(rgba(230, 211, 163, 0.6), rgba(230, 211, 163, 0.6)),
+    var(--bg-art),
     linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
-  background-blend-mode: multiply, normal, normal, soft-light, normal;
-  background-size: cover, cover, 400px 400px, auto, cover;
+  background-blend-mode: multiply, normal, normal, normal, normal, normal;
+  background-size: cover, cover, 400px 400px, cover, cover, cover;
+  background-repeat: no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat;
 }
 
 html[data-theme="marauder"] body::before { display: none; }
@@ -462,6 +473,19 @@ a:hover { color: var(--ember-ink); }
   border-top: 1px solid var(--line-soft);
 }
 
+.brand { display: flex; align-items: center; gap: var(--sp-3); }
+
+/* The rendered Pensieve (Blender) beside the title */
+.brand-emblem {
+  display: block;
+  width: 62px;
+  height: auto;
+  flex: none;
+  filter: drop-shadow(0 3px 6px var(--shadow-soft));
+}
+html[data-theme="night"] .brand-emblem { filter: drop-shadow(0 0 10px rgba(170, 200, 255, 0.35)); }
+html[data-theme="marauder"] .brand-emblem { filter: sepia(0.85) saturate(0.7) contrast(1.05); opacity: 0.85; }
+
 .title-block { display: flex; flex-direction: column; gap: 4px; }
 
 .title {
@@ -539,26 +563,40 @@ html[data-theme="night"] .title { text-shadow: 0 0 22px rgba(245, 215, 123, 0.35
 
 .hedwig-block.filter-active { box-shadow: inset 0 0 0 1px var(--review); }
 
-.hedwig { display: block; overflow: visible; filter: drop-shadow(0 2px 4px var(--shadow-soft)); }
-
-.hedwig-body { fill: #fafafa; stroke: var(--ink-soft); stroke-width: 1; }
-.hedwig-head { fill: #fafafa; stroke: var(--ink-soft); stroke-width: 1; }
-.hedwig-wing { fill: #e8e8e8; stroke: var(--ink-soft); stroke-width: 0.5; }
-.hedwig-eye-bg { fill: var(--candle); }
-.hedwig-eye {
-  fill: #2a1d10;
-  transform-box: fill-box;
-  transform-origin: center;
+/* The engraved owl (assets/owl.webp). The review count rides on a wax
+   seal over her letter and only appears when something needs review. */
+.hedwig { position: relative; display: block; width: 58px; height: 54px; }
+.hedwig-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px var(--shadow-soft));
 }
-/* pensieve.js adds .is-blinking every few seconds (see initAmbientMotion). */
-.hedwig.is-blinking .hedwig-eye { animation: hedwig-blink 0.36s ease-in-out; }
-.hedwig-beak { fill: #b54a1d; }
-.hedwig-letter { fill: #f0e3c4; stroke: #5b4327; stroke-width: 0.5; }
-.hedwig-letter-text { font-family: var(--font-display); font-size: 6px; fill: #2a1d10; font-weight: 700; }
+html[data-theme="night"] .hedwig-art { filter: drop-shadow(0 0 6px rgba(200, 220, 255, 0.35)); }
 
-html[data-theme="night"] .hedwig-body,
-html[data-theme="night"] .hedwig-head { fill: #f4f0e2; stroke: #8a7a5a; }
-html[data-theme="night"] .hedwig-wing { fill: #dcd6c4; stroke: #8a7a5a; }
+.hedwig-seal {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fbeed2;
+  background: radial-gradient(circle at 35% 30%, #d0463a, #8e1c17 70%);
+  box-shadow: 0 1px 2px rgba(60, 10, 5, 0.45), inset 0 0 0 1px rgba(255, 220, 200, 0.18);
+  transform: scale(0.4);
+  opacity: 0;
+  transition: transform var(--t-med) ease, opacity var(--t-med) ease;
+}
+.hedwig-block.has-review .hedwig-seal { transform: scale(1); opacity: 1; }
 
 .hedwig-label {
   font-family: var(--font-script);
@@ -568,7 +606,6 @@ html[data-theme="night"] .hedwig-wing { fill: #dcd6c4; stroke: #8a7a5a; }
   white-space: nowrap;
 }
 
-.hedwig-block.has-review .hedwig-letter { fill: var(--review-soft); }
 .hedwig-block.has-review .hedwig-label { color: var(--ember-ink); font-weight: bold; }
 .hedwig-block.has-review .hedwig { animation: hedwig-bob 2.6s ease-in-out infinite; }
 
@@ -1183,6 +1220,18 @@ html[data-page="docs"] #docs-page { display: flex; }
   text-align: center;
   color: var(--ink-faded);
 }
+
+/* A faint Pensieve above the empty-column copy */
+.empty-column::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 45px;
+  margin: 0 auto 8px;
+  background: url("assets/emblem.webp") center / contain no-repeat;
+  opacity: 0.5;
+}
+html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate(0.7); }
 
 /* "+ Add a House" tile at the end of the Houses view */
 .column.add-lane-tile {
@@ -2463,15 +2512,10 @@ html[data-theme="night"] .graph-stage-wrap::before {
   filter: drop-shadow(0 2px 6px rgba(120, 80, 10, 0.45));
 }
 .snitch.is-flying { animation: snitch-drift 28s linear; }
-.snitch-body { fill: #c9a655; stroke: #5b4327; stroke-width: 0.5; }
-html[data-theme="night"] .snitch-body { fill: #f5d77b; stroke: #a08d63; }
-.snitch-wing {
-  fill: rgba(255, 255, 255, 0.6);
-  stroke: rgba(120, 90, 40, 0.6);
-  stroke-width: 0.5;
-  transform-origin: 30px 15px;
-}
-.snitch.is-flying .snitch-wing { animation: wing-flap 0.18s ease-in-out infinite; }
+.snitch img { display: block; width: 60px; height: auto; }
+html[data-theme="night"] .snitch { filter: drop-shadow(0 0 8px rgba(245, 215, 123, 0.55)); }
+/* A single rendered image cannot flap, so it flutters: a quick bob and tilt */
+.snitch.is-flying img { animation: snitch-flutter 0.22s ease-in-out infinite alternate; }
 html[data-theme="marauder"] .snitch { display: none; }
 
 /* ----- 17. Toast ----- */
@@ -2559,11 +2603,6 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
   100% { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
-@keyframes hedwig-blink {
-  0%, 100% { transform: scaleY(1); }
-  25%, 75% { transform: scaleY(0.05); }
-}
-
 @keyframes hedwig-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-2px) rotate(-2deg); }
@@ -2604,9 +2643,9 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
   50%      { opacity: 0.45; }
 }
 
-@keyframes wing-flap {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(0.5); }
+@keyframes snitch-flutter {
+  from { transform: translateY(-1.5px) rotate(-5deg) scaleX(1.02); }
+  to   { transform: translateY(1.5px) rotate(4deg) scaleX(0.97); }
 }
 
 @keyframes snitch-drift {

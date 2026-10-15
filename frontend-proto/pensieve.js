@@ -2170,19 +2170,15 @@ document.addEventListener("dragover", e => {
   setTimeout(() => fp.remove(), 1800);  // backstop if the animation never runs
 });
 
-// ----- 9a. Ambient motion: the Snitch's flights and Hedwig's blink -----
-// Both used to be infinite CSS animations on SVG shapes. The browser cannot
-// hand those to the compositor, so they kept the main thread producing frames
-// all day, even while nothing visible changed. Now each animation only runs
-// while it is actually on screen: the Snitch flits across now and then (CSS
-// .snitch.is-flying) and Hedwig blinks on a timer (CSS .hedwig.is-blinking).
+// ----- 9a. Ambient motion: the Snitch's flights -----
+// The Snitch only animates while it is actually on screen: it rests
+// off-screen and flits across now and then (CSS .snitch.is-flying), so the
+// page is not producing frames all day while nothing visible changes.
 const SNITCH_FLIGHT_MS = 28000;          // matches snitch-drift in pensieve.css
 const SNITCH_REST_MS = [15000, 45000];   // random rest between flights
-const BLINK_EVERY_MS = 4500;
-const BLINK_MS = 400;                    // a little longer than hedwig-blink
 
 function initAmbientMotion() {
-  if (prefersReducedMotion()) return;  // CSS already hides the Snitch and stills Hedwig
+  if (prefersReducedMotion()) return;  // CSS already hides the Snitch
   const snitch = $(".snitch");
   if (snitch) {
     const rest = () => SNITCH_REST_MS[0] + Math.random() * (SNITCH_REST_MS[1] - SNITCH_REST_MS[0]);
@@ -2198,14 +2194,6 @@ function initAmbientMotion() {
       }, SNITCH_FLIGHT_MS + 100);
     };
     setTimeout(fly, 4000);  // first flight shortly after load
-  }
-  const hedwig = $(".hedwig");
-  if (hedwig) {
-    setInterval(() => {
-      if (document.hidden) return;
-      hedwig.classList.add("is-blinking");
-      setTimeout(() => hedwig.classList.remove("is-blinking"), BLINK_MS);
-    }, BLINK_EVERY_MS);
   }
 }
 
