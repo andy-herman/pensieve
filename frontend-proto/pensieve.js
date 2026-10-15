@@ -3858,27 +3858,21 @@ function updateFilterBadge() {
   badge.hidden = n === 0;
 }
 
-// Card density: "comfortable" (default, clamped description) | "compact" (no description).
+// Card density: "compact" (default, no description) | "comfortable" (two-line description).
 function initDensityToggle() {
   const KEY = "pensieve-density";
   const btn = $("#density-toggle");
   let mode = (() => { try { return localStorage.getItem(KEY) === "comfortable" ? "comfortable" : "compact"; } catch (e) { return "compact"; } })();
-  const apply = m => {
-    document.documentElement.setAttribute("data-density", m);
-    if (btn) {
-      const compact = m === "compact";
-      btn.setAttribute("aria-pressed", String(compact));
-      btn.textContent = compact ? "Density: Compact" : "Density: Comfortable";
-    }
+  const apply = () => {
+    document.documentElement.setAttribute("data-density", mode);
+    btn.textContent = mode === "compact" ? "Density: Compact" : "Density: Comfortable";
   };
-  apply(mode);
-  if (btn) {
-    btn.addEventListener("click", () => {
-      mode = mode === "compact" ? "comfortable" : "compact";
-      try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
-      apply(mode);
-    });
-  }
+  apply();
+  btn.addEventListener("click", () => {
+    mode = mode === "compact" ? "comfortable" : "compact";
+    try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
+    apply();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

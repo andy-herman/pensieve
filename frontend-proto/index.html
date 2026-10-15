@@ -23,7 +23,7 @@
   <div class="starfield" aria-hidden="true"></div>
   <div id="footprint-layer" class="footprint-layer" aria-hidden="true"></div>
 
-  <header class="masthead masthead--tiered">
+  <header class="masthead">
     <!-- Row 1: identity (left) + status cluster and theme toggle (right) -->
     <div class="masthead-row masthead-row--identity">
       <div class="brand">
@@ -61,7 +61,7 @@
         </div>
 
         <button id="theme-toggle" class="ghost-button theme-toggle" type="button"
-                title="Toggle day / night" aria-label="Switch to night mode">
+                title="Switch to night mode" aria-label="Switch to night mode">
           <span class="theme-day-icon" aria-hidden="true">&#9728;</span>
           <span class="theme-night-icon" aria-hidden="true">&#9789;</span>
         </button>
@@ -112,7 +112,7 @@
           </div>
         </div>
 
-        <!-- Actions: Hedwig's errand + overflow for the rest -->
+        <!-- Actions: agent requests (shown when any wait), Speak a task, Pull from To-Do, and the More menu -->
         <div class="tb-zone tb-zone--actions">
           <button id="agents-btn" class="ghost-button agents-btn" hidden title="Tasks your agents asked Pensieve to add">&#x2709;&#xFE0F; From your agents <span class="agents-count" id="agents-count">0</span></button>
           <button id="speak-btn" class="ghost-button speak-btn" title="Say a new task out loud and Pensieve adds it to your list">&#x1F399;&#xFE0F; Speak a task</button>
@@ -125,7 +125,7 @@
               <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect Houses">Set goals</button>
               <button id="open-ai-models" class="ghost-button cmd-menu-item" role="menuitem" title="Choose which GitHub Copilot models Pensieve uses">AI models</button>
               <button id="open-accounts" class="ghost-button cmd-menu-item" role="menuitem" title="Connect Microsoft To Do and GitHub Copilot">Accounts</button>
-              <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
+              <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" title="Switch card density between Compact and Comfortable">Density: Compact</button>
             </div>
           </div>
         </div>
@@ -233,7 +233,7 @@
 
   <div id="card-modal" class="modal" hidden>
     <div class="modal-backdrop" data-close="1"></div>
-    <article class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <article class="modal-card" role="dialog" aria-modal="true" aria-label="Edit memory">
       <button class="modal-close" data-close="1" aria-label="Close">x</button>
       <div class="modal-body" id="modal-body"></div>
     </article>
@@ -251,7 +251,7 @@
           placeholder="e.g. Shifted policy from X to Y after Bob's review. Unblocks Q3 approvals."></textarea>
         <div class="vial-actions">
           <button id="vial-skip" class="ghost-button" type="button" title="Dismiss without capturing">Skip</button>
-          <button id="vial-cancel" class="ghost-button" type="button" data-close="vial">Cancel</button>
+          <button class="ghost-button" type="button" data-close="vial">Cancel</button>
           <button id="vial-save" class="primary-button" type="button">Save Vial</button>
         </div>
         <p class="vial-footnote">Vials are durable promo evidence. They outlive the source task.</p>
@@ -352,7 +352,7 @@
         <h2 id="accounts-title" class="goals-title accounts-title">Connect your accounts</h2>
         <p class="goals-subtitle accounts-subtitle">Pensieve runs on this PC. Your tasks and sign-ins stay here; nothing is sent anywhere except your own Microsoft and GitHub accounts.</p>
 
-        <section class="account-card" id="account-microsoft" aria-labelledby="acct-ms-title">
+        <section class="account-card" aria-labelledby="acct-ms-title">
           <div class="account-head">
             <h3 id="acct-ms-title" class="account-title">Microsoft To Do</h3>
             <span class="account-badge" id="acct-ms-badge"></span>
@@ -361,7 +361,7 @@
           <div class="account-body" id="acct-ms-body"></div>
         </section>
 
-        <section class="account-card" id="account-github" aria-labelledby="acct-gh-title">
+        <section class="account-card" aria-labelledby="acct-gh-title">
           <div class="account-head">
             <h3 id="acct-gh-title" class="account-title">GitHub Copilot</h3>
             <span class="account-badge" id="acct-gh-badge"></span>
@@ -424,7 +424,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <footer class="footer">
-    <span>Pensieve Phase 2 prototype</span>
+    <span>The Pensieve</span>
     <span class="dot">.</span>
     <span id="memory-count">gathering memories</span>
     <span class="dot">.</span>
