@@ -47,7 +47,7 @@ def test_load_non_dict_root_returns_empty(tmp_path):
 
 def test_save_then_load_deduplicates_ids(tmp_path):
     path = tmp_path / "achievements.json"
-    # Hand-craft a payload with a duplicate ID — load should dedupe.
+    # Hand-craft a payload with a duplicate ID - load should dedupe.
     import json
     path.write_text(
         json.dumps(

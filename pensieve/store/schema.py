@@ -69,7 +69,7 @@ class Memory(BaseModel):
 
     # Garden v1: timestamp of the most recent deliberate user action on this
     # card (column move, edit, vial post/skip, regenerate). Auto-sync must
-    # NEVER bump this — it represents user care, not source mutation. None on
+    # NEVER bump this - it represents user care, not source mutation. None on
     # newly-created memories; ``_reconstruct`` backfills missing values from
     # ``enriched_at`` so old rows have a sensible freshness signal.
     last_tended_at: Optional[datetime] = None
@@ -157,7 +157,7 @@ def _new_vial_id() -> str:
 class Vial(BaseModel):
     """A closure-capture record: what changed when a Memory was closed.
 
-    Vials are durable promo evidence. They outlive their parent Memory —
+    Vials are durable promo evidence. They outlive their parent Memory -
     if the upstream To-Do task is later deleted (orphan sweep) or the
     Memory is re-edited / re-enriched, the Vial's snapshot fields preserve
     the closure-time context for future recap/promo use.

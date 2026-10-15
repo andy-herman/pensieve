@@ -42,11 +42,13 @@ goals.
 
 ## How it works
 
-1. **Pull from To-Do** - Pensieve reads your tasks (read-only) from Outlook.
+1. **Pull from To-Do** - Pensieve reads your tasks (read-only) from Microsoft
+   To Do or classic Outlook, whichever you picked under More > Accounts.
 2. **Enrich** - each task is turned into a "memory" with a why, an impact, a
-   strand, and Connect-goal alignment, using Azure OpenAI.
+   strand, and Connect-goal alignment, using GitHub Copilot (pick the models
+   under More > AI models).
 3. **Board** - work flows across four columns: Memory, Dive, Review, Closed.
-   Switch to the Lanes view to group by Connect goal.
+   Switch to the Houses view to group by Connect goal.
 4. **Recap** - draft a Connect "Reflect on the past" summary of what you
    accomplished, grouped by goal. Export to DOCX, keep a run history, and chat
    to correct any misread task.
@@ -57,7 +59,8 @@ goals.
 
 - Use the **This week** toggle to keep the Closed column from growing forever;
   it hides closed tasks from before this Monday (nothing is deleted).
-- Add or edit lanes from the Lanes view ("+ Add lane") or the Set goals editor.
+- Add or edit goals from the Houses view ("Add a House") or More > Set goals.
+- **Speak a task** dictates a new task; nothing is added until you click Add.
 """
 
 _SEED_SOP = """# SOP Template

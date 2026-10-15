@@ -1,4 +1,4 @@
-# scripts/ — LEGACY (Phase 0)
+# scripts/ - LEGACY (Phase 0)
 
 > **This directory is no longer the canonical entry point for Pensieve.**
 >

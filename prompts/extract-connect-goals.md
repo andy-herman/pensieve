@@ -1,5 +1,5 @@
 version: v1
-target_model: gpt-5.4-2 (Azure OpenAI, Cortex hub)
+target_model: the "goals" model chosen in the dashboard's AI models panel (GitHub Copilot by default)
 response_format: json_object
 max_completion_tokens: 3000
 temperature: omitted
@@ -53,14 +53,14 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 ## Hard rules
 
 1. **Goal count is variable.** Return as many goals as the document actually contains. Do not pad to 4. Do not cap at 4. If you see 7 goals, return 7. If you see 1, return 1.
-2. **Faithful paraphrase, not invention.** `summary` and `impact_statement` must reflect what the document says. If the document is vague, your output should be vague — do not make up numbers, dates, partners, or programs.
+2. **Faithful paraphrase, not invention.** `summary` and `impact_statement` must reflect what the document says. If the document is vague, your output should be vague; do not make up numbers, dates, partners, or programs.
 3. **`success_criteria` is a list of strings.** Each criterion is one bullet, full sentence. If the document does not have explicit criteria for a goal, return an empty list.
 4. **`keywords_for_alignment` matters a lot.** Downstream LLMs use these to align tasks. Include:
-   - All acronyms that appear in the goal (DORA, NIS2, JET, RFI, BoE, PRA, FCA, MMSP, AKS, etc.)
+   - All acronyms that appear in the goal (DORA, NIS2, JET, RFI, BoE, PRA, FCA, etc.)
    - Partner / team names (e.g. cloud product trust, security, risk management, legal, compliance)
-   - Program names (Argus, Pensieve, Synapse, etc.)
+   - Program and tool names exactly as the document writes them (a named compliance program, an internal tool, etc.)
    - Distinctive verbs / artifacts (playbook, self-assessment, dependency mapping, dashboard)
-   - Avoid generic words like "team", "work", "project" — they match too much.
+   - Avoid generic words like "team", "work", "project"; they match too much.
 5. **No em-dashes.** Use commas, periods, or " - " (hyphen with spaces) instead. Em-dash trips downstream rendering.
 6. **No marketing language.** No "leverage", "synergize", "transform-with-AI". Keep it concrete, technical, behavioral.
 7. **Skip non-goal content.** Skip the cover page, the "About Connect" preamble, the "Manager Comments" section, the rating histogram, anything that is not a goal description.
@@ -75,7 +75,7 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 ### Input
 ```json
 {
-  "pdf_text": "...long PDF text containing: Priority 1: DORA Compliance Leadership... Priority 2: UK CTP Year 1 Submission... Priority 3: Internal CISO GRC Goals... etc..."
+  "pdf_text": "...long PDF text containing: Priority 1: DORA Compliance Leadership... Priority 2: UK CTP Year 1 Submission... Priority 3: Internal GRC Team Goals... etc..."
 }
 ```
 
@@ -96,11 +96,11 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
     },
     {
       "short_name": "Internal Goals",
-      "name": "Internal CISO GRC Goals",
+      "name": "Internal GRC Team Goals",
       "summary": "Internal team commitments not tied to a single external regulatory program. Includes onboarding, knowledge management, and team rituals.",
       "success_criteria": [],
       "impact_statement": "Healthy team operations are the substrate every other goal runs on.",
-      "keywords_for_alignment": ["onboarding", "team ritual", "1:1", "knowledge base", "internal", "CISO GRC team", "ops chore"]
+      "keywords_for_alignment": ["onboarding", "team ritual", "1:1", "knowledge base", "internal", "GRC team", "ops chore"]
     }
   ],
   "behaviors": {

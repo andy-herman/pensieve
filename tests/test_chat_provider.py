@@ -1,4 +1,4 @@
-"""Provider factory tests — no network calls."""
+"""Provider factory tests - no network calls."""
 
 from __future__ import annotations
 

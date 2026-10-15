@@ -6,7 +6,7 @@ together via ``GET /api/achievements``.
 
 Once unlocked, achievements stay unlocked. ``evaluate()`` returns the set
 of achievement IDs that SHOULD currently be unlocked given the input
-state — ``merge_unlocked`` in :mod:`pensieve.achievement_state` adds any
+state - ``merge_unlocked`` in :mod:`pensieve.achievement_state` adds any
 new IDs to the persisted set with a ``now`` timestamp without ever
 removing previously-unlocked badges.
 
@@ -18,7 +18,7 @@ day"). Both are derivable from current state:
   delta exceeded 30 days was, by definition, a ghost at close-time
   (it had been around longer than the ghost threshold; if it had
   been tended in between, that tend would have happened on a card
-  that was already at risk of going ghost — and closing a "would-have-
+  that was already at risk of going ghost - and closing a "would-have-
   been-a-ghost-soon" card still counts as custodianship).
 - **Storm**: count ``completed_at`` timestamps grouped by UTC day;
   any day with >= 5 closures unlocks the badge.
@@ -71,8 +71,6 @@ ACHIEVEMENTS: list[Achievement] = [
     ),
 ]
 
-ACHIEVEMENT_IDS = [a.id for a in ACHIEVEMENTS]
-
 
 def _captured_count(vials: Iterable[Vial]) -> int:
     return sum(1 for v in vials if (v.capture_kind or "captured") == "captured")
@@ -107,7 +105,7 @@ def _has_storm(memories: Iterable[Memory]) -> bool:
 def _longest_clean_run(history: list[dict]) -> int:
     """Longest run of consecutive ``clean: True`` entries anywhere in history.
 
-    Does NOT require the run to end at "today" — Clean Week / Streak Keeper
+    Does NOT require the run to end at "today" - Clean Week / Streak Keeper
     are lifetime achievements, not "still going" badges.
     """
     best = 0
@@ -198,7 +196,7 @@ def build_level_summary(
 
     Returns counts + health delta + streak for the trailing 7 days
     (relative to ``now``). Designed to be embedded in the Friday digest
-    (Issue #3) when that ships — for v3 we just expose the endpoint.
+    (Issue #3) when that ships - for v3 we just expose the endpoint.
 
     ``history`` rows can carry an optional ``"health_score"`` integer
     (added by quest_state day-rollover). If absent for the comparison

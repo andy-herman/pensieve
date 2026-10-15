@@ -1,4 +1,4 @@
-"""Azure OpenAI chat client. Port of scripts/lib/Invoke-AzureOpenAI.ps1."""
+"""Azure OpenAI chat client (fallback provider, ``LLM_PROVIDER=azure_openai``)."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def _uses_max_completion_tokens(deployment: str) -> bool:
 class AzureOpenAIChatClient:
     """Thin Azure OpenAI chat-completions client.
 
-    Auth precedence mirrors the PowerShell shim:
+    Auth precedence:
       1. AZURE_OPENAI_API_KEY if set (and not the placeholder)
       2. Otherwise AAD bearer via DefaultAzureCredential (shared, cached, thread-safe)
     """

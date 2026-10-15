@@ -26,6 +26,7 @@ from typing import Any, Callable, Iterator, Optional, TypeVar
 import httpx
 
 from pensieve.config import Settings
+from pensieve.connections import effective_source, graph_token
 
 T = TypeVar("T")
 
@@ -48,16 +49,10 @@ class NewTask:
     importance: str = "normal"  # "normal" | "high"
 
 
-def _source(settings: Settings) -> str:
-    from pensieve.connections import effective_source
-
-    return effective_source(settings)
-
-
 def _check_enabled(settings: Settings) -> str:
     if not settings.allow_task_create:
         raise TaskCreationDisabled("Adding tasks is switched off (PENSIEVE_ALLOW_TASK_CREATE=false).")
-    src = _source(settings)
+    src = effective_source(settings)
     if src not in ("outlook_com", "personal_graph"):
         raise TaskCreationDisabled(f"Tasks cannot be added while syncing from '{src}'.")
     return src
@@ -155,8 +150,6 @@ def _local_tz_id() -> str:
 
 
 def _graph_client(settings: Settings) -> httpx.Client:
-    from pensieve.connections import graph_token
-
     return httpx.Client(
         base_url=GRAPH_BASE,
         headers={"Authorization": f"Bearer {graph_token(settings)}"},
@@ -206,7 +199,7 @@ def _graph_add(settings: Settings, task: NewTask) -> dict[str, Any]:
 
 def available_lists(settings: Settings) -> dict[str, Any]:
     """Lists a new task can go to, for the capture card's picker."""
-    src = _source(settings)
+    src = effective_source(settings)
     out: dict[str, Any] = {"source": src, "enabled": bool(settings.allow_task_create), "lists": [], "default": None}
     if src == "outlook_com":
         out["lists"], out["default"] = _com_lists()

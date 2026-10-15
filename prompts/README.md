@@ -1,34 +1,34 @@
 # Pensieve prompts
 
-System prompts used by Pensieve when calling the LLM. One prompt per file, named for its lifecycle stage. All prompts target Azure OpenAI `gpt-5.4-2` via the Cortex hub (`https://agents-wus3-02.services.ai.azure.com/`, keyless via `DefaultAzureCredential`).
+System prompts Pensieve sends to the LLM. One prompt per file, named for its lifecycle stage. Every call goes through `get_chat_client()` (`pensieve/enrichment/chat_provider.py`), so the prompts run on whichever provider is configured: GitHub Copilot by default, with the model picked per purpose in the dashboard's **AI models** panel (`pensieve/ai_prefs.py`). Azure OpenAI and GitHub Models are the fallback providers.
 
 ## Files
 
-| File | Phase | Stage | Status |
-|---|---|---|---|
-| `enrich-memory-prompt.md` | Phase 0 / 1 | Memory enrichment (why / strand / impact / Connect-goal alignment from a To-Do task) | **Live (v2 Connect-aware, 2026-05-28)** |
-| `extract-connect-goals.md` | Phase 1 | Goals importer: extract structured Connect goals from an uploaded Connect PDF | **Live (2026-05-28)** |
-| `reverie-proposal-prompt.md` | Phase 2.5 | Reverie planner: propose 1-3 focus-block Reveries from user-selected memories | Pre-staged 2026-05-28 |
-| `reverie-debrief-prompt.md` | Phase 2.5 | Reverie debrief: convert user reply into structured "actual memories advanced" + impact seeds + unplanned-work captures | Pre-staged 2026-05-28 |
-| `reflection-synthesis-prompt.md` | Phase 3 | Reflection synthesis (weekly / monthly / H1 / H2) | Not yet authored |
-| `vial-distill-prompt.md` | Phase 3 | Vial distillation: a closed Memory's impact statement, IC4 to IC5 framed | Not yet authored |
+| File | Phase | Stage | Model purpose | Status |
+|---|---|---|---|---|
+| `enrich-memory-prompt.md` | Phase 1 | Memory enrichment (why / strand / impact / Connect-goal alignment from a To-Do task), used by sync and Regenerate | `enrichment` | Live (v2) |
+| `extract-connect-goals.md` | Phase 1 | Goals importer: structured Connect goals from an uploaded Connect PDF | `goals` | Live |
+| `connect-recap-prompt.md` | Phase 1+ | Connect recap: one accomplishments block per goal (also used by per-section Revise) | `recap` | Live |
+| `reverie-proposal-prompt.md` | Phase 2.5 | Reverie planner: propose 1-3 focus-block Reveries from selected memories | n/a | Pre-staged, not wired |
+| `reverie-debrief-prompt.md` | Phase 2.5 | Reverie debrief: user reply to advanced memories, impact seeds, unplanned work | n/a | Pre-staged, not wired |
+
+Voice capture's prompt is short and lives inline in `pensieve/capture/parse.py` (model purpose `capture`).
 
 ## Conventions for all prompts
 
-- Single JSON object output, no surrounding prose, no markdown fences.
-- No em-dashes in any text field returned by the LLM. Hyphens, colons, commas, periods only.
-- LLM must never invent IDs. Only IDs that appear in the input may be referenced in the output.
-- Settings: omit `temperature` (use model default), set `response_format = {"type": "json_object"}`, set `max_completion_tokens` per-prompt (documented in each file).
-- A confidence field (`0.0` to `1.0`) is required on any output that drives a user-facing surface (Reverie proposals, Vial drafts, etc.). Pensieve hides outputs below 0.5 by default.
+- Single JSON object output, no surrounding prose, no markdown fences. The Copilot client also strips stray fences before parsing.
+- No em-dashes in any text field returned by the LLM, and none in the prompts themselves. Hyphens, colons, commas, periods only.
+- The LLM must never invent IDs. Only IDs that appear in the input may be referenced in the output.
+- Examples use role labels ("my manager", "a supplier contact") and generic team and program names. Never real people or employer-internal names: this repo is public.
+- A confidence field (`0.0` to `1.0`) is required on any output that drives a user-facing surface. Below 0.5 means the user should review.
 
 ## Caller responsibilities (NOT the LLM's job)
 
-- Token / credential acquisition via `DefaultAzureCredential` with the `https://cognitiveservices.azure.com/.default` scope.
-- Schema validation of LLM output before persistence.
-- Real calendar scheduling via Microsoft Graph `findMeetingTimes` and `POST /me/events` (Phase 2.5; not yet wired). The LLM proposes intent; Pensieve handles the calendar API.
+- Choosing the provider and model, and authentication (Copilot sign-in in the Accounts screen, or the fallback provider's settings in `.env`).
+- Parsing and validating the JSON before persistence.
 - Cross-referencing returned IDs against the local ChromaDB store.
-- Logging the prompt + completion via the `logger` MCP for later eval / regression analysis.
+- Calendar scheduling for Reveries (Phase 2.5; not yet wired). The LLM proposes intent; Pensieve would handle the calendar API.
 
 ## Versioning
 
-Prompts evolve. Each prompt file's first line carries a `version: vN` marker. Pensieve includes the prompt version in telemetry on every call so a later eval run can attribute quality changes to a specific prompt revision.
+Prompts evolve. Each prompt file's first line carries a `version: vN` marker so a later eval run can attribute quality changes to a specific prompt revision.

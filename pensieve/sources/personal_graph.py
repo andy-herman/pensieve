@@ -1,9 +1,9 @@
 """Personal Microsoft Graph TaskSource. READ-ONLY against personal MS account.
 
 Personal MS accounts (outlook.com / hotmail / live) can access Microsoft
-To-Do via Graph WITHOUT admin consent — unlike corp accounts, which sit
-behind Secure Future Initiative blockers. This source is the recommended
-path for personal-device installs.
+To-Do via Graph WITHOUT admin consent - unlike corp accounts, which sit
+behind Secure Future Initiative blockers. Sync uses this source when the
+Accounts screen's task source is Microsoft To Do.
 
 Auth: the user connects their Microsoft account once in the dashboard's
 Accounts screen (MSAL device-code flow, see pensieve.connections). The
@@ -17,7 +17,6 @@ by the source surface (mirrors OutlookCOMSource).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Iterator, Optional
 
 import httpx
@@ -54,11 +53,9 @@ class PersonalGraphSource(TaskSource):
     """Reads task lists from a personal Microsoft account via Graph /me/todo.
 
     Requirements:
-      - An app registration in the user's personal MS account (or
-        multi-tenant + personal) with redirect URI `http://localhost`
-        and delegated `Tasks.Read` permission.
-      - `msal` installed (`pip install msal` or `pip install -e .[personal]`).
-      - `PERSONAL_GRAPH_CLIENT_ID` set in .env.
+      - ``PERSONAL_GRAPH_CLIENT_ID`` set to a Pensieve app registration in a
+        personal Entra directory (see desktop/SHARING.md).
+      - A Microsoft account connected in the Accounts screen.
 
     By default reads every To-Do list the user has. Use ``list_names`` to
     filter by displayName.
@@ -119,11 +116,10 @@ class PersonalGraphSource(TaskSource):
     def _paged(client: httpx.Client, url: str) -> Iterator[dict]:
         next_url: Optional[str] = url
         while next_url:
-            full = next_url if next_url.startswith("http") else next_url
-            resp = client.get(full)
+            resp = client.get(next_url)
             if resp.status_code >= 400:
                 raise PersonalGraphUnavailable(
-                    f"Graph call failed [{resp.status_code}] for {full}: {resp.text}"
+                    f"Graph call failed [{resp.status_code}] for {next_url}: {resp.text}"
                 )
             body = resp.json()
             for item in body.get("value", []):
@@ -200,8 +196,3 @@ class PersonalGraphSource(TaskSource):
 
     def covered_lists(self) -> Optional[set[str]]:
         return set(self._covered_lists) if self._covered_lists else None
-
-    @staticmethod
-    def cache_path(settings: Optional[Settings] = None) -> Path:
-        s = settings or get_settings()
-        return s.personal_graph_token_cache_path

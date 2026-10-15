@@ -1,7 +1,8 @@
-"""Pensieve CLI — typer entry point."""
+"""Pensieve CLI - typer entry point."""
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,8 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
-from pensieve.config import get_settings
+from pensieve.config import Settings, get_settings
+from pensieve.connections import effective_source
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.store import ChromaMemoryStore
 from pensieve.sync import run_sync
@@ -21,7 +23,12 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 # Module-level singletons for typer defaults to satisfy ruff B008
-_OPT_SOURCE = typer.Option(None, "--source", "-s", help="sample_file | outlook_com | personal_graph (default from .env)")
+_OPT_SOURCE = typer.Option(
+    None,
+    "--source",
+    "-s",
+    help="sample_file | outlook_com | personal_graph (default: the source chosen in Accounts, else .env)",
+)
 _OPT_LIST = typer.Option(
     None,
     "--list",
@@ -72,6 +79,14 @@ def _as_aware_utc(ts: Optional[datetime]) -> datetime:
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
 
 
+def _strand_catalog_from_samples(settings: Settings) -> Optional[list[dict]]:
+    """The strand catalog of record (``strand_catalog`` in data/samples.json), or None."""
+    if not settings.samples_path.exists():
+        return None
+    with settings.samples_path.open("r", encoding="utf-8") as f:
+        return json.load(f).get("strand_catalog")
+
+
 def _build_recent_context_from_chroma() -> dict:
     """Compose recent_context from Chroma when not using a sample source."""
     store = ChromaMemoryStore()
@@ -103,8 +118,17 @@ def init() -> None:
     console.print("[cyan]Pensieve init[/cyan]")
     console.print(f"  data_dir   = {s.data_dir}")
     console.print(f"  chroma_dir = {s.chroma_dir}")
-    console.print(f"  endpoint   = {s.azure_openai_endpoint or '[red]not set[/red]'}")
-    console.print(f"  deployment = {s.azure_openai_deployment}")
+    console.print(f"  provider   = {s.llm_provider}")
+    if s.llm_provider == "github_copilot":
+        from pensieve import ai_prefs
+
+        console.print(f"  model      = {ai_prefs.model_for(s, 'enrichment')} (change in More > AI models)")
+    elif s.llm_provider == "azure_openai":
+        console.print(f"  endpoint   = {s.azure_openai_endpoint or '[red]not set[/red]'}")
+        console.print(f"  deployment = {s.azure_openai_deployment}")
+    else:
+        console.print(f"  model      = {s.github_models_model}")
+    console.print(f"  source     = {effective_source(s)}")
     console.print(
         f"  goals file = {s.connect_goals_path} ({'OK' if s.connect_goals_path.exists() else 'missing'})"
     )
@@ -123,8 +147,6 @@ def sync(
 ) -> None:
     """Pull tasks from source, enrich, upsert to Chroma."""
     settings = get_settings()
-    from pensieve.connections import effective_source
-
     src_name = source or effective_source(settings)
     src = _build_source(src_name, list_names=list_name)
     list_label = ",".join(list_name) if list_name else "(all)"
@@ -135,21 +157,14 @@ def sync(
     strand_catalog = None
     recent_context = None
     if strand_catalog_path:
-        import json
-
         with strand_catalog_path.open("r", encoding="utf-8") as f:
             blob = json.load(f)
         strand_catalog = blob.get("strand_catalog")
         recent_context = blob.get("recent_context")
     elif src_name in ("outlook_com", "personal_graph"):
-        # Pull strand_catalog from samples.json (acts as the catalog of record),
-        # and synthesize recent_context from prior Chroma state.
-        if settings.samples_path.exists():
-            import json
-
-            with settings.samples_path.open("r", encoding="utf-8") as f:
-                blob = json.load(f)
-            strand_catalog = blob.get("strand_catalog")
+        # Live sources: strand catalog from samples.json, recent context from
+        # what is already in Chroma.
+        strand_catalog = _strand_catalog_from_samples(settings)
         recent_context = _build_recent_context_from_chroma()
 
     stats = run_sync(

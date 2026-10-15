@@ -1,9 +1,11 @@
 """Write-back interface for keeping Pensieve's kanban column mirrored on the source.
 
 Per AGENTS.md "Sources are read-only" contract, every `TaskSource` is pull-only.
-This module introduces a strictly opt-in `TaskSink` that handles the only
-writeback Pensieve supports: tagging a source task with the user's chosen
-kanban column so the same view appears on a second PC after sync.
+This module introduces a strictly opt-in `TaskSink` for Pensieve's writeback
+to EXISTING tasks: tagging a source task with the user's chosen kanban column
+so the same view appears on a second PC after sync, plus the separately gated
+close-only completion mirror. (Creating NEW tasks from voice capture lives in
+`pensieve.capture`, not here.)
 
 The tag format is `<prefix><column>` where prefix defaults to
 ``pensieve/col:`` (configurable via `PENSIEVE_MIRROR_TAG_PREFIX`). Pensieve
@@ -71,7 +73,7 @@ class TaskSink(ABC):
 
     2. **Completion mirror** (``PENSIEVE_MIRROR_COMPLETION``, default off):
        :meth:`set_completion` flips the source task's completed flag (e.g.
-       Outlook ``TaskItem.MarkComplete()``). v1 is one-way close-only —
+       Outlook ``TaskItem.MarkComplete()``). v1 is one-way close-only -
        dragging out of the ``closed`` column does NOT call ``set_completion(False)``
        on the source. A user who wants to reopen does it in the source app,
        and the next sync moves the card back to ``memory`` via the existing

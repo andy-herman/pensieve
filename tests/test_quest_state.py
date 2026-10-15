@@ -177,7 +177,7 @@ def test_save_then_corrupt_recovers_gracefully(tmp_path):
     state = quest_state.QuestState(clean_streak_d=5)
     quest_state.save_state(state, path)
     assert quest_state.load_state(path).clean_streak_d == 5
-    # Corrupt the file and reload — should return empty default, not raise.
+    # Corrupt the file and reload - should return empty default, not raise.
     path.write_text("xxx not json xxx", encoding="utf-8")
     recovered = quest_state.load_state(path)
     assert recovered.clean_streak_d == 0

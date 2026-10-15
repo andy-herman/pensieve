@@ -17,7 +17,7 @@ from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.enrichment.prompt import load_system_prompt
 from pensieve.store.schema import Memory
 
-# Scope -> human label, kept in sync with the frontend selector.
+# Recap scopes; keep in sync with the frontend selector.
 SCOPES = ("all", "completed", "review")
 
 _COLUMN_STATUS = {
@@ -209,6 +209,21 @@ def _accomplishments_for_goal(
     return accomplishments, tokens
 
 
+def _section(
+    goal: dict[str, Any], items: list[Memory], accomplishments: list[dict[str, str]]
+) -> dict[str, Any]:
+    """One recap section as returned to the dashboard and saved in history."""
+    return {
+        "goal_id": goal["id"],
+        "short_name": goal.get("short_name", ""),
+        "name": goal.get("name", ""),
+        "lane": goal.get("lane", ""),
+        "task_count": len(items),
+        "task_titles": [m.title for m in items],
+        "accomplishments": accomplishments,
+    }
+
+
 def generate_recap(
     memories: list[Memory],
     *,
@@ -223,7 +238,7 @@ def generate_recap(
     """Generate a Connect-format recap from enriched memories.
 
     :param memories: all Memory records to consider (already loaded from store).
-    :param scope: "all" | "completed" | "review" — which memories to include.
+    :param scope: "all" | "completed" | "review" - which memories to include.
     :param goal_ids: optional restriction to specific Connect goal ids.
     :param list_names: optional restriction to specific source list_name values
         (e.g. ``["CISO GRC"]``). ``None`` = use the configured default from
@@ -260,17 +275,7 @@ def generate_recap(
             prompt_template=prompt_template,
         )
         total_tokens += tokens
-        sections.append(
-            {
-                "goal_id": goal["id"],
-                "short_name": goal.get("short_name", ""),
-                "name": goal.get("name", ""),
-                "lane": goal.get("lane", ""),
-                "task_count": len(items),
-                "task_titles": [m.title for m in items],
-                "accomplishments": accomplishments,
-            }
-        )
+        sections.append(_section(goal, items, accomplishments))
 
     return {
         "period_label": period_label,
@@ -338,13 +343,7 @@ def revise_recap_section(
         feedback=feedback,
     )
     return {
-        "goal_id": goal.get("id", goal_id),
-        "short_name": goal.get("short_name", ""),
-        "name": goal.get("name", ""),
-        "lane": goal.get("lane", ""),
+        **_section(goal, items, accomplishments),
         "list_names_applied": resolved_lists,
-        "task_count": len(items),
-        "task_titles": [m.title for m in items],
-        "accomplishments": accomplishments,
         "tokens_used": tokens,
     }

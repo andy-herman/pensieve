@@ -1,7 +1,7 @@
-"""GitHub Models chat client — OpenAI-compatible /chat/completions.
+"""GitHub Models chat client - OpenAI-compatible /chat/completions.
 
-For personal-device installs where Azure OpenAI Cortex hub is not available.
-Auth is a GitHub PAT with the `models:read` scope. Free tier exists; rate
+Fallback provider (``LLM_PROVIDER=github_models``) when the Copilot CLI is not
+an option. Auth is a GitHub PAT with the `models:read` scope. Free tier exists; rate
 limits are documented at https://docs.github.com/en/github-models.
 """
 

@@ -34,15 +34,10 @@ class SyncJobTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._state = SyncJobState()
-        self._thread: Optional[threading.Thread] = None
 
     def snapshot(self) -> dict:
         with self._lock:
             return self._state.to_dict()
-
-    def is_running(self) -> bool:
-        with self._lock:
-            return self._state.status == "running"
 
     def try_begin(
         self, *, source: str, lists: list[str], message: str = "Starting sync"
@@ -53,7 +48,7 @@ class SyncJobTracker:
         must arrange for finish_ok/finish_error to be called. ``False`` means
         another sync was already in flight and the caller MUST NOT start a
         second one (Chroma is single-writer). Either way, ``snapshot`` is the
-        current state — callers can inspect ``status`` to discriminate.
+        current state - callers can inspect ``status`` to discriminate.
         """
         with self._lock:
             if self._state.status == "running":
@@ -86,10 +81,6 @@ class SyncJobTracker:
             self._state.finished_at = datetime.now(timezone.utc).isoformat()
             self._state.error = err
             self._state.message = f"Sync failed: {err}"
-
-    def attach_thread(self, t: threading.Thread) -> None:
-        with self._lock:
-            self._thread = t
 
 
 _TRACKER: Optional[SyncJobTracker] = None

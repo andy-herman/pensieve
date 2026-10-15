@@ -4,7 +4,7 @@ version: v1
 
 System prompt used when Pensieve asks the LLM to propose calendar-blocked focus sessions (Reveries) for a set of user-selected memories on the kanban. The user has already multi-selected memories and clicked "Schedule a Reverie"; this prompt produces the structured proposals that the kanban renders as confirmable cards.
 
-**Model:** Azure OpenAI `gpt-5.4-2` (Cortex hub).
+**Model:** the configured LLM provider (GitHub Copilot by default). Pre-staged; not wired into the app yet.
 **Settings:** omit `temperature`, `max_completion_tokens = 1500`, `response_format = {"type": "json_object"}`.
 
 ---
@@ -95,7 +95,7 @@ You will receive a JSON input with the selected memories, the user's strand defa
       "suggested_window_hint": "tomorrow morning, ideally start before 11am",
       "urgency_reason": "EU Reg lead deadline EOW; calendar density is high after Thursday so the window narrows quickly",
       "event_subject": "Pensieve Reverie: DORA RFI Article 6 taxonomy",
-      "event_body_markdown": "## Memories in this Reverie\n\n- Draft DORA Article 6 risk taxonomy: EU Reg lead asked for first cut by EOW\n- Cross-walk NIS2 controls to DORA Article 6: reuse work, flagged as risky to do separately\n\n[Open in Pensieve](http://localhost:8440/reverie/<reverie_id>)",
+      "event_body_markdown": "## Memories in this Reverie\n\n- Draft DORA Article 6 risk taxonomy: EU Reg lead asked for first cut by EOW\n- Cross-walk NIS2 controls to DORA Article 6: reuse work, flagged as risky to do separately\n\n[Open in Pensieve](http://localhost:8765/reverie/<reverie_id>)",
       "confidence": 0.82
     },
     {
@@ -105,7 +105,7 @@ You will receive a JSON input with the selected memories, the user's strand defa
       "suggested_window_hint": "today or tomorrow, late afternoon ok",
       "urgency_reason": "Skipped last week; recurrence damage compounds; light effort",
       "event_subject": "Pensieve Reverie: 1on1 prep for manager",
-      "event_body_markdown": "## Memories in this Reverie\n\n- Prep 1:1 talking points for manager: skipped last week\n\n[Open in Pensieve](http://localhost:8440/reverie/<reverie_id>)",
+      "event_body_markdown": "## Memories in this Reverie\n\n- Prep 1:1 talking points for manager: skipped last week\n\n[Open in Pensieve](http://localhost:8765/reverie/<reverie_id>)",
       "confidence": 0.71
     }
   ],
@@ -130,7 +130,7 @@ You will receive a JSON input with the selected memories, the user's strand defa
 ## Caller responsibilities (NOT the LLM's job)
 
 - Pensieve calls Microsoft Graph `findMeetingTimes` AFTER receiving these proposals, using `suggested_window_hint` plus `suggested_minutes` to derive 2 to 3 actual slot options for the user to pick from.
-- Pensieve validates that all returned `memory_ids` exist in the local SQLite store.
+- Pensieve validates that all returned `memory_ids` exist in the local ChromaDB store.
 - Pensieve replaces the `<reverie_id>` token in `event_body_markdown` with the real Reverie UUID after persisting the proposal locally.
 - Pensieve writes the calendar event itself (`POST /me/events` with `showAs = "tentative"`, `categories = ["Pensieve", strand.display_name]`).
 - The user confirms before any of the above happens.

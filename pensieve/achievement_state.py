@@ -14,7 +14,7 @@ Schema::
 
 Once unlocked, an achievement is never re-locked. ``merge_unlocked``
 appends new IDs (with the current timestamp) but never removes
-previously-unlocked entries — this protects against transient state
+previously-unlocked entries - this protects against transient state
 that briefly flips a predicate off (e.g. a sync drop dipping health
 back below 95 after Sharpshooter was earned).
 """
