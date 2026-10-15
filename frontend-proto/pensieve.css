@@ -291,6 +291,9 @@ html[data-theme="marauder"] {
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The hidden attribute always wins, even over a component's own display */
+[hidden] { display: none !important; }
+
 html, body { margin: 0; padding: 0; min-height: 100%; }
 
 html {
@@ -672,7 +675,6 @@ html[data-theme="marauder"] .hedwig-block::before {
   pointer-events: none;
   box-shadow: 0 10px 26px var(--shadow-deep);
 }
-.board-health-tip[hidden] { display: none; }
 .board-health-tip strong { font-family: var(--font-display); font-size: 13px; }
 .board-health-tip ul { margin: 6px 0 0; padding-left: 16px; color: var(--ink-soft); }
 .board-health-tip li { margin: 1px 0; }
@@ -706,7 +708,6 @@ html[data-theme="marauder"] .hedwig-block::before {
   font-weight: 700;
   text-align: center;
 }
-.achievements-btn-count[hidden] { display: none; }
 .achievements-btn.has-new-unlock {
   border-color: var(--candle);
   animation: candle-pulse 1.2s ease-out 2;
@@ -763,7 +764,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
   border-radius: var(--radius-md);
   background: var(--tint);
 }
-.quest-panel[hidden] { display: none; }
 .quest-panel-header {
   display: flex;
   align-items: center;
@@ -783,7 +783,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
   font-size: 13px;
   color: var(--ember-ink);
 }
-.quest-panel-streak[hidden] { display: none; }
 .quest-panel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .quest-chip {
   display: inline-flex;
@@ -813,7 +812,6 @@ html[data-page="docs"]  .masthead-row--controls { display: none; }
 .quest-chip-progress { font-family: var(--font-script); color: var(--ink-faded); }
 .quest-chip.filter-active { border-color: var(--review); box-shadow: inset 0 0 0 1px var(--review); }
 .quest-panel-allDone { font-family: var(--font-script); color: var(--ok); }
-.quest-panel-allDone[hidden] { display: none; }
 .quest-panel.is-collapsed .quest-panel-chips { display: none; }
 
 /* ----- 5. Toolbar + controls ----- */
@@ -1005,7 +1003,6 @@ html[data-theme="marauder"] .primary-button:hover { color: var(--on-candle); }
   letter-spacing: 0;
 }
 html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
-.cmd-pop-badge[hidden] { display: none; }
 
 .cmd-pop-panel {
   position: absolute;
@@ -1024,7 +1021,6 @@ html[data-theme="night"] .cmd-pop-badge { color: #1a1206; }
   border-radius: var(--radius-md);
   box-shadow: 0 14px 34px var(--shadow-deep);
 }
-.cmd-pop-panel[hidden] { display: none; }
 .cmd-pop-heading {
   display: block;
   margin-bottom: var(--sp-2);
@@ -1524,7 +1520,6 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   justify-content: center;
   padding: 24px;
 }
-.modal[hidden] { display: none; }
 
 .modal-backdrop {
   position: absolute;
@@ -2411,7 +2406,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   border: 1px solid var(--parchment-dark);
   border-radius: var(--radius-md);
 }
-.recap-history[hidden] { display: none; }
 .recap-history-list { display: flex; flex-direction: column; gap: var(--sp-1); }
 .recap-history-item {
   display: flex;
@@ -2440,7 +2434,6 @@ html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(17
   padding-top: var(--sp-3);
   border-top: 1px dashed var(--parchment-dark);
 }
-.recap-revise[hidden] { display: none; }
 .recap-revise-input {
   width: 100%;
   padding: var(--sp-2) var(--sp-3);
@@ -2582,7 +2575,6 @@ html[data-theme="night"] .graph-stage-wrap::before {
   text-align: center;
   color: var(--ink-faded);
 }
-.graph-empty[hidden] { display: none; }
 
 /* ----- 15. Documents page ----- */
 
@@ -2659,7 +2651,6 @@ html[data-theme="night"] .graph-stage-wrap::before {
   line-height: var(--lh-normal);
   resize: vertical;
 }
-.docs-editor[hidden], .docs-view[hidden] { display: none; }
 .docs-empty { padding: var(--sp-6); font-family: var(--font-body); font-style: italic; text-align: center; color: var(--ink-faded); }
 
 /* Minimal markdown rendering */
@@ -2720,7 +2711,6 @@ html[data-theme="marauder"] .snitch { display: none; }
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.toast[hidden] { display: none; }
 
 /* ----- 18. Footer ----- */
 
