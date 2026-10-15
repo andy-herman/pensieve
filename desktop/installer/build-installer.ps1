@@ -154,6 +154,8 @@ $tmpData = Join-Path $BuildRoot ("smoke-" + [Guid]::NewGuid().ToString("N").Subs
 $env:PENSIEVE_DATA_DIR = $tmpData
 $env:PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS = "0"
 $env:COPILOT_PREWARM = "0"
+$env:PENSIEVE_SESSION_TOKEN = "smoke-" + [Guid]::NewGuid().ToString("N")
+$auth = @{ "X-Pensieve-Token" = $env:PENSIEVE_SESSION_TOKEN }
 $proc = Start-Process (Join-Path $stage "server\pensieve-server.exe") -ArgumentList "--port", "8799" -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $BuildRoot "smoke.out.log") -RedirectStandardError (Join-Path $BuildRoot "smoke.err.log")
 try {
@@ -165,13 +167,19 @@ try {
     if (-not $ok) { throw "Bundled backend did not start; see $BuildRoot\smoke.err.log" }
     $page = Invoke-WebRequest "http://127.0.0.1:8799/" -UseBasicParsing -TimeoutSec 10
     if ($page.Content -notmatch "The Pensieve") { throw "Dashboard was not served by the bundle." }
-    $goals = Invoke-RestMethod "http://127.0.0.1:8799/api/goals" -TimeoutSec 10
+    if ($page.Headers["Content-Security-Policy"] -notmatch "script-src 'self'") { throw "Dashboard is missing its Content-Security-Policy." }
+    $locked = $false
+    try { $null = Invoke-WebRequest "http://127.0.0.1:8799/api/goals" -UseBasicParsing -TimeoutSec 10 } catch { $locked = ($_.Exception.Response.StatusCode.value__ -eq 401) }
+    if (-not $locked) { throw "The bundled API answered without the session key." }
+    $goals = Invoke-RestMethod "http://127.0.0.1:8799/api/goals" -Headers $auth -TimeoutSec 10
     if (($goals.goals | Measure-Object).Count -ne 4) { throw "Starter goals were not seeded." }
-    $null = Invoke-RestMethod "http://127.0.0.1:8799/api/search?q=planning" -TimeoutSec 60   # embedding model loads
-    Write-Host "   healthz ok, dashboard served, starter goals seeded, embeddings work" -ForegroundColor Green
+    $strands = Invoke-RestMethod "http://127.0.0.1:8799/api/strands" -Headers $auth -TimeoutSec 10
+    if (($strands.strands | Measure-Object).Count -lt 1) { throw "Starter strands were not seeded." }
+    $null = Invoke-RestMethod "http://127.0.0.1:8799/api/search?q=planning" -Headers $auth -TimeoutSec 60   # embedding model loads
+    Write-Host "   healthz ok, dashboard + CSP served, API locked without the key, starter goals and strands seeded, embeddings work" -ForegroundColor Green
 } finally {
     if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
-    Remove-Item Env:PENSIEVE_DATA_DIR, Env:PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS, Env:COPILOT_PREWARM -ErrorAction SilentlyContinue
+    Remove-Item Env:PENSIEVE_DATA_DIR, Env:PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS, Env:COPILOT_PREWARM, Env:PENSIEVE_SESSION_TOKEN -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
     Remove-Item $tmpData -Recurse -Force -ErrorAction SilentlyContinue
 }
