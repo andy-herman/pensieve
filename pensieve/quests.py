@@ -84,19 +84,17 @@ class Quest:
 
 
 def _day_key(now: datetime) -> str:
-    """Return ``YYYY-MM-DD`` for the date the quest day belongs to (UTC)."""
-    return garden._as_aware_utc(now).strftime("%Y-%m-%d")  # type: ignore[union-attr]
+    """Return ``YYYY-MM-DD`` for the local day the quest day belongs to."""
+    return garden.day_key(now)
 
 
 def _today_start(now: datetime) -> datetime:
-    """Midnight UTC for the day ``now`` falls in."""
-    aware = garden._as_aware_utc(now)
-    assert aware is not None
-    return aware.replace(hour=0, minute=0, second=0, microsecond=0)
+    """Local midnight for the day ``now`` falls in."""
+    return garden.day_start(now)
 
 
 def _yesterday_window(now: datetime) -> tuple[datetime, datetime]:
-    """``[yesterday_midnight, today_midnight)`` in UTC."""
+    """``[yesterday_midnight, today_midnight)``, local midnights."""
     today = _today_start(now)
     return today - timedelta(days=1), today
 

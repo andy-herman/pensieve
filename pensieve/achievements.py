@@ -180,9 +180,7 @@ def definitions() -> list[dict]:
 
 
 def _today_start(now: datetime) -> datetime:
-    aware = garden._as_aware_utc(now)
-    assert aware is not None
-    return aware.replace(hour=0, minute=0, second=0, microsecond=0)
+    return garden.day_start(now)
 
 
 def build_level_summary(

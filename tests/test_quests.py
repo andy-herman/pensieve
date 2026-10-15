@@ -356,3 +356,16 @@ def test_quest_round_trip_pending():
     back = quests.Quest.from_dict(q.to_dict())
     assert back.completed_at is None
     assert not back.is_complete
+
+
+def test_quest_day_follows_local_midnight(monkeypatch):
+    """5:30 PM in Seattle is already tomorrow in UTC; the quest day must not roll over."""
+    from datetime import datetime, timedelta, timezone
+
+    from pensieve import garden
+    from pensieve.quests import _day_key
+
+    monkeypatch.setattr(garden, "DAY_TZ", timezone(timedelta(hours=-7)))
+    evening = datetime(2026, 10, 15, 17, 30, tzinfo=timezone(timedelta(hours=-7)))
+    assert evening.astimezone(timezone.utc).date().isoformat() == "2026-10-16"
+    assert _day_key(evening) == "2026-10-15"

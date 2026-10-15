@@ -21,7 +21,7 @@ Design notes (see ``brainstorms/02-board-tending-game.md``):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from typing import Iterable, Literal, Optional
 
 from pensieve.store.schema import Memory
@@ -53,6 +53,25 @@ def _as_aware_utc(dt: Optional[datetime]) -> Optional[datetime]:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+# The time zone that defines a "day" for quests, clean-day streaks and badges:
+# the user's own, so a day rolls over at their midnight (in Seattle, UTC
+# midnight is 5 PM). None means this PC's local zone; tests pin it.
+DAY_TZ: Optional[tzinfo] = None
+
+
+def day_start(now: datetime) -> datetime:
+    """Local midnight starting the day ``now`` falls in (an aware datetime)."""
+    aware = _as_aware_utc(now)
+    assert aware is not None
+    local = aware.astimezone(DAY_TZ) if DAY_TZ is not None else aware.astimezone()
+    return local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def day_key(now: datetime) -> str:
+    """``YYYY-MM-DD`` of the local day ``now`` falls in."""
+    return day_start(now).strftime("%Y-%m-%d")
 
 
 def _now_utc(now: Optional[datetime] = None) -> datetime:

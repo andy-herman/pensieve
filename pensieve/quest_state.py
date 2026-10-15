@@ -146,18 +146,14 @@ def save_state(state: QuestState, path: Path) -> None:
 
 
 def _yesterday_key(now: datetime) -> str:
-    aware = garden._as_aware_utc(now)
-    assert aware is not None
-    return (aware - timedelta(days=1)).strftime("%Y-%m-%d")
+    return (garden.day_start(now) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def is_today_row(row: Optional[TodayRow], now: datetime) -> bool:
-    """True iff ``row`` is for the calendar day ``now`` belongs to (UTC)."""
+    """True iff ``row`` is for the local calendar day ``now`` belongs to."""
     if row is None:
         return False
-    aware = garden._as_aware_utc(now)
-    assert aware is not None
-    return row.date == aware.strftime("%Y-%m-%d")
+    return row.date == garden.day_key(now)
 
 
 def record_yesterday_clean(

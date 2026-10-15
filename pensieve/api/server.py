@@ -206,7 +206,7 @@ def create_app() -> FastAPI:
                 current_health=int(prelim["score"]),
             )
             state.today = quest_state_mod.TodayRow(
-                date=now.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+                date=garden.day_key(now),
                 generated_at=now,
                 quests=new_quests,
                 all_done_bonus_grants=0,

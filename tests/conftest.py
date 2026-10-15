@@ -26,3 +26,13 @@ def _clear_settings_cache():
     _clear_caches()
     yield
     _clear_caches()
+
+
+@pytest.fixture(autouse=True)
+def _utc_days(monkeypatch):
+    """Quest/streak days follow the PC's local zone; pin UTC so tests are stable anywhere."""
+    from datetime import timezone
+
+    from pensieve import garden
+
+    monkeypatch.setattr(garden, "DAY_TZ", timezone.utc)
