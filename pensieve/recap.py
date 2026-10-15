@@ -238,7 +238,7 @@ def generate_recap(
     settings = settings or get_settings()
     goals = goals if goals is not None else load_connect_goals()
     if client is None:
-        client = get_chat_client(settings)
+        client = get_chat_client(settings, purpose="recap")
     if scope not in SCOPES:
         scope = "all"
 
@@ -319,7 +319,7 @@ def revise_recap_section(
     settings = settings or get_settings()
     goals = goals if goals is not None else load_connect_goals()
     if client is None:
-        client = get_chat_client(settings)
+        client = get_chat_client(settings, purpose="recap")
     if scope not in SCOPES:
         scope = "all"
 

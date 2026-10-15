@@ -29,11 +29,27 @@ class Settings(BaseSettings):
     )
 
     # --- LLM provider selection ---
-    # "azure_openai" (default) routes enrichment through the Cortex hub.
-    # "github_models" routes through GitHub Models with a PAT (personal-device installs).
-    llm_provider: Literal["azure_openai", "github_models"] = Field(
-        default="azure_openai", alias="LLM_PROVIDER"
+    # "github_copilot" (default) routes every LLM call through the GitHub
+    #   Copilot SDK under the GitHub account in COPILOT_GITHUB_USER.
+    # "azure_openai" routes through an Azure OpenAI deployment (keyless).
+    # "github_models" routes through GitHub Models with a PAT.
+    llm_provider: Literal["github_copilot", "azure_openai", "github_models"] = Field(
+        default="github_copilot", alias="LLM_PROVIDER"
     )
+
+    # --- GitHub Copilot (default LLM provider) ---
+    # GitHub login whose Copilot license pays for and governs the calls. The
+    # token is read from `gh auth token --user <login>` at runtime.
+    copilot_github_user: str = Field(default="", alias="COPILOT_GITHUB_USER")
+    # Explicit token fallback when gh is not available. Prefer the user above.
+    copilot_github_token: str = Field(default="", alias="COPILOT_GITHUB_TOKEN")
+    # Copilot model id (see `client.list_models()`), e.g. gpt-5.4, claude-sonnet-5.5.
+    copilot_model: str = Field(default="gpt-5.4", alias="COPILOT_MODEL")
+    # Copilot CLI binary. Blank = COPILOT_CLI_PATH env, then the global npm
+    # install, then the SDK's own download.
+    copilot_cli_path: str = Field(default="", alias="COPILOT_CLI_PATH")
+    # Start the Copilot CLI in the background when the API starts (tests turn this off).
+    copilot_prewarm: bool = Field(default=True, alias="COPILOT_PREWARM")
 
     # --- Azure OpenAI (mirrors PowerShell Invoke-AzureOpenAI conventions) ---
     azure_openai_endpoint: str = Field(default="", alias="AZURE_OPENAI_ENDPOINT")

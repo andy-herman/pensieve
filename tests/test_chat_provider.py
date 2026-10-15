@@ -30,7 +30,11 @@ def _github_settings(**overrides) -> Settings:
     return Settings(_env_file=None, **base)
 
 
-def test_factory_returns_azure_by_default():
+def test_default_provider_is_github_copilot():
+    assert Settings(_env_file=None).llm_provider == "github_copilot"
+
+
+def test_factory_returns_azure_when_configured():
     s = _azure_settings()
     c = get_chat_client(s)
     assert isinstance(c, AzureOpenAIChatClient)

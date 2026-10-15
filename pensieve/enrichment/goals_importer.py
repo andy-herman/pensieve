@@ -122,7 +122,7 @@ def extract_goals_from_text(
     if client is None:
         from pensieve.enrichment.chat_provider import get_chat_client
 
-        client = get_chat_client()
+        client = get_chat_client(purpose="goals")
 
     system_prompt = load_system_prompt("extract-connect-goals.md")
     user_payload = json.dumps({"pdf_text": text}, ensure_ascii=False)

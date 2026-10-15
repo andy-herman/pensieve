@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Never boot a real GitHub Copilot CLI from a TestClient's app startup.
+os.environ["COPILOT_PREWARM"] = "0"
 
 from pensieve.config import get_settings
 from pensieve.enrichment import connect_goals
