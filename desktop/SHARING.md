@@ -55,7 +55,7 @@ forbid them).
 On this PC (Windows ARM64 or x64), from the repo:
 
 ```powershell
-.\desktop\installeruild-installer.ps1 -Version 1.0.0 -MicrosoftClientId <application-client-id>
+.\desktop\installer\build-installer.ps1 -Version 1.0.0 -MicrosoftClientId <application-client-id>
 ```
 
 The first run downloads an x64 Python and Inno Setup into
