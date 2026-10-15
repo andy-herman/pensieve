@@ -27,7 +27,7 @@ from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sources.outlook_com_sink import get_sink_for_source
 from pensieve.sources.sink import TaskSink
 from pensieve.store import ChromaMemoryStore, ChromaVialStore
-from pensieve.store.schema import Vial
+from pensieve.store.schema import Vial, normalize_strand_kind
 from pensieve.sync_state import get_tracker
 
 
@@ -847,6 +847,7 @@ def create_app() -> FastAPI:
         for key in editable_str:
             if key in body and body[key] is not None:
                 setattr(mem, key, str(body[key]))
+        mem.strand_kind = normalize_strand_kind(mem.strand_kind)
         if "connect_goal_ids" in body and isinstance(body["connect_goal_ids"], list):
             mem.connect_goal_ids = [str(g) for g in body["connect_goal_ids"] if g]
         if "needs_human_strand_review" in body:

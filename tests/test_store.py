@@ -227,3 +227,12 @@ def test_find_orphan_ids_never_returns_closed_memories(tmp_store):
     tmp_store.upsert_memory(closed_m)
     orphans = tmp_store.find_orphan_ids(source="outlook_com", live_ids=set())
     assert [o[0] for o in orphans] == ["open"]
+
+
+def test_strand_kind_is_limited_to_known_values():
+    m = _mk_memory()
+    assert m.strand_kind == "deep"
+    odd = Memory(**{**m.model_dump(), "strand_kind": '"><img src=x onerror=alert(1)>'})
+    assert odd.strand_kind == "unknown"
+    assert Memory(**{**m.model_dump(), "strand_kind": " Writing "}).strand_kind == "writing"
+    assert Memory(**{**m.model_dump(), "strand_kind": ""}).strand_kind is None

@@ -6,11 +6,24 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# The strand kinds the enrichment prompt may return. Anything else (a model
+# slip, or a hand-edited value) is stored as "unknown" so it can never reach
+# the dashboard markup as arbitrary text.
+STRAND_KINDS = frozenset({"deep", "tactical", "learning", "writing", "unknown"})
+
+
+def normalize_strand_kind(value: Any) -> Optional[str]:
+    if value is None or str(value).strip() == "":
+        return None
+    kind = str(value).strip().lower()
+    return kind if kind in STRAND_KINDS else "unknown"
 
 
 class Memory(BaseModel):
@@ -60,6 +73,11 @@ class Memory(BaseModel):
     # newly-created memories; ``_reconstruct`` backfills missing values from
     # ``enriched_at`` so old rows have a sensible freshness signal.
     last_tended_at: Optional[datetime] = None
+
+    @field_validator("strand_kind", mode="before")
+    @classmethod
+    def _known_strand_kind(cls, value: Any) -> Optional[str]:
+        return normalize_strand_kind(value)
 
     def to_chroma_metadata(self) -> dict[str, Any]:
         """Flatten to Chroma-friendly scalars (str/int/float/bool only)."""
