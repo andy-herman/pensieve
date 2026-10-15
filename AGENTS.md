@@ -20,10 +20,16 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
 
 ## Hard constraints
 
-- **No external LLMs.** Every classification or generation MUST hit Azure
-  OpenAI (Cortex hub, deployment `gpt-5.4-2`, keyless via
-  `DefaultAzureCredential`) or Microsoft 365 Copilot via MCP. Never an
-  external endpoint.
+- **LLM calls go through GitHub Copilot (this `personal-device` branch).**
+  Every classification or generation goes through `get_chat_client()`;
+  the default provider is `github_copilot` (official GitHub Copilot SDK,
+  `pensieve/enrichment/copilot_client.py`) under the GitHub login in
+  `COPILOT_GITHUB_USER`, which must be an account whose Copilot license
+  may process this data (for work tasks, the company-managed account).
+  Sessions run with every tool disabled and are deleted after each call.
+  Azure OpenAI and GitHub Models remain selectable via `LLM_PROVIDER`.
+  Never add any other endpoint. Model choice per purpose is set in the
+  dashboard (`pensieve/ai_prefs.py`, `data/ai-models.json`).
 - **Sources are read-only.** `pensieve/sources/outlook_com.py` and every
   other `TaskSource` implementation has zero mutation methods. Enforced by
   a unit test (`tests/test_sources.py::test_sources_are_read_only_no_write_methods`)
@@ -96,7 +102,7 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
 |---|---|---|
 | Phase 0 entry (legacy) | PowerShell + dotenv | Validated enrichment quality fast; replaced by Python in Phase 1 |
 | Phase 1+ primary stack | Python 3.12 + Typer CLI + FastAPI + Pydantic v2 | Matches sibling Azure-OpenAI projects |
-| LLM (all phases) | Azure OpenAI `gpt-5.4-2` via Cortex hub, keyless via `DefaultAzureCredential` | Same auth path as other internal projects |
+| LLM | GitHub Copilot via the Copilot SDK (default `gpt-5.4`, changeable per purpose in the dashboard); Azure OpenAI / GitHub Models as fallbacks | Uses the Copilot license on the configured GitHub account; no keys in `.env` |
 | Phase 1 task source | Local Outlook desktop via `pywin32` COM interop, **read-only** | SFI bypass — see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Zero Graph dependency, zero Entra app reg, zero admin consent. |
 | Memory store | **ChromaDB** `PersistentClient` at `data/chroma/` (cosine HNSW) | Local-only, semantic search out of the box, replaces earlier "SQLite" plan |
 | Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, Harry Potter themed on this `personal-device` branch (day parchment / night / Marauder easter egg; rendered art in `frontend-proto/assets/`), served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
