@@ -983,7 +983,7 @@ function _isModalOpen(id) {
 }
 
 function anyModalOpen() {
-  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal", "accounts-modal", "capture-modal"].some(_isModalOpen);
+  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal", "accounts-modal", "capture-modal", "agents-modal"].some(_isModalOpen);
 }
 
 async function refreshMemoriesIfSafe() {
@@ -1868,7 +1868,7 @@ async function saveVial(kind) {
 // to Microsoft's online speech service). The transcript goes to
 // POST /api/capture/parse for a draft; nothing is created until the person
 // clicks Add, which calls POST /api/capture/add (see pensieve/capture).
-const CAPTURE = { rec: null, listening: false, finalText: "", info: null };
+const CAPTURE = { rec: null, listening: false, finalText: "", info: null, request: null };
 
 function speechRecognizer() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -1881,6 +1881,8 @@ function setCaptureHint(text, isError = false) {
 }
 
 async function openCapture() {
+  CAPTURE.request = null;
+  $("#capture-title").textContent = "Speak a task";
   $("#capture-modal").hidden = false;
   $("#capture-listen").hidden = false;
   $("#capture-draft").hidden = true;
@@ -1998,6 +2000,13 @@ function showCaptureDraft(draft) {
   $("#cap-list").innerHTML = (info.lists || []).map(n =>
     `<option value="${escapeHtml(n)}"${n === chosen ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
   const where = info.source === "personal_graph" ? "Microsoft To Do" : "Outlook";
+  if (CAPTURE.request) {
+    $("#capture-where").textContent = `Requested by ${CAPTURE.request.from}. It will be added to ${where}, and their note will say you added it.`;
+    $("#capture-listen").hidden = true;
+    $("#capture-draft").hidden = false;
+    $("#cap-title").focus();
+    return;
+  }
   $("#capture-where").textContent = draft.ai === false
     ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
     : `It will be added to ${where}. Check it, then Add.`;
@@ -2011,7 +2020,10 @@ async function addCapturedTask(e) {
   const btn = $("#capture-add");
   btn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/capture/add`, {
+    const url = CAPTURE.request
+      ? `${API_BASE}/api/bridge/requests/${encodeURIComponent(CAPTURE.request.id)}/add`
+      : `${API_BASE}/api/capture/add`;
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2026,6 +2038,7 @@ async function addCapturedTask(e) {
     if (!res.ok) throw new Error(body.detail || `${res.status}`);
     closeCapture();
     toast(`Added to ${body.list_name || "your list"}. It will surface on the board in a moment.`);
+    if (body.request) refreshAgentRequests();
     if (body.sync_started) refreshAfterSync();
   } catch (err) {
     $("#capture-where").textContent = `Not added: ${err.message}`;
@@ -2045,6 +2058,93 @@ async function refreshAfterSync() {
     } catch (_) { break; }
   }
   refreshMemoriesIfSafe();
+}
+
+// ----- 6d. From your agents (vault bridge, see pensieve/bridge.py) -----
+// Other agents (Yor, Luna, Loid) file `to: pensieve` task notes in the vault.
+// They show up here; Review opens the Speak-a-task confirm card, and Pensieve
+// writes the outcome back to the agent's note.
+const AGENT_REQS = { enabled: false, items: [] };
+
+function agentName(s) {
+  return (s || "an agent").replace(/^./, c => c.toUpperCase());
+}
+
+async function refreshAgentRequests() {
+  try {
+    const st = await fetchJson("/api/bridge");
+    AGENT_REQS.enabled = !!st.enabled;
+    AGENT_REQS.items = st.requests || [];
+  } catch (_) {
+    AGENT_REQS.items = [];
+  }
+  const n = AGENT_REQS.items.length;
+  $("#agents-btn").hidden = !AGENT_REQS.enabled || n === 0;
+  $("#agents-count").textContent = String(n);
+  if (!$("#agents-modal").hidden) renderAgentRequests();
+}
+
+function openAgentRequests() {
+  $("#agents-modal").hidden = false;
+  renderAgentRequests();
+}
+
+function closeAgentRequests() {
+  $("#agents-modal").hidden = true;
+}
+
+function renderAgentRequests() {
+  const items = AGENT_REQS.items;
+  if (!items.length) {
+    $("#agents-list").innerHTML = `<p class="empty-state">Nothing waiting. Your agents have not asked for anything.</p>`;
+    return;
+  }
+  $("#agents-list").innerHTML = items.map(r => {
+    const meta = [r.list_name, r.due_date ? `due ${r.due_date}` : "", r.importance === "high" ? "high importance" : ""]
+      .filter(Boolean).map(escapeHtml).join(" &middot; ");
+    const notes = r.notes && r.notes.length > 280 ? `${r.notes.slice(0, 277)}...` : r.notes;
+    return `
+    <article class="agent-req">
+      <div class="agent-req-head">
+        <span class="agent-req-from">${escapeHtml(agentName(r.from))}</span>
+        <span class="agent-req-date">${escapeHtml(r.created || "")}</span>
+      </div>
+      <h3 class="agent-req-title">${escapeHtml(r.title)}</h3>
+      ${meta ? `<p class="agent-req-meta">${meta}</p>` : ""}
+      ${notes ? `<p class="agent-req-notes">${escapeHtml(notes)}</p>` : ""}
+      <div class="agent-req-actions">
+        <button type="button" class="ghost-button" data-req-dismiss="${escapeHtml(r.id)}">Dismiss</button>
+        <button type="button" class="primary-button" data-req-review="${escapeHtml(r.id)}">Review and add</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+async function reviewAgentRequest(id) {
+  const r = AGENT_REQS.items.find(x => x.id === id);
+  if (!r) return;
+  closeAgentRequests();
+  CAPTURE.request = r;
+  $("#capture-title").textContent = `Task from ${agentName(r.from)}`;
+  $("#capture-modal").hidden = false;
+  try {
+    CAPTURE.info = await fetchJson("/api/capture");
+  } catch (_) {
+    CAPTURE.info = { enabled: false, lists: [] };
+  }
+  showCaptureDraft({ ...r, ai: true });
+}
+
+async function dismissAgentRequest(id, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/bridge/requests/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
+    if (!res.ok) throw new Error(`${res.status}`);
+    toast("Dismissed. The agent's note now says so.");
+  } catch (e) {
+    toast(`Could not dismiss: ${e.message}`);
+  }
+  refreshAgentRequests();
 }
 
 // ----- 7a. Accounts ("Connect your accounts") -----
@@ -2925,6 +3025,18 @@ function init() {
     });
   }
 
+  // From your agents
+  $("#agents-btn").addEventListener("click", openAgentRequests);
+  $("#agents-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "agents") { closeAgentRequests(); return; }
+    const review = e.target.closest("[data-req-review]");
+    const dismiss = e.target.closest("[data-req-dismiss]");
+    if (review) reviewAgentRequest(review.dataset.reqReview);
+    else if (dismiss) dismissAgentRequest(dismiss.dataset.reqDismiss, dismiss);
+  });
+  refreshAgentRequests();
+  setInterval(() => { if (!document.hidden) refreshAgentRequests(); }, 120000);
+
   // Voice capture
   $("#speak-btn").addEventListener("click", openCapture);
   $("#capture-mic").addEventListener("click", () => (CAPTURE.listening ? stopListening() : startListening()));
@@ -3070,6 +3182,7 @@ function init() {
       closeAiModal();
       closeAccounts();
       closeCapture();
+      closeAgentRequests();
     }
   });
 }

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Voice capture may create NEW tasks in the user's own list after they
     # confirm (never edits or deletes). The one additive writeback.
     allow_task_create: bool = Field(default=True, alias="PENSIEVE_ALLOW_TASK_CREATE")
+    # Vault bridge (pensieve/bridge.py): Obsidian vault root where Pensieve keeps
+    # Agents/Pensieve/Now.md and picks up `to: pensieve` task requests. Blank = off.
+    vault_dir: str = Field(default="", alias="PENSIEVE_VAULT_DIR")
+    # Comma-separated list names agents may see in Now.md. Blank = every list.
+    vault_bridge_lists: str = Field(default="", alias="PENSIEVE_VAULT_LISTS")
     # Start the Copilot CLI in the background when the API starts (tests turn this off).
     copilot_prewarm: bool = Field(default=True, alias="COPILOT_PREWARM")
 

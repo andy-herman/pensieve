@@ -63,6 +63,13 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   the dashboard, creates a NEW task: an Outlook TaskItem for `outlook_com`,
   or `POST /me/todo/lists/{id}/tasks` for `personal_graph`. It never edits,
   completes, or deletes existing tasks. Gated by `PENSIEVE_ALLOW_TASK_CREATE`.
+- **Vault bridge for Andy's other agents** (`pensieve/bridge.py`). With
+  `PENSIEVE_VAULT_DIR` set, Pensieve keeps `Agents/Pensieve/Now.md` in the
+  Obsidian vault (rewritten only when the board changes) and lists
+  `kind: task, to: pensieve` notes from `Agents/*/Handoffs/` or
+  `Agents/Pensieve/Inbox/` under "From your agents". Requests go through the
+  same confirm-and-create path as voice capture; Pensieve then writes only
+  `status:`, `outcome:` and `outcome_date:` back into the agent's note.
 - **Reversibility for any writeback.** Clearing the mirror tag (e.g.
   via `OutlookCOMSink.clear_column_tag`) restores the source task exactly
   to its pre-Pensieve state. Un-completing a task via the completion

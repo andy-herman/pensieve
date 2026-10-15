@@ -10,7 +10,7 @@ The import above inlines AGENTS.md, the authoritative agent guide. Read it. Even
 - The one additive exception: voice capture (pensieve/capture/, deliberately outside pensieve/sources) may CREATE a new task in the user's own list, only after they confirm it in the dashboard and only while PENSIEVE_ALLOW_TASK_CREATE is on. It never edits, completes, or deletes an existing task.
 - Reversibility for any writeback. Clearing the mirror tag restores the source task exactly to its pre-Pensieve state. No sink ever mutates Notes, Body, Subject, or Due Date.
 - No corporate Microsoft Graph and no app registrations in Microsoft's corporate tenant (SFI locks down corp app consent), so work tasks come from local Outlook COM via pywin32. The one Graph path allowed is personal Microsoft accounts reading To Do (read-only Tasks.Read) through pensieve/connections.py, using an app registration in a personal Entra directory (see desktop/SHARING.md).
-- All data stays local. ChromaDB persists to data/chroma/. Network egress is limited to the configured LLM provider (GitHub Copilot by default), Microsoft Graph for a connected personal To Do account, and the browser's speech service while dictating a task.
+- All data stays local. ChromaDB persists to data/chroma/. Network egress is limited to the configured LLM provider (GitHub Copilot by default), Microsoft Graph for a connected personal To Do account, and the browser's speech service while dictating a task. The vault bridge only writes local files (Agents/Pensieve/Now.md and the status of `to: pensieve` request notes); Obsidian Sync, not Pensieve, moves them.
 - No em-dashes in any generated content. Anonymize anything committed to sample data or prompt examples; this repo is public.
 
 ## Quick orientation

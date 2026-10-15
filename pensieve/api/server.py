@@ -78,11 +78,18 @@ def create_app() -> FastAPI:
         scheduler = AutoSyncScheduler(settings, get_tracker())
         scheduler.start()
         scheduler_holder["scheduler"] = scheduler
+        from pensieve.bridge import BridgeWorker
+
+        bridge = BridgeWorker(settings)
+        bridge.start()
+        scheduler_holder["bridge"] = bridge
         try:
             yield
         finally:
+            bridge.stop()
             scheduler.stop(timeout=5.0)
             scheduler_holder.pop("scheduler", None)
+            scheduler_holder.pop("bridge", None)
 
     app = FastAPI(title="Pensieve API", version="0.1.0", lifespan=_lifespan)
 
@@ -395,6 +402,68 @@ def create_app() -> FastAPI:
 
         connections.save_config(settings, setup_dismissed=True)
         return connections.status(settings)
+
+    # ----- Vault bridge for other agents (see pensieve.bridge) -----
+
+    @app.get("/api/bridge")
+    def bridge_state() -> dict[str, Any]:
+        """Bridge status plus pending task requests from agents."""
+        from pensieve import bridge as vb
+
+        worker = scheduler_holder.get("bridge")
+        enabled = vb.bridge_dir(settings) is not None
+        try:
+            requests = vb.scan_requests(settings) if enabled else []
+            error = getattr(worker, "last_error", None)
+        except Exception as e:
+            requests, error = [], str(e)
+        return {
+            "enabled": enabled,
+            "now_note": (vb.BRIDGE_DIR / vb.NOW_FILE).as_posix() if enabled else None,
+            "lists": settings.vault_bridge_lists or "all",
+            "last_written": getattr(worker, "last_written", None),
+            "error": error,
+            "requests": requests,
+        }
+
+    @app.post("/api/bridge/refresh")
+    def bridge_refresh() -> dict[str, Any]:
+        worker = scheduler_holder.get("bridge")
+        if worker is None:
+            raise HTTPException(status_code=400, detail="The vault bridge is not running.")
+        try:
+            return {"written": worker.refresh()}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/api/bridge/requests/{request_id}/dismiss")
+    def bridge_dismiss(request_id: str) -> dict[str, Any]:
+        from pensieve import bridge as vb
+
+        try:
+            return vb.resolve_request(settings, request_id, "dropped",
+                                      f"{datetime.now().date().isoformat()} dismissed by Andy in Pensieve")
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+
+    @app.post("/api/bridge/requests/{request_id}/add")
+    def bridge_add(request_id: str, body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Add an agent's requested task (as edited on the confirm card), then close its loop."""
+        from pensieve import bridge as vb
+
+        try:
+            req = vb.request_by_id(settings, request_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        merged = {**{k: req.get(k) for k in ("title", "notes", "due_date", "list_name", "importance")}, **(body or {})}
+        created = capture_add(merged)
+        where = "To Do" if created.get("source") == "personal_graph" else "Outlook"
+        vb.resolve_request(
+            settings, request_id, "executed",
+            f"{datetime.now().date().isoformat()} added by Andy to {created.get('list_name') or 'his list'} in {where} via Pensieve",
+        )
+        created["request"] = request_id
+        return created
 
     # ----- Voice capture (speak a task, see pensieve.capture) -----
 

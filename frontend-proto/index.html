@@ -114,6 +114,7 @@
 
         <!-- Actions: Hedwig's errand + overflow for the rest -->
         <div class="tb-zone tb-zone--actions">
+          <button id="agents-btn" class="ghost-button agents-btn" hidden title="Tasks your agents asked Pensieve to add">&#x2709;&#xFE0F; From your agents <span class="agents-count" id="agents-count">0</span></button>
           <button id="speak-btn" class="ghost-button speak-btn" title="Say a new task out loud and Pensieve adds it to your list">&#x1F399;&#xFE0F; Speak a task</button>
           <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Send Hedwig to fetch new tasks from Microsoft To-Do">&#x1F989; Pull from To-Do</button>
           <div class="cmd-pop" id="more-pop-wrap">
@@ -281,6 +282,18 @@
           <button id="goals-save" class="primary-button">Save goals</button>
         </div>
         <p class="goals-footnote">Saved to <code>data/connect-goals.json</code>. Used by the AI to align tasks to your goals on the next sync.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="agents-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="agents"></div>
+    <article class="modal-card agents-modal-card" role="dialog" aria-modal="true" aria-labelledby="agents-title">
+      <button class="modal-close" data-close="agents" aria-label="Close">x</button>
+      <div class="modal-body">
+        <h2 id="agents-title" class="goals-title">From your agents</h2>
+        <p class="goals-subtitle">Tasks your agents asked Pensieve to add. Nothing is added until you review it; your answer is written back to their note.</p>
+        <div id="agents-list" class="agents-list"></div>
       </div>
     </article>
   </div>
