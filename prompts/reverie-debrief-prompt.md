@@ -4,7 +4,7 @@ version: v1
 
 System prompt used after a Reverie fires. Pensieve detects the post-window state on the next sync, prompts the user "which memories did you advance during the Pensieve Reverie at 2pm?" with a checkbox list, and ALSO offers a free-text "anything else?" field. This prompt converts the combined structured + free-text reply into a clean update to the `reveries` row, with `impact_seeds` for later Vial distillation and `unplanned_work_candidates` for surfacing as new memory suggestions.
 
-**Model:** Azure OpenAI `gpt-5.4-2` (Cortex hub).
+**Model:** the configured LLM provider (GitHub Copilot by default). Pre-staged; not wired into the app yet.
 **Settings:** omit `temperature`, `max_completion_tokens = 1000`, `response_format = {"type": "json_object"}`.
 
 ---

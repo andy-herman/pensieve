@@ -1,5 +1,5 @@
 version: v2
-target_model: gpt-5.4-2 (Azure OpenAI, Cortex hub)
+target_model: the "enrichment" model chosen in the dashboard's AI models panel (GitHub Copilot by default)
 response_format: json_object
 max_completion_tokens: 1500
 temperature: omitted
@@ -43,7 +43,7 @@ You will receive a single JSON object with:
       "number": 1,
       "short_name": "DORA Deep Dive",
       "name": "DORA Deep Dive Compliance",
-      "summary": "Lead CISO GRC role on DORA Core Team...",
+      "summary": "Lead the GRC role on the DORA core team...",
       "keywords_for_alignment": ["DORA", "JET", "RFI", ...]
     }
   ],
@@ -61,18 +61,18 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 ```json
 {
   "memory_id": "mem_<task.id>",
-  "display_title": "string \u2014 5 to 12 words, sentence case, no trailing punctuation, no em-dash. Distill long source titles; expand fragments; echo a clean source title back unchanged when it already fits the rules.",
+  "display_title": "string: 5 to 12 words, sentence case, no trailing punctuation, no em-dash. Distill long source titles; expand fragments; echo a clean source title back unchanged when it already fits the rules.",
   "suggested_strand": "string id from strand_catalog OR null",
   "needs_human_strand_review": false,
-  "why": "string \u2014 1 to 2 sentences explaining why this task exists, in the user's voice",
-  "impact": "string \u2014 1 sentence on what shifts when this is done (program, deliverable, person, system)",
+  "why": "string: 1 to 2 sentences explaining why this task exists, in the user's voice",
+  "impact": "string: 1 sentence on what shifts when this is done (program, deliverable, person, system)",
   "strand_kind": "deep | tactical | learning | writing | unknown",
   "confidence_strand": 0.0,
   "confidence_impact": 0.0,
   "connect_goal_ids": ["goal-X-...", "goal-Y-..."],
   "connect_alignment_confidence": 0.0,
-  "connect_alignment_note": "string \u2014 1 sentence explaining the alignment OR why no goal fit",
-  "notes_for_user": "string OR null \u2014 optional callout (open question, missing context, conflict with strand)"
+  "connect_alignment_note": "string: 1 sentence explaining the alignment OR why no goal fit",
+  "notes_for_user": "string OR null: optional callout (open question, missing context, conflict with strand)"
 }
 ```
 
@@ -80,13 +80,13 @@ Return a single JSON object. Do not wrap in markdown. Do not include trailing co
 
 1. **suggested_strand MUST be either an `id` from `strand_catalog` or `null`.** Do not invent strand IDs. If nothing fits, set it to `null` and set `needs_human_strand_review: true`.
 2. **connect_goal_ids MUST be a subset (possibly empty) of the goal IDs in `connect_goals`.** Do not invent goal IDs.
-3. **No em-dashes** in any output string (display_title, why, impact, notes_for_user, connect_alignment_note). Use commas, periods, or " \u2014 " replacements ONLY if you mean a hyphenated dash \u2014 prefer commas.
+3. **No em-dashes** in any output string (display_title, why, impact, notes_for_user, connect_alignment_note). Use commas or periods instead. A hyphen with spaces ( - ) is acceptable, but prefer commas.
 4. **Confidence is honest, not aspirational.** Below 0.5 means the user must review.
 5. **If notes is empty**, lean on title + recent_context + strand_catalog descriptions. Do not fabricate context.
 6. **`why` and `impact` are in the user's voice** (first person implied), present tense, concrete. Never use marketing language ("synergize", "leverage", "transform").
 7. **Personal tasks** (passport, dentist, family) get `suggested_strand: null`, `connect_goal_ids: []`, and `connect_alignment_note` explaining "personal task, no work-goal alignment".
 
-## display_title rules (critical \u2014 this is what shows on the kanban card)
+## display_title rules (critical: this is what shows on the kanban card)
 
 The source `task.title` comes from whatever the user typed into Microsoft To-Do. It is often a full sentence, a paragraph, or sometimes a 2-word fragment. The `display_title` you produce is what shows on the kanban card, so it must be **scannable in one glance**.
 
@@ -102,17 +102,17 @@ Source title examples and the display_title you should produce:
 
 | Source title | display_title |
 |---|---|
-| "Send out an email to Nida Davis to inquire about the supplier onboarding process. I want to be able to explain the process by which we onboard subcontractors to Microsoft" | "Email Nida Davis on subcontractor onboarding process" |
+| "Send out an email to my supplier contact to inquire about the supplier onboarding process. I want to be able to explain the process by which we onboard subcontractors" | "Email supplier contact on subcontractor onboarding process" |
 | "email john" | "Email John about [closest topic from notes, or generic if blank]" |
 | "Draft response: JET RFI 0107 Article 6 ICT risk mgmt framework" | "Draft JET RFI 0107: Article 6 ICT risk framework" (already close to range; light cleanup only) |
 | "finish my required training for security team" | "Finish required security team training" |
-| "Add feature to Touchstone to serve as the 'Microsoft' voice agent and also be able to compare previous regulatory responses to see how our responses are consistent/ contradict" | "Touchstone: Microsoft voice agent plus regulatory-response consistency check" |
+| "Add feature to Beacon to serve as the company voice agent and also be able to compare previous regulatory responses to see how our responses are consistent/ contradict" | "Beacon: company voice agent plus regulatory-response consistency check" |
 
 ## Connect goal alignment guidance
 
-Use the `keywords_for_alignment` array on each goal as a tripwire \u2014 if the task title or notes mention any keyword, that goal is a strong candidate. But do not blindly pattern-match: a task that mentions "Argus" because the user is invoicing the Azure VM is operational, not Goal #4 work.
+Use the `keywords_for_alignment` array on each goal as a tripwire: if the task title or notes mention any keyword, that goal is a strong candidate. But do not blindly pattern-match: a task that mentions a program's name only because the user is paying that program's cloud invoice is operational, not Goal #4 work.
 
-Consider the strand's `connect_goal_ids` as the default suggestion. The Memory inherits the strand's goal alignment unless the task content clearly signals different alignment (e.g. a "DORA RFI" strand task that is actually about the cross-org playbook \u2014 still Goal #1 but a different work mode).
+Consider the strand's `connect_goal_ids` as the default suggestion. The Memory inherits the strand's goal alignment unless the task content clearly signals different alignment (e.g. a "DORA RFI" strand task that is actually about the cross-org playbook, still Goal #1 but a different work mode).
 
 **A Memory can align to 0, 1, 2, or all 4 goals.** Be honest:
 - 0 goals: operational/personal/team-mgmt that does not directly advance a Connect commitment
@@ -132,8 +132,8 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
   "task": {
     "id": "todo_sample_01",
     "title": "Draft response: JET RFI 0107 Article 6 ICT risk mgmt framework",
-    "notes": "JET asked for explicit mapping of Article 6 to internal ICT risk policy. Need Azure + M365 owner confirmation before submission. Deadline Thursday.",
-    "list_name": "CISO GRC \u2192 DORA",
+    "notes": "JET asked for explicit mapping of Article 6 to internal ICT risk policy. Need product owner confirmation before submission. Deadline Thursday.",
+    "list_name": "GRC: DORA",
     "created_at": "2026-05-27T09:14:00-07:00"
   }
 }
@@ -146,7 +146,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
   "display_title": "JET RFI 0107: Article 6 ICT risk framework mapping",
   "suggested_strand": "dora-rfi",
   "needs_human_strand_review": false,
-  "why": "JET requested explicit mapping of DORA Article 6 to my internal ICT risk policy, with Azure and M365 product owner confirmation before submission. This is a hard deadline this Thursday.",
+  "why": "JET requested explicit mapping of DORA Article 6 to my internal ICT risk policy, with product owner confirmation before submission. This is a hard deadline this Thursday.",
   "impact": "Closes RFI 0107 on schedule and protects the no-gap streak on DORA deep dive responses.",
   "strand_kind": "deep",
   "confidence_strand": 0.96,
@@ -166,8 +166,8 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
   "task": {
     "id": "todo_sample_02",
     "title": "Cross-walk NIS2 Article 21 to DORA Article 6 controls",
-    "notes": "Two-column deck for next CISO GRC sync. Use existing DORA evidence packages where possible to minimize new ask.",
-    "list_name": "CISO GRC \u2192 NIS2"
+    "notes": "Two-column deck for the next GRC team sync. Use existing DORA evidence packages where possible to minimize new ask.",
+    "list_name": "GRC: NIS2"
   }
 }
 ```
@@ -179,7 +179,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
   "display_title": "NIS2 Article 21 to DORA Article 6 crosswalk deck",
   "suggested_strand": "nis2-mapping",
   "needs_human_strand_review": false,
-  "why": "Building a two-column NIS2-to-DORA crosswalk for the next CISO GRC sync, reusing DORA evidence to minimize new asks on product teams.",
+  "why": "Building a two-column NIS2-to-DORA crosswalk for the next GRC team sync, reusing DORA evidence to minimize new asks on product teams.",
   "impact": "Shows the team how much of NIS2 we already cover via DORA, and surfaces the genuine gaps that need new evidence work.",
   "strand_kind": "deep",
   "confidence_strand": 0.95,
@@ -200,7 +200,7 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
     "id": "todo_sample_09",
     "title": "Renew passport before October trip",
     "notes": "Application packet + new photo. Expedited if over $190 cheaper than rebooking flights.",
-    "list_name": "Personal \u2192 To-Do"
+    "list_name": "Personal"
   }
 }
 ```
@@ -231,8 +231,8 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 {
   "task": {
     "id": "todo_sample_05",
-    "title": "Watch Foundry Agent Framework deep-dive (BUILD 2026 session)",
-    "notes": "45 min video. Want to evaluate if I can replace Pensieve's custom prompt routing with Foundry agents.",
+    "title": "Watch agent framework deep-dive (developer conference session)",
+    "notes": "45 min video. Want to evaluate if I can replace Pensieve's custom prompt routing with a managed agent framework.",
     "list_name": "Learning"
   }
 }
@@ -242,11 +242,11 @@ If a task is recurring administrative work (1:1 prep, ops chores, leadership upd
 ```json
 {
   "memory_id": "mem_todo_sample_05",
-  "display_title": "Foundry Agent Framework deep-dive evaluation",
+  "display_title": "Agent framework deep-dive evaluation",
   "suggested_strand": "learning-ai",
   "needs_human_strand_review": false,
-  "why": "45-minute BUILD 2026 session on Foundry Agent Framework. Specifically evaluating whether Foundry agents could replace Pensieve's hand-rolled prompt routing.",
-  "impact": "Decides whether to keep building Pensieve on raw Azure OpenAI calls or migrate to a managed agent framework, which would change the build trajectory for the AI program tools.",
+  "why": "45-minute conference session on an agent framework. Specifically evaluating whether it could replace Pensieve's hand-rolled prompt routing.",
+  "impact": "Decides whether to keep building Pensieve on direct model calls or migrate to a managed agent framework, which would change the build trajectory for the AI program tools.",
   "strand_kind": "learning",
   "confidence_strand": 0.92,
   "confidence_impact": 0.75,
