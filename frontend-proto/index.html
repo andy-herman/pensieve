@@ -1,42 +1,75 @@
 <!doctype html>
-<html lang="en" data-theme="hud" data-view="lifecycle" data-page="board">
+<html lang="en" data-theme="day" data-view="lifecycle" data-page="board">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pensieve / Memory archive</title>
+  <title>The Pensieve - Today's Memories</title>
+  <script>
+    /* Apply the saved theme before first paint so night/marauder never flash parchment. */
+    try {
+      var savedTheme = localStorage.getItem("pensieve-theme");
+      if (savedTheme === "night" || savedTheme === "marauder") {
+        document.documentElement.setAttribute("data-theme", savedTheme);
+      }
+    } catch (e) { /* storage blocked: stay on day */ }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="pensieve.css" />
 </head>
 <body>
 
   <div class="starfield" aria-hidden="true"></div>
+  <div id="footprint-layer" class="footprint-layer" aria-hidden="true"></div>
 
   <header class="masthead masthead--tiered">
-    <!-- Row 1: identity (left) + status cluster (right) -->
+    <!-- Row 1: identity (left) + status cluster and theme toggle (right) -->
     <div class="masthead-row masthead-row--identity">
       <div class="title-block">
-        <h1 class="title">Pensieve</h1>
-        <p class="tagline">Memory archive / live capture</p>
+        <h1 class="title">The Pensieve</h1>
+        <p class="tagline">Stir the surface and look within.</p>
       </div>
 
-      <div class="status-cluster" role="group" aria-label="Board status">
-        <div class="review-block" title="Memories that need your review">
-          <span id="review-count">CLEAR</span>
+      <div class="masthead-aside">
+        <div class="status-cluster" role="group" aria-label="Board status">
+          <div class="review-block hedwig-block" role="button" tabindex="0"
+               aria-label="Memories that need your review. Click to show only those."
+               title="Memories that need your review. Click to show only those.">
+            <svg class="hedwig" viewBox="0 0 80 70" width="52" height="46" aria-hidden="true">
+              <ellipse cx="40" cy="40" rx="22" ry="26" class="hedwig-body" />
+              <ellipse cx="40" cy="22" rx="16" ry="14" class="hedwig-head" />
+              <path d="M32,40 Q12,30 8,52 Q22,52 34,46 Z" class="hedwig-wing" />
+              <path d="M48,40 Q68,30 72,52 Q58,52 46,46 Z" class="hedwig-wing" />
+              <circle cx="34" cy="22" r="3.4" class="hedwig-eye-bg" />
+              <circle cx="46" cy="22" r="3.4" class="hedwig-eye-bg" />
+              <circle cx="34" cy="22" r="1.6" class="hedwig-eye" />
+              <circle cx="46" cy="22" r="1.6" class="hedwig-eye" />
+              <polygon points="38,26 42,26 40,30" class="hedwig-beak" />
+              <rect x="26" y="44" width="28" height="8" rx="1" class="hedwig-letter" />
+              <text x="40" y="51" text-anchor="middle" class="hedwig-letter-text" id="hedwig-count">0</text>
+            </svg>
+            <span class="hedwig-label" id="review-count" aria-live="polite">All clear</span>
+          </div>
+          <div class="board-health" id="board-health" role="button" tabindex="0"
+               aria-label="Board health. Click to filter to stale, ghost, or overdue cards."
+               title="Click to filter to stale, ghost, or overdue cards">
+            <span class="board-health-label">Health</span>
+            <span class="board-health-score" id="board-health-score">--</span>
+            <div class="board-health-tip" id="board-health-tip" hidden></div>
+          </div>
+          <button class="achievements-btn" id="achievements-btn" type="button"
+                  aria-label="Open achievements"
+                  title="Achievements: track your progress and unlocks">
+            <span class="achievements-btn-icon" aria-hidden="true">&#x1F3C6;</span>
+            <span class="achievements-btn-count" id="achievements-btn-count" hidden>0</span>
+          </button>
         </div>
-        <div class="board-health" id="board-health" role="button" tabindex="0"
-             aria-label="Board health — click to filter to stale, ghost, or overdue cards"
-             title="Click to filter to stale/ghost/overdue cards">
-          <span class="board-health-label">HEALTH</span>
-          <span class="board-health-score" id="board-health-score">--</span>
-          <div class="board-health-tip" id="board-health-tip" hidden></div>
-        </div>
-        <button class="achievements-btn" id="achievements-btn" type="button"
-                aria-label="Open achievements"
-                title="Achievements — track your progress and unlocks">
-          <span class="achievements-btn-icon">&#x1F3C6;</span>
-          <span class="achievements-btn-count" id="achievements-btn-count" hidden>0</span>
+
+        <button id="theme-toggle" class="ghost-button theme-toggle" type="button"
+                title="Toggle day / night" aria-label="Switch to night mode">
+          <span class="theme-day-icon" aria-hidden="true">&#9728;</span>
+          <span class="theme-night-icon" aria-hidden="true">&#9789;</span>
         </button>
       </div>
     </div>
@@ -46,8 +79,8 @@
       <div class="toolbar" role="toolbar" aria-label="Board controls">
         <div class="tb-zone tb-zone--search">
           <div class="search-wrap">
-            <input type="search" id="search" placeholder="Search memories (Enter for semantic)" aria-label="Search memories" />
-            <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB">SEARCH</button>
+            <input type="search" id="search" placeholder="Search memories... (Enter for semantic search)" aria-label="Search memories" />
+            <button id="semantic-btn" class="ghost-button" title="Semantic search via ChromaDB" aria-label="Semantic search">&#x1F50D;</button>
           </div>
         </div>
 
@@ -56,7 +89,7 @@
         <div class="tb-zone tb-zone--view">
           <div class="view-toggle" role="group" aria-label="Board view">
             <button class="view-btn active" data-view="lifecycle" title="Group by lifecycle column">Lifecycle</button>
-            <button class="view-btn" data-view="lanes" title="Group by Connect goal lane">Lanes</button>
+            <button class="view-btn" data-view="lanes" title="Group by Connect goal / House">Houses</button>
           </div>
         </div>
 
@@ -85,15 +118,15 @@
           </div>
         </div>
 
-        <!-- Actions: one visible primary + overflow for the rest -->
+        <!-- Actions: Hedwig's errand + overflow for the rest -->
         <div class="tb-zone tb-zone--actions">
-          <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Fetch new tasks from Microsoft To-Do">Pull from To-Do</button>
+          <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Send Hedwig to fetch new tasks from Microsoft To-Do">&#x1F989; Pull from To-Do</button>
           <div class="cmd-pop" id="more-pop-wrap">
             <button type="button" id="more-pop-btn" class="ghost-button cmd-more-btn"
                     aria-haspopup="true" aria-expanded="false" aria-controls="more-pop-panel" aria-label="More actions" title="More actions">&#x22EF;</button>
             <div class="cmd-pop-panel cmd-menu" id="more-pop-panel" role="menu" aria-label="More actions" hidden>
-              <button id="refresh-btn" class="ghost-button cmd-menu-item" role="menuitem" title="Reload board from local Pensieve store">Refresh</button>
-              <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect goal lanes">Set goals</button>
+              <button id="refresh-btn" class="ghost-button cmd-menu-item" role="menuitem" title="Reload board from local Pensieve store">&#x21bb; Refresh</button>
+              <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect Houses">Set goals</button>
               <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
             </div>
           </div>
@@ -155,7 +188,7 @@
   <section id="graph-page" class="graph-page" aria-label="Constellation graph">
     <div class="graph-intro">
       <h2 class="graph-title">Constellation</h2>
-      <p class="graph-subtitle">Your tasks as a living graph. Large nodes are your Connect goals; small nodes are tasks, colored by lane. Solid lines link a task to its goal; faint lines connect tasks that are semantically related (computed from the same embeddings that power search). Drag to explore, click a node to open it.</p>
+      <p class="graph-subtitle">Your tasks as a living graph. Large nodes are your Connect goals; small nodes are tasks, colored by House. Solid lines link a task to its goal; faint dashed lines connect tasks that are semantically related (computed from the same embeddings that power search). Drag to explore, click a node to open it.</p>
     </div>
     <div class="graph-stats" id="graph-stats"></div>
     <div class="graph-toolbar">
@@ -165,9 +198,9 @@
       </label>
       <button id="graph-refresh" class="ghost-button">Rebuild</button>
       <div class="graph-legend">
-        <span><span class="legend-dot" style="background:var(--cyan)"></span>Goal</span>
-        <span><span class="legend-edge" style="border-color:var(--cyan)"></span>Alignment</span>
-        <span><span class="legend-edge" style="border-color:rgba(184,120,255,0.7)"></span>Semantic link</span>
+        <span><span class="legend-dot legend-dot--goal" aria-hidden="true"></span>Goal</span>
+        <span><span class="legend-edge legend-edge--align" aria-hidden="true"></span>Alignment</span>
+        <span><span class="legend-edge legend-edge--semantic" aria-hidden="true"></span>Semantic link</span>
       </div>
     </div>
     <div class="graph-stage-wrap">
@@ -233,8 +266,8 @@
     <article class="modal-card goals-modal-card" role="dialog" aria-modal="true" aria-labelledby="goals-title">
       <button class="modal-close" data-close="goals" aria-label="Close">x</button>
       <div class="modal-body">
-        <h2 id="goals-title" class="goals-title">Your Connect Goals</h2>
-        <p class="goals-subtitle">Each Connect goal becomes a lane on the dashboard. Edit them by hand, or upload your Connect PDF and let the AI extract them for you.</p>
+        <h2 id="goals-title" class="goals-title">Your Connect Houses</h2>
+        <p class="goals-subtitle">Each Connect goal becomes a House on the dashboard. Edit them by hand, or upload your Connect PDF and let the AI extract them for you.</p>
         <div class="goals-import">
           <label for="goals-pdf-input" class="goals-import-label">
             <span class="goals-import-icon" aria-hidden="true">&#x1F4C4;</span>
@@ -268,16 +301,24 @@
     </article>
   </div>
 
+  <div class="snitch" aria-hidden="true">
+    <svg viewBox="0 0 60 30" width="48" height="24">
+      <ellipse cx="30" cy="15" rx="6" ry="6" class="snitch-body" />
+      <path d="M24,15 Q12,4 4,12 Q12,16 24,17 Z" class="snitch-wing" />
+      <path d="M36,15 Q48,4 56,12 Q48,16 36,17 Z" class="snitch-wing" />
+    </svg>
+  </div>
+
   <canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
 
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <footer class="footer">
-    <span>Pensieve / phase 2 / hud</span>
+    <span>Pensieve Phase 2 prototype</span>
     <span class="dot">.</span>
     <span id="memory-count">0 memories</span>
     <span class="dot">.</span>
-    <span id="theme-label">hud theme</span>
+    <span id="theme-label">day mode</span>
     <span class="dot">.</span>
     <span id="api-source-label">offline (seed data)</span>
     <span class="dot">.</span>

@@ -1,9 +1,13 @@
 /* ============================================================
-   Pensieve HUD theme JS (v3)
-   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Lanes (Connect goals)
+   The Pensieve - dashboard JS (v4, parchment edition)
+   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Houses (Connect goals)
    - Connect goals editable via in-app modal (persisted in localStorage)
-   - Single HUD theme. No theme toggle. No easter eggs.
-   - Drag-and-drop kanban, semantic search, PDF goals import.
+   - Themes: day / night (toggle) + marauder (easter egg), persisted in localStorage
+   - Hedwig review counter, footprint trail on drag, golden Snitch
+   - Drag-and-drop kanban, semantic search, PDF goals import, Recap, Constellation, Docs
+   Data model note: goals carry a neutral `lane` slug (crimson, gold, ...). The
+   House names and glyphs below are presentation only; ids, data attributes and
+   API fields stay neutral.
    ============================================================ */
 
 // ----- 1. Connect goals (canonical defaults; mirrors data/connect-goals.json) -----
@@ -72,6 +76,31 @@ const LANE_PALETTE = [
   { lane: "sage",       color_primary: "#3c5e2c", color_accent: "#c9a655" },
   { lane: "rose",       color_primary: "#a83a1f", color_accent: "#f5d77b" },
 ];
+
+// Presentation-only House name + glyph for each neutral lane slug. The text
+// variation selector (︎) keeps glyphs monochrome so CSS can ink them in
+// the House color instead of rendering a color emoji.
+const LANE_HOUSE = {
+  crimson:    { house: "Gryffindor", glyph: "⚡︎" },
+  gold:       { house: "Hufflepuff", glyph: "⚘︎" },
+  emerald:    { house: "Slytherin",  glyph: "⚜︎" },
+  azure:      { house: "Ravenclaw",  glyph: "⚛︎" },
+  slate:      { house: "Internal",   glyph: "⚗︎" },
+  ember:      { house: "Muggleborn", glyph: "✎︎" },
+  sage:       { house: "Centaur",    glyph: "☘︎" },
+  rose:       { house: "Phoenix",    glyph: "❁︎" },
+  unassigned: { house: "Unhoused",   glyph: "✦︎" },
+};
+
+function houseName(lane) {
+  const h = LANE_HOUSE[lane];
+  return h ? h.house : (lane || "House");
+}
+
+function houseGlyph(lane) {
+  const h = LANE_HOUSE[lane];
+  return h ? h.glyph : "✦︎";
+}
 
 const STRANDS = [
   { id: "dora-rfi", display_name: "DORA RFI Responses", kind: "deep", connect_goal_ids: ["goal-1-dora-deep-dive"] },
@@ -283,7 +312,9 @@ const STATE = {
   view: "lifecycle",      // "lifecycle" | "lanes"
   page: "board",          // "board" | "recap" | "graph"
   weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
-  theme: "hud",           // single theme; legacy state field kept for compatibility
+  theme: loadTheme(),     // "day" | "night" | "marauder"
+  easterBuffer: "",       // last few keystrokes, for the Marauder's Map easter egg
+  inkNextRender: true,    // play the ink-in animation on the next board render
   filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
@@ -313,12 +344,27 @@ function saveGoals() {
   localStorage.setItem("pensieve-goals", JSON.stringify(STATE.goals));
 }
 
+// Called while STATE is being built, so it must not touch later `const`s.
 function loadTheme() {
-  return "hud";
+  try {
+    const saved = localStorage.getItem("pensieve-theme");
+    if (saved === "day" || saved === "night" || saved === "marauder") return saved;
+  } catch (e) { /* storage blocked: fall back to day */ }
+  return "day";
 }
 
 function saveTheme() {
-  // No-op. HUD is the only theme.
+  try { localStorage.setItem("pensieve-theme", STATE.theme); } catch (e) { /* ignore */ }
+}
+
+// Read a CSS custom property from <html> (theme tokens live there).
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function prefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 }
 
 // ----- 5. Helpers -----
@@ -588,7 +634,7 @@ function renderQuestPanel() {
         `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
         (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
       // Filter board to this quest's targets when clicked (if it has targets
-      // and is not already complete — completed quests just show status).
+      // and is not already complete - completed quests just show status).
       const filterIds = (quest.target_memory_ids || []).filter(Boolean);
       const isActiveFilter =
         STATE.filter.questTargetIds &&
@@ -789,7 +835,8 @@ function burstConfettiAt(targetEl) {
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
   canvas.classList.add("is-firing");
-  const colors = ["#7cffff", "#ffe07c", "#7cff9d", "#ff8da1", "#c9a0ff"];
+  // House colors for the current theme (tokens --confetti-1..5 in pensieve.css).
+  const colors = [1, 2, 3, 4, 5].map(i => cssVar(`--confetti-${i}`, "#c9a655"));
   const N = 36;
   const particles = Array.from({ length: N }, () => {
     const angle = Math.random() * Math.PI * 2;
@@ -837,7 +884,7 @@ function burstConfettiAt(targetEl) {
 //   - the user is viewing achievements (`#achievements-modal` open)
 //   - a card is mid-drag (DRAG.id set)
 //   - a PATCH from the dashboard is in flight (patchInFlight > 0)
-//   - the document is hidden (Page Visibility API) — saves API calls when the tab is in the background
+//   - the document is hidden (Page Visibility API) - saves API calls when the tab is in the background
 // `pollInFlight` prevents stacked refreshes if the network call takes longer than the interval.
 const AUTO_REFRESH_MS = 30000;
 let pollInFlight = false;
@@ -893,7 +940,7 @@ async function regenerateMemory(memoryId) {
   if (btn) {
     btn.disabled = true;
     btn.classList.add("is-regenerating");
-    btn.innerHTML = "&#x2728; Working...";
+    btn.innerHTML = "&#x2728; Brewing...";
   }
   try {
     const apiId = memoryId.replace(/^mem_/, "");
@@ -914,7 +961,7 @@ async function regenerateMemory(memoryId) {
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
-    // Garden v1+v2+v3: regenerate is a tend — refresh pill, quests, and achievements.
+    // Garden v1+v2+v3: regenerate is a tend - refresh pill, quests, and achievements.
     loadBoardHealth();
     loadQuests();
     loadAchievements();
@@ -1057,14 +1104,32 @@ async function runSemanticSearch(q) {
 // ----- 6. Rendering -----
 
 function applyTheme() {
-  document.documentElement.setAttribute("data-theme", "hud");
+  document.documentElement.setAttribute("data-theme", STATE.theme);
   const label = $("#theme-label");
-  if (label) label.textContent = "hud theme";
+  if (label) label.textContent = `${STATE.theme} mode`;
+  const btn = $("#theme-toggle");
+  if (btn) {
+    const next = STATE.theme === "day" ? "night" : "day";
+    btn.setAttribute("aria-label", `Switch to ${next} mode`);
+    btn.title = STATE.theme === "marauder" ? "Mischief managed: back to day" : `Switch to ${next} mode`;
+  }
+  // Canvas colors come from theme tokens; repaint the Constellation if visible.
+  if (typeof GRAPH !== "undefined" && STATE.page === "graph" && GRAPH.nodes.length && !GRAPH.raf) {
+    drawGraph();
+  }
+}
+
+function setTheme(theme, announce) {
+  STATE.theme = theme;
+  saveTheme();
+  applyTheme();
+  if (announce) toast(announce);
 }
 
 function applyView() {
   document.documentElement.setAttribute("data-view", STATE.view);
   $$(".view-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.view === STATE.view));
+  STATE.inkNextRender = true;
   renderBoard();
 }
 
@@ -1092,6 +1157,10 @@ function renderStrandFilter() {
 function renderBoard() {
   const board = $("#board");
   board.innerHTML = "";
+  // Ink-in only on first paint and view switches, never on the 30s auto-refresh
+  // or while typing in search, so the board doesn't shimmer constantly.
+  board.classList.toggle("ink-in", !!STATE.inkNextRender);
+  STATE.inkNextRender = false;
 
   if (STATE.view === "lifecycle") {
     LIFECYCLE_COLUMNS.forEach(col => board.appendChild(renderLifecycleColumn(col)));
@@ -1155,7 +1224,8 @@ function renderLaneColumn(goal) {
 
   wrap.innerHTML = `
     <div class="column-header">
-      <h2 class="column-title">#${goal.number} ${goal.short_name}</h2>
+      <h2 class="column-title">#${goal.number} ${escapeHtml(goal.short_name)}</h2>
+      <p class="column-subtitle">${escapeHtml(houseName(goal.lane))}</p>
       <span class="column-count">${memos.length} aligned</span>
     </div>
     <div class="column-cards"></div>
@@ -1165,7 +1235,7 @@ function renderLaneColumn(goal) {
   if (memos.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-column";
-    empty.textContent = "No memories yet for this lane.";
+    empty.textContent = "No memories yet for this House.";
     cards.appendChild(empty);
   } else {
     memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
@@ -1187,7 +1257,7 @@ function renderUnassignedColumn() {
 
   wrap.innerHTML = `
     <div class="column-header">
-      <h2 class="column-title">Unassigned</h2>
+      <h2 class="column-title">Unhoused</h2>
       <p class="column-subtitle">Work not yet tied to a Connect goal</p>
       <span class="column-count">${memos.length} drifting</span>
     </div>
@@ -1206,18 +1276,18 @@ function renderUnassignedColumn() {
   return wrap;
 }
 
-// A lightweight "+ Add lane" tile shown at the end of the Lanes view. Opens
+// A lightweight "+ Add a House" tile shown at the end of the Houses view. Opens
 // the goals editor (which adds/edits/deletes lanes), so unclear work can get
-// its own lane when a Connect goal doesn't fit.
+// its own House when a Connect goal doesn't fit.
 function renderAddLaneTile() {
   const wrap = document.createElement("section");
   wrap.className = "column add-lane-tile";
   wrap.dataset.view = "lanes";
   wrap.innerHTML = `
-    <button class="add-lane-btn" title="Add or edit your lanes">
-      <span class="add-lane-plus">+</span>
-      <span>Add lane</span>
-      <span class="add-lane-hint">Edit lanes too</span>
+    <button class="add-lane-btn" title="Add or edit your Houses">
+      <span class="add-lane-plus" aria-hidden="true">+</span>
+      <span>Add a House</span>
+      <span class="add-lane-hint">or edit the ones you have</span>
     </button>
   `;
   wrap.querySelector(".add-lane-btn").addEventListener("click", openGoalsEditor);
@@ -1229,7 +1299,8 @@ function renderCard(m, idx) {
   el.className = "card";
   el.draggable = true;
   el.dataset.memoryId = m.id;
-  el.style.setProperty("--ink-delay", `${idx * 60}ms`);
+  // Stagger the ink-in, capped so long columns don't wait seconds for the tail.
+  el.style.setProperty("--ink-delay", `${Math.min(idx, 10) * 60}ms`);
 
   // Garden v1: per-card freshness dot via [data-freshness] CSS hook.
   // Only set when truthy so generic selectors aren't accidentally matched.
@@ -1245,28 +1316,31 @@ function renderCard(m, idx) {
   if (primaryGoal) {
     el.dataset.goalColor = "1";
     el.style.setProperty("--goal-color", primaryGoal.color_primary);
+    // data-lane lets CSS swap in the theme-aware House color for the rail.
+    if (primaryGoal.lane) el.dataset.lane = primaryGoal.lane;
   }
 
   const strand = getStrand(m.suggested_strand);
   const strandKind = m.strand_kind || (strand ? strand.kind : "");
 
   const review = isReviewNeeded(m);
+  if (review) el.classList.add("has-review");
 
   const goalsHtml = (m.connect_goal_ids || []).map(gid => {
     const g = getGoal(gid);
     if (!g) return "";
-    return `<span class="goal-chip" data-lane="${g.lane}" title="${g.name}">#${g.number} ${g.short_name}</span>`;
+    return `<span class="goal-chip" data-lane="${escapeHtml(g.lane || "")}" title="${escapeHtml(g.name)} (${escapeHtml(houseName(g.lane))})"><span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${g.number} ${escapeHtml(g.short_name)}</span>`;
   }).join("");
 
   const due = formatDueDate(m.due_date);
   const dueHtml = due
-    ? `<span class="card-due" data-urgency="${due.urgency}" title="Due ${escapeHtml(m.due_date)}">DUE ${escapeHtml(due.text)}</span>`
+    ? `<span class="card-due" data-urgency="${due.urgency}" title="Due ${escapeHtml(m.due_date)}">${due.urgency === "overdue" ? "Overdue" : "Due"} ${escapeHtml(due.text)}</span>`
     : "";
 
   const fullTitle = m.display_title || m.title || "";
   el.innerHTML = `
+    ${review ? `<div class="wax-seal" title="Needs review" aria-label="Needs review">R</div>` : ""}
     <h3 class="card-title" title="${escapeHtml(fullTitle)}">${escapeHtml(fullTitle)}</h3>
-    ${review ? `<div class="card-status" title="Flagged for review">&gt; STATUS // REVIEW</div>` : ""}
     <div class="card-meta">
       <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
       ${dueHtml}
@@ -1278,7 +1352,7 @@ function renderCard(m, idx) {
 
   el.addEventListener("click", e => {
     if (el.classList.contains("dragging")) return;
-    // Chevron / badge clicks handle themselves — don't open the card modal
+    // Chevron / badge clicks handle themselves - don't open the card modal
     if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
     openModal(m);
   });
@@ -1287,7 +1361,7 @@ function renderCard(m, idx) {
 
 function renderVialAffordance(m) {
   if (m.pending_closure_capture) {
-    return `<button class="card-vial-chevron" type="button" data-memory-id="${escapeHtml(m.id)}" title="Capture what changed when this closed">&#x1F4DC; CAPTURE</button>`;
+    return `<button class="card-vial-chevron" type="button" data-memory-id="${escapeHtml(m.id)}" title="Capture what changed when this closed">&#x1F4DC; Capture</button>`;
   }
   if (m.vials_count && m.vials_count > 0) {
     return `<button class="card-vial-badge" type="button" data-memory-id="${escapeHtml(m.id)}" title="${m.vials_count} closure note(s) captured">&#x1F4DC; ${m.vials_count}</button>`;
@@ -1311,22 +1385,28 @@ function updateMemoryCount() {
   $("#memory-count").textContent = visible === total ? `${total} memories` : `${visible} of ${total} memories`;
 }
 
+// Hedwig carries a letter with the review count; her label says "All clear"
+// when the queue is empty.
 function updateReviewIndicator() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
-  const text = $("#review-count");
+  const count = $("#hedwig-count");
+  const label = $("#review-count");
   const block = $(".review-block");
-  if (text) {
-    text.textContent = reviewing === 0 ? "CLEAR" : String(reviewing).padStart(2, "0");
+  if (count) count.textContent = reviewing > 99 ? "99+" : String(reviewing);
+  if (label) {
+    label.textContent = STATE.filter.reviewOnly
+      ? "Showing review"
+      : (reviewing === 0 ? "All clear" : `${reviewing} need review`);
   }
   if (block) {
     block.classList.toggle("has-review", reviewing > 0);
     block.classList.toggle("filter-active", !!STATE.filter.reviewOnly);
-    block.style.cursor = reviewing > 0 || STATE.filter.reviewOnly ? "pointer" : "default";
+    block.setAttribute("aria-pressed", STATE.filter.reviewOnly ? "true" : "false");
   }
 }
 
-// Click handler for the masthead REVIEW indicator: toggles a board-wide
-// "show only review-flagged cards" filter. Bound once during init().
+// Click handler for Hedwig (the masthead review indicator): toggles a
+// board-wide "show only review-flagged cards" filter. Bound once during init().
 function toggleReviewOnlyFilter() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
   if (reviewing === 0 && !STATE.filter.reviewOnly) return; // nothing to filter to
@@ -1379,10 +1459,10 @@ function openModal(m) {
   const goalCheckboxes = STATE.goals.map(g => {
     const checked = (m.connect_goal_ids || []).includes(g.id);
     return `
-      <label class="goal-check" data-lane="${g.lane}">
+      <label class="goal-check" data-lane="${escapeHtml(g.lane || "")}">
         <input type="checkbox" data-goal-id="${escapeHtml(g.id)}" ${checked ? "checked" : ""} />
-        <span class="goal-chip" data-lane="${g.lane}" title="${escapeHtml(g.name)}">
-          #${g.number} ${escapeHtml(g.short_name)}
+        <span class="goal-chip" data-lane="${escapeHtml(g.lane || "")}" title="${escapeHtml(g.name)} (${escapeHtml(houseName(g.lane))})">
+          <span class="goal-chip-glyph" aria-hidden="true">${houseGlyph(g.lane)}</span>#${g.number} ${escapeHtml(g.short_name)}
         </span>
       </label>`;
   }).join("");
@@ -1406,7 +1486,7 @@ function openModal(m) {
         Flag for review
       </label>
     </div>
-    ${review ? `<div class="review-status-line"><span class="review-status-rule"></span><span class="review-status-label">REVIEW FLAG ACTIVE</span><span class="review-status-rule"></span></div>` : ""}
+    ${review ? `<div class="review-status-line"><span class="review-status-rule"></span><span class="review-status-label">Sealed for review</span><span class="review-status-rule"></span></div>` : ""}
 
     <div class="modal-section">
       <div class="modal-label">Why</div>
@@ -1519,7 +1599,7 @@ async function saveMemoryEdit(memoryId) {
     }
     renderStrandFilter();
     renderBoard();
-    // Garden v1+v2+v3: editing tends the card — refresh pill, quests, achievements.
+    // Garden v1+v2+v3: editing tends the card - refresh pill, quests, achievements.
     loadBoardHealth();
     loadQuests();
     loadAchievements();
@@ -1595,10 +1675,11 @@ function openGoalsEditor() {
     const card = document.createElement("div");
     card.className = "goal-card";
     card.style.setProperty("--goal-color", g.color_primary);
+    if (g.lane) card.dataset.lane = g.lane;
     card.innerHTML = `
       <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
-        <span class="goal-lane-pill" data-lane="${g.lane}" style="--goal-color:${g.color_primary}">${escapeHtml(g.lane || "lane")}</span>
+        <span class="goal-lane-pill" data-lane="${escapeHtml(g.lane || "")}" style="--goal-color:${escapeHtml(g.color_primary || "")}" title="Lane: ${escapeHtml(g.lane || "none")}"><span aria-hidden="true">${houseGlyph(g.lane)}</span> ${escapeHtml(houseName(g.lane))}</span>
         <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number || idx + 1}</strong>
       </div>
       <label class="goal-input-label">Short name</label>
@@ -1795,6 +1876,49 @@ function attachDragHandlers() {
   });
 }
 
+// Footprint trail: while a card is dragged, faint footprints are stamped under
+// the cursor and fade out (every 5th dragover, to avoid spam). Cosmetic only.
+let footprintTick = 0;
+document.addEventListener("dragover", e => {
+  if (!DRAG.id) return;
+  if (++footprintTick % 5 !== 0) return;
+  if (prefersReducedMotion()) return;
+  const layer = $("#footprint-layer");
+  if (!layer) return;
+  const fp = document.createElement("div");
+  fp.className = "footprint";
+  fp.style.left = `${e.clientX}px`;
+  fp.style.top = `${e.clientY}px`;
+  fp.style.setProperty("--rot", `${Math.floor(Math.random() * 60 - 30)}deg`);
+  layer.appendChild(fp);
+  setTimeout(() => fp.remove(), 1700);
+});
+
+// ----- 9b. Easter egg: the Marauder's Map -----
+// Type the oath anywhere outside a text field to reveal the map; type
+// "mischief managed" to fold it away again.
+
+const SWEAR = "i solemnly swear that i am up to no good";
+const MANAGED = "mischief managed";
+
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key.length !== 1) {
+    if (e.key === "Backspace") STATE.easterBuffer = STATE.easterBuffer.slice(0, -1);
+    return;
+  }
+  STATE.easterBuffer = (STATE.easterBuffer + e.key.toLowerCase()).slice(-60);
+  if (STATE.easterBuffer.endsWith(SWEAR)) {
+    STATE.easterBuffer = "";
+    setTheme("marauder", "I solemnly swear I am up to no good");
+  } else if (STATE.easterBuffer.endsWith(MANAGED)) {
+    STATE.easterBuffer = "";
+    setTheme(STATE.theme === "marauder" ? "day" : STATE.theme, "Mischief managed");
+  }
+});
+
 // ----- 10. Toast -----
 
 let toastTimer = null;
@@ -1825,6 +1949,7 @@ function init() {
   // Load from API (falls back to seed data on failure), then re-render
   loadMemoriesFromApi().then(ok => {
     renderStrandFilter();
+    STATE.inkNextRender = true;  // ink the live memories onto the page
     renderBoard();
     const footerSource = $("#api-source-label");
     if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
@@ -1891,9 +2016,17 @@ function init() {
     renderBoard();
   });
 
-  // Click the masthead REVIEW indicator to filter board to review-flagged cards.
+  // Click (or Enter/Space on) Hedwig to filter the board to review-flagged cards.
   const reviewBlock = document.querySelector(".review-block");
-  if (reviewBlock) reviewBlock.addEventListener("click", toggleReviewOnlyFilter);
+  if (reviewBlock) {
+    reviewBlock.addEventListener("click", toggleReviewOnlyFilter);
+    reviewBlock.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleReviewOnlyFilter();
+      }
+    });
+  }
 
   // Weekly filter toggle (Closed column rolls over each Monday)
   const weeklyBtn = $("#weekly-filter-btn");
@@ -1928,7 +2061,7 @@ function init() {
       if (pullTodoBtn.disabled) return;
       pullTodoBtn.disabled = true;
       const original = pullTodoBtn.innerHTML;
-      pullTodoBtn.innerHTML = "Pulling from To-Do...";
+      pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
       pullTodoBtn.classList.add("is-pulling");
       try {
         const res = await fetch(`${API_BASE}/api/sync`, {
@@ -1970,7 +2103,14 @@ function init() {
     });
   });
 
-  // Theme toggle removed: HUD is the only theme.
+  // Theme toggle (day <-> night; marauder is easter-egg only, the toggle folds it back to day)
+  const themeBtn = $("#theme-toggle");
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const next = STATE.theme === "day" ? "night" : "day";
+      setTheme(next, `${next} mode`);
+    });
+  }
 
   // Goals editor
   $("#open-goals").addEventListener("click", openGoalsEditor);
@@ -2260,7 +2400,7 @@ function renderRecap(recap) {
       </div>
       <div class="recap-blocks">${recapBlocksHtml(s)}</div>
       <div class="recap-revise" hidden>
-        <textarea class="recap-revise-input" rows="2" placeholder="e.g. 'The Touchstone task was about NIS2 testing for Rob, not a status report' - then Rewrite."></textarea>
+        <textarea class="recap-revise-input" rows="2" placeholder="e.g. 'That task was about NIS2 testing for a peer team, not a status report' - then Rewrite."></textarea>
         <button class="primary-button recap-revise-send">Rewrite this section</button>
       </div>
       ${sourcesHtml}`;
@@ -2510,9 +2650,40 @@ function nodeRadius(n) {
   return 6 + (n.completed ? 2 : 0);
 }
 
+// Theme-aware canvas palette, read from the CSS tokens on <html> so the
+// Constellation matches day / night / marauder. Re-read once per draw (cheap:
+// a handful of getPropertyValue calls), so a theme switch repaints correctly.
+function graphPalette() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name, fb) => (cs.getPropertyValue(name).trim() || fb);
+  const houses = {};
+  Object.keys(LANE_HOUSE).forEach(lane => { houses[lane] = v(`--house-${lane}`, ""); });
+  return {
+    houses,
+    fallback: v("--ink-faded", "#6b5032"),
+    align: v("--graph-align", "rgba(91,67,39,0.42)"),
+    semanticRgb: v("--graph-semantic-rgb", "75, 46, 87"),
+    label: v("--graph-label", "#2a1d10"),
+    halo: v("--graph-halo", "rgba(243,232,204,0.94)"),
+    ring: v("--graph-ring", "#715210"),
+    stroke: v("--graph-stroke", "rgba(42,29,16,0.55)"),
+    glow: parseFloat(v("--graph-glow", "0")) > 0,
+    shadow: v("--graph-shadow", "rgba(40,18,4,0.35)"),
+    displayFont: v("--font-display", "Georgia, serif"),
+    bodyFont: v("--font-body", "Georgia, serif"),
+  };
+}
+
+// House color for a node: the theme's House token for its lane, else the
+// goal's stored color_primary from the API.
+function graphNodeColor(n, pal) {
+  return (n.lane && pal.houses[n.lane]) || n.color || pal.fallback;
+}
+
 function drawGraph() {
   const canvas = $("#graph-canvas");
   const ctx = canvas.getContext("2d");
+  const pal = graphPalette();
   ctx.clearRect(0, 0, GRAPH.width, GRAPH.height);
   // edges
   for (const e of GRAPH.edges) {
@@ -2522,39 +2693,56 @@ function drawGraph() {
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     if (e.kind === "alignment") {
-      ctx.strokeStyle = "rgba(66,200,245,0.28)";
+      ctx.setLineDash([]);
+      ctx.strokeStyle = pal.align;
       ctx.lineWidth = 1.2;
     } else {
       const w = Math.max(0.4, (e.weight || 0.5));
-      ctx.strokeStyle = `rgba(184,120,255,${0.12 + w * 0.35})`;
-      ctx.lineWidth = 0.8 + w;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = `rgba(${pal.semanticRgb},${0.18 + w * 0.4})`;
+      ctx.lineWidth = 0.6 + w;
     }
     ctx.stroke();
   }
+  ctx.setLineDash([]);
   // nodes
   for (const n of GRAPH.nodes) {
     const r = nodeRadius(n);
+    const color = graphNodeColor(n, pal);
+    const isHover = n === GRAPH.hover;
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = n.color || "#42c8f5";
-    ctx.shadowColor = n.color || "#42c8f5";
-    ctx.shadowBlur = n === GRAPH.hover ? 18 : (n.type === "goal" ? 12 : 6);
+    ctx.fillStyle = color;
+    // Night: House-colored glow (stars). Day / marauder: a soft ink shadow.
+    ctx.shadowColor = pal.glow ? color : pal.shadow;
+    ctx.shadowBlur = isHover ? 16 : (n.type === "goal" ? (pal.glow ? 14 : 6) : (pal.glow ? 7 : 3));
+    ctx.shadowOffsetY = pal.glow ? 0 : 1;
     ctx.fill();
     ctx.shadowBlur = 0;
-    if (n.type === "goal" || n === GRAPH.hover) {
+    ctx.shadowOffsetY = 0;
+    // Thin ink outline so pale House colors still read on parchment
+    ctx.strokeStyle = pal.stroke;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    if (n.type === "goal" || isHover) {
       ctx.beginPath();
-      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(230,243,255,0.85)";
-      ctx.lineWidth = 1.4;
+      ctx.arc(n.x, n.y, r + 2.5, 0, Math.PI * 2);
+      ctx.strokeStyle = pal.ring;
+      ctx.lineWidth = n.type === "goal" ? 2 : 1.4;
       ctx.stroke();
     }
-    // goal labels always; task labels on hover
-    if (n.type === "goal" || n === GRAPH.hover) {
-      ctx.font = n.type === "goal" ? "600 12px 'Rajdhani', sans-serif" : "500 11px 'Rajdhani', sans-serif";
-      ctx.fillStyle = "#e6f3ff";
+    // goal labels always; task labels on hover. A halo keeps text legible over edges.
+    if (n.type === "goal" || isHover) {
+      ctx.font = n.type === "goal" ? `700 13px ${pal.displayFont}` : `italic 13px ${pal.bodyFont}`;
       ctx.textAlign = "center";
       const label = n.label.length > 34 ? n.label.slice(0, 33) + "…" : n.label;
-      ctx.fillText(label, n.x, n.y - r - 6);
+      const ty = n.y - r - 8;
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = pal.halo;
+      ctx.strokeText(label, n.x, ty);
+      ctx.fillStyle = pal.label;
+      ctx.fillText(label, n.x, ty);
     }
   }
 }
@@ -2660,9 +2848,9 @@ function wireGraphInteraction() {
       tip.style.display = "block";
       tip.style.left = `${p.x + 14}px`;
       tip.style.top = `${p.y + 14}px`;
-      const meta = n.type === "goal" ? "Connect goal" :
+      const meta = n.type === "goal" ? `Connect goal, House ${houseName(n.lane)}` :
         `${n.column || ""}${n.completed ? " / done" : ""}`;
-      tip.innerHTML = `<strong>${escapeHtml(n.label)}</strong><br><span style="color:var(--muted)">${escapeHtml(meta)}</span>`;
+      tip.innerHTML = `<strong>${escapeHtml(n.label)}</strong><br><span style="color:var(--ink-faded);font-style:italic">${escapeHtml(meta)}</span>`;
     } else if (tip) {
       tip.style.display = "none";
     }
