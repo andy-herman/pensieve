@@ -396,6 +396,69 @@ def create_app() -> FastAPI:
         connections.save_config(settings, setup_dismissed=True)
         return connections.status(settings)
 
+    # ----- Voice capture (speak a task, see pensieve.capture) -----
+
+    @app.get("/api/capture")
+    def capture_info() -> dict[str, Any]:
+        """Where a spoken task would go: source, its lists, and the default list."""
+        from pensieve.capture import available_lists
+
+        try:
+            return available_lists(settings)
+        except Exception as e:
+            return {"source": _effective_source(settings), "enabled": False, "lists": [],
+                    "default": None, "error": str(e)}
+
+    @app.post("/api/capture/parse")
+    def capture_parse(body: dict[str, Any]) -> dict[str, Any]:
+        """Draft a task from a transcript. Creates nothing."""
+        from pensieve.capture import parse_spoken_task
+
+        lists = body.get("lists")
+        lists = [str(x) for x in lists] if isinstance(lists, list) else []
+        try:
+            return parse_spoken_task(settings, str(body.get("text") or ""), lists)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/api/capture/add")
+    def capture_add(body: dict[str, Any]) -> dict[str, Any]:
+        """Create the confirmed task in the user's own list, then pull it back in."""
+        from datetime import date as _date
+
+        from pensieve.capture import NewTask, TaskCreationDisabled, add_task
+
+        due_raw = str(body.get("due_date") or "").strip()
+        try:
+            due = _date.fromisoformat(due_raw) if due_raw else None
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid due_date: {due_raw}") from e
+        task = NewTask(
+            title=str(body.get("title") or ""),
+            notes=str(body.get("notes") or ""),
+            due_date=due,
+            list_name=str(body.get("list_name") or "").strip() or None,
+            importance=str(body.get("importance") or "normal"),
+        )
+        try:
+            created = add_task(settings, task)
+        except TaskCreationDisabled as e:
+            raise HTTPException(status_code=403, detail=str(e)) from e
+        except (ValueError, PermissionError) as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not add the task: {e}") from e
+        # A narrow sync of just that list brings it onto the board (and enriches it).
+        job = start_sync_job(
+            settings=settings,
+            tracker=get_tracker(),
+            src_name=created["source"],
+            list_names=[created["list_name"]] if created.get("list_name") else [],
+            force=False,
+        )
+        created["sync_started"] = job is not None
+        return created
+
     # ----- AI models (in-app model choice, see pensieve.ai_prefs) -----
 
     def _ai_client() -> Any:

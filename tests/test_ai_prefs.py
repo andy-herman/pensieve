@@ -29,7 +29,7 @@ def test_load_defaults_to_inherit_everywhere(tmp_path):
 def test_save_roundtrip_cleans_values(tmp_path):
     s = _settings(tmp_path)
     saved = ai_prefs.save(s, {"default": " claude-sonnet-5.5 ", "recap": "", "bogus": "x"})
-    assert saved == {"default": "claude-sonnet-5.5", "enrichment": None, "recap": None, "goals": None}
+    assert saved == {"default": "claude-sonnet-5.5", "enrichment": None, "recap": None, "goals": None, "capture": None}
     assert ai_prefs.load(s) == saved
     assert json.loads((tmp_path / ai_prefs.FILENAME).read_text(encoding="utf-8"))["default"] == "claude-sonnet-5.5"
 
@@ -85,7 +85,7 @@ def test_get_state_reports_provider_account_and_effective_models(api):
     assert body["account"] == "someone_work"
     assert body["editable"] is True
     assert body["default_effective"] == "gpt-5.4"
-    assert [p["key"] for p in body["purposes"]] == ["enrichment", "recap", "goals"]
+    assert [p["key"] for p in body["purposes"]] == ["enrichment", "recap", "goals", "capture"]
     assert all(p["effective"] == "gpt-5.4" and p["model"] is None for p in body["purposes"])
 
 
@@ -101,7 +101,7 @@ def test_save_applies_and_validates(api):
     r = c.put("/api/ai", json={"default": "claude-sonnet-5.5", "recap": "gpt-5.4"})
     assert r.status_code == 200
     eff = {p["key"]: p["effective"] for p in r.json()["purposes"]}
-    assert eff == {"enrichment": "claude-sonnet-5.5", "recap": "gpt-5.4", "goals": "claude-sonnet-5.5"}
+    assert eff == {"enrichment": "claude-sonnet-5.5", "recap": "gpt-5.4", "goals": "claude-sonnet-5.5", "capture": "claude-sonnet-5.5"}
 
     bad = c.put("/api/ai", json={"default": "not-a-model"})
     assert bad.status_code == 400

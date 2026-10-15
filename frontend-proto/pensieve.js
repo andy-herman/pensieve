@@ -983,7 +983,7 @@ function _isModalOpen(id) {
 }
 
 function anyModalOpen() {
-  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal", "accounts-modal"].some(_isModalOpen);
+  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal", "accounts-modal", "capture-modal"].some(_isModalOpen);
 }
 
 async function refreshMemoriesIfSafe() {
@@ -1863,6 +1863,190 @@ async function saveVial(kind) {
   }
 }
 
+// ----- 6c. Voice capture ("Speak a task") -----
+// Speech is recognized by the browser's built-in recognizer (Edge sends audio
+// to Microsoft's online speech service). The transcript goes to
+// POST /api/capture/parse for a draft; nothing is created until the person
+// clicks Add, which calls POST /api/capture/add (see pensieve/capture).
+const CAPTURE = { rec: null, listening: false, finalText: "", info: null };
+
+function speechRecognizer() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function setCaptureHint(text, isError = false) {
+  const el = $("#capture-hint");
+  el.textContent = text;
+  el.classList.toggle("is-error", !!isError);
+}
+
+async function openCapture() {
+  $("#capture-modal").hidden = false;
+  $("#capture-listen").hidden = false;
+  $("#capture-draft").hidden = true;
+  $("#capture-transcript").textContent = "";
+  $("#capture-text").value = "";
+  CAPTURE.finalText = "";
+  const mic = $("#capture-mic");
+  mic.hidden = !speechRecognizer();
+  setCaptureHint(speechRecognizer()
+    ? "Listening starts when you click the microphone. Say the task, for example \"Send the status report to my manager by Friday.\""
+    : "Speech is not available in this browser; type the task instead.");
+  try {
+    CAPTURE.info = await fetchJson("/api/capture");
+  } catch (_) {
+    CAPTURE.info = { enabled: false, lists: [], error: "Pensieve is offline." };
+  }
+  if (!CAPTURE.info.enabled) {
+    setCaptureHint(CAPTURE.info.error || "Adding tasks is switched off for this source.", true);
+  }
+  if (speechRecognizer() && CAPTURE.info.enabled) startListening();
+  else $("#capture-text").focus();
+}
+
+function closeCapture() {
+  stopListening();
+  $("#capture-modal").hidden = true;
+}
+
+function startListening() {
+  const SR = speechRecognizer();
+  if (!SR || CAPTURE.listening) return;
+  const rec = new SR();
+  rec.lang = navigator.language || "en-US";
+  rec.interimResults = true;
+  rec.continuous = false;  // stops on its own after a pause
+  CAPTURE.finalText = "";
+  rec.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) CAPTURE.finalText += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    const text = `${CAPTURE.finalText} ${interim}`.trim();
+    $("#capture-transcript").textContent = text;
+    $("#capture-text").value = text;
+  };
+  rec.onerror = e => {
+    const why = {
+      "not-allowed": "Microphone access is blocked. Allow it in the address-bar prompt or Edge settings, or type the task.",
+      "no-speech": "Nothing heard. Click the microphone and try again.",
+      "network": "The speech service could not be reached. Type the task instead.",
+      "audio-capture": "No microphone was found.",
+    }[e.error] || `Speech stopped (${e.error}).`;
+    setCaptureHint(why, true);
+  };
+  rec.onend = () => {
+    CAPTURE.listening = false;
+    const mic = $("#capture-mic");
+    mic.classList.remove("is-listening");
+    mic.setAttribute("aria-pressed", "false");
+    mic.setAttribute("aria-label", "Start listening");
+    if (CAPTURE.finalText.trim() && !$("#capture-modal").hidden) understandCapture();
+  };
+  try {
+    rec.start();
+  } catch (_) {
+    return;
+  }
+  CAPTURE.rec = rec;
+  CAPTURE.listening = true;
+  const mic = $("#capture-mic");
+  mic.classList.add("is-listening");
+  mic.setAttribute("aria-pressed", "true");
+  mic.setAttribute("aria-label", "Stop listening");
+  setCaptureHint("Listening... stop talking when you are done.");
+}
+
+function stopListening() {
+  if (CAPTURE.rec && CAPTURE.listening) {
+    try { CAPTURE.rec.stop(); } catch (_) { /* already stopped */ }
+  }
+}
+
+async function understandCapture() {
+  const text = $("#capture-text").value.trim();
+  if (!text) { setCaptureHint("Say or type a task first.", true); return; }
+  stopListening();
+  const btn = $("#capture-understand");
+  btn.disabled = true;
+  setCaptureHint("Turning that into a task...");
+  try {
+    const res = await fetch(`${API_BASE}/api/capture/parse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, lists: (CAPTURE.info && CAPTURE.info.lists) || [] }),
+    });
+    const draft = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(draft.detail || `${res.status}`);
+    showCaptureDraft(draft);
+  } catch (e) {
+    setCaptureHint(`Could not read that: ${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showCaptureDraft(draft) {
+  const info = CAPTURE.info || { lists: [] };
+  $("#cap-title").value = draft.title || "";
+  $("#cap-notes").value = draft.notes || "";
+  $("#cap-due").value = draft.due_date || "";
+  $("#cap-high").checked = draft.importance === "high";
+  const chosen = draft.list_name || info.default || "";
+  $("#cap-list").innerHTML = (info.lists || []).map(n =>
+    `<option value="${escapeHtml(n)}"${n === chosen ? " selected" : ""}>${escapeHtml(n)}</option>`).join("");
+  const where = info.source === "personal_graph" ? "Microsoft To Do" : "Outlook";
+  $("#capture-where").textContent = draft.ai === false
+    ? `The AI was unavailable, so the words became the title. It will be added to ${where}.`
+    : `It will be added to ${where}. Check it, then Add.`;
+  $("#capture-listen").hidden = true;
+  $("#capture-draft").hidden = false;
+  $("#cap-title").focus();
+}
+
+async function addCapturedTask(e) {
+  e.preventDefault();
+  const btn = $("#capture-add");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/capture/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: $("#cap-title").value,
+        notes: $("#cap-notes").value,
+        due_date: $("#cap-due").value || null,
+        list_name: $("#cap-list").value || null,
+        importance: $("#cap-high").checked ? "high" : "normal",
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `${res.status}`);
+    closeCapture();
+    toast(`Added to ${body.list_name || "your list"}. It will surface on the board in a moment.`);
+    if (body.sync_started) refreshAfterSync();
+  } catch (err) {
+    $("#capture-where").textContent = `Not added: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Wait for the narrow sync that capture started, then refresh the board.
+async function refreshAfterSync() {
+  const start = Date.now();
+  while (Date.now() - start < 180000) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const st = await fetchJson("/api/sync/status");
+      if (st.status !== "running") break;
+    } catch (_) { break; }
+  }
+  refreshMemoriesIfSafe();
+}
+
 // ----- 7a. Accounts ("Connect your accounts") -----
 // First-run screen and More > Accounts. Each person connects their own
 // Microsoft To Do and GitHub Copilot on their own PC (see pensieve/connections.py).
@@ -2036,7 +2220,10 @@ async function finishAccounts(dismissOnly) {
 // Picks the GitHub Copilot model for each job (GET/PUT /api/ai). Choices
 // apply on the backend's next AI call; blank selects inherit the default.
 const AI_EDIT = { state: null, models: [] };
-const AI_PURPOSE_KEYS = ["enrichment", "recap", "goals"];
+// Purpose keys come from the backend (GET /api/ai), so new jobs appear here automatically.
+function aiPurposeKeys() {
+  return ((AI_EDIT.state && AI_EDIT.state.purposes) || []).map(p => p.key);
+}
 
 async function openAiModels() {
   $("#ai-modal").hidden = false;
@@ -2099,7 +2286,7 @@ function renderAiModels() {
 // Purpose rows read "Use default (X)"; keep X in step with the Default row.
 function refreshAiInheritLabels() {
   const eff = aiDefaultEffective();
-  AI_PURPOSE_KEYS.forEach(k => {
+  aiPurposeKeys().forEach(k => {
     const first = $(`#ai-sel-${k} option[value=""]`);
     if (first) first.textContent = `Use default (${eff})`;
   });
@@ -2136,7 +2323,7 @@ async function testAiModel(btn) {
 
 async function saveAiModels() {
   const payload = {};
-  ["default", ...AI_PURPOSE_KEYS].forEach(k => {
+  ["default", ...aiPurposeKeys()].forEach(k => {
     const sel = $(`#ai-sel-${k}`);
     payload[k] = sel ? sel.value : "";
   });
@@ -2738,6 +2925,19 @@ function init() {
     });
   }
 
+  // Voice capture
+  $("#speak-btn").addEventListener("click", openCapture);
+  $("#capture-mic").addEventListener("click", () => (CAPTURE.listening ? stopListening() : startListening()));
+  $("#capture-understand").addEventListener("click", understandCapture);
+  $("#capture-again").addEventListener("click", () => openCapture());
+  $("#capture-draft").addEventListener("submit", addCapturedTask);
+  $("#capture-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "capture") closeCapture();
+  });
+  $("#capture-text").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); understandCapture(); }
+  });
+
   // Accounts
   $("#open-accounts").addEventListener("click", () => openAccounts());
   $("#accounts-modal").addEventListener("click", onAccountsClick);
@@ -2869,6 +3069,7 @@ function init() {
       closeAchievementsModal();
       closeAiModal();
       closeAccounts();
+      closeCapture();
     }
   });
 }

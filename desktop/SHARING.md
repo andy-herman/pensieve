@@ -11,7 +11,7 @@ under More > Accounts):
 
 1. **Sign in with Microsoft** (Microsoft To Do). Pensieve shows a short code;
    they click "Open sign-in page", enter the code, and approve Pensieve's
-   read-only access to their To Do lists. This is how tasks from the new
+   access to their To Do lists (read, plus adding tasks they dictate). This is how tasks from the new
    Outlook and outlook.com reach Pensieve.
 2. **Sign in with GitHub** (GitHub Copilot). Same pattern: a code from
    GitHub's own Copilot sign-in. Their Copilot plan (Free, Pro, or Business)
@@ -19,6 +19,11 @@ under More > Accounts):
 3. **Read tasks from**: Microsoft To Do (new Outlook, outlook.com) or Outlook
    desktop on this PC (classic Outlook only).
 4. **Start using Pensieve** runs the first sync.
+
+After that, **Speak a task** (toolbar) lets them dictate a task. Edge asks
+once for microphone access; the words are recognized by Edge's built-in
+speech service, Copilot drafts the task, and nothing is added until they
+click Add.
 
 ## One-time setup by you: the Microsoft app id
 
@@ -36,7 +41,9 @@ forbid them).
 3. **Authentication > Advanced settings > Allow public client flows: Yes**.
    Save. (Pensieve signs in with device codes, which need this.)
 4. **API permissions > Add a permission > Microsoft Graph > Delegated >
-   `Tasks.Read`**. Personal accounts approve it themselves; no admin consent.
+   `Tasks.ReadWrite`**. Personal accounts approve it themselves; no admin
+   consent. Pensieve only reads, plus adds a new task when someone confirms
+   one in Speak a task; it never edits or deletes their tasks.
 5. Copy the **Application (client) ID** into the shared copy's `.env`:
    `PERSONAL_GRAPH_CLIENT_ID=<id>`.
 

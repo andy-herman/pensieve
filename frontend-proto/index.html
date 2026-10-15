@@ -114,6 +114,7 @@
 
         <!-- Actions: Hedwig's errand + overflow for the rest -->
         <div class="tb-zone tb-zone--actions">
+          <button id="speak-btn" class="ghost-button speak-btn" title="Say a new task out loud and Pensieve adds it to your list">&#x1F399;&#xFE0F; Speak a task</button>
           <button id="pull-todo-btn" class="ghost-button pull-todo-btn" title="Send Hedwig to fetch new tasks from Microsoft To-Do">&#x1F989; Pull from To-Do</button>
           <div class="cmd-pop" id="more-pop-wrap">
             <button type="button" id="more-pop-btn" class="ghost-button cmd-more-btn"
@@ -280,6 +281,51 @@
           <button id="goals-save" class="primary-button">Save goals</button>
         </div>
         <p class="goals-footnote">Saved to <code>data/connect-goals.json</code>. Used by the AI to align tasks to your goals on the next sync.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="capture-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="capture"></div>
+    <article class="modal-card capture-modal-card" role="dialog" aria-modal="true" aria-labelledby="capture-title">
+      <button class="modal-close" data-close="capture" aria-label="Close">x</button>
+      <div class="modal-body">
+        <h2 id="capture-title" class="goals-title">Speak a task</h2>
+
+        <div class="capture-listen" id="capture-listen">
+          <button type="button" class="capture-mic" id="capture-mic" aria-pressed="false" aria-label="Start listening">
+            <span aria-hidden="true">&#x1F399;&#xFE0F;</span>
+          </button>
+          <p class="capture-hint" id="capture-hint">Click the microphone and say the task, for example "Send the status report to my manager by Friday."</p>
+          <p class="capture-transcript" id="capture-transcript" aria-live="polite"></p>
+          <textarea id="capture-text" class="modal-textarea capture-text" rows="2" placeholder="...or type it here"></textarea>
+          <div class="goals-actions capture-actions">
+            <button type="button" id="capture-understand" class="primary-button">Make it a task</button>
+          </div>
+        </div>
+
+        <form class="capture-draft" id="capture-draft" hidden>
+          <label class="capture-field">Title
+            <input id="cap-title" class="goal-input" maxlength="255" required />
+          </label>
+          <label class="capture-field">Notes
+            <textarea id="cap-notes" class="goal-textarea" rows="2"></textarea>
+          </label>
+          <div class="capture-row">
+            <label class="capture-field">Due
+              <input type="date" id="cap-due" class="goal-input" />
+            </label>
+            <label class="capture-field">List
+              <select id="cap-list" class="ai-select"></select>
+            </label>
+            <label class="capture-check"><input type="checkbox" id="cap-high" /> High importance</label>
+          </div>
+          <p class="capture-where" id="capture-where"></p>
+          <div class="goals-actions capture-actions">
+            <button type="button" id="capture-again" class="ghost-button">Start over</button>
+            <button type="submit" id="capture-add" class="primary-button">Add task</button>
+          </div>
+        </form>
       </div>
     </article>
   </div>

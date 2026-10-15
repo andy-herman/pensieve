@@ -1555,6 +1555,49 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 
 .goals-modal-card { max-width: 880px; }
 
+/* ---- Voice capture ("Speak a task") ---- */
+.speak-btn { white-space: nowrap; }
+.capture-modal-card { max-width: 620px; }
+.capture-listen { text-align: center; }
+.capture-mic {
+  width: 88px;
+  height: 88px;
+  margin: var(--sp-2) auto var(--sp-3);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--candle-ink);
+  background: radial-gradient(circle at 40% 35%, var(--parchment-1), var(--parchment-3));
+  font-size: 34px;
+  cursor: pointer;
+  box-shadow: 0 3px 10px var(--shadow-soft);
+  transition: transform var(--t-fast) ease, box-shadow var(--t-med) ease;
+}
+.capture-mic:hover { transform: translateY(-1px); }
+.capture-mic:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.capture-mic.is-listening {
+  border-color: var(--ember-ink);
+  animation: capture-pulse 1.4s ease-in-out infinite;
+}
+@keyframes capture-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ember-ink) 45%, transparent); }
+  50% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--ember-ink) 0%, transparent); }
+}
+.capture-hint { margin: 0 0 var(--sp-2); font-family: var(--font-script); font-style: italic; font-size: 14px; color: var(--ink-soft); }
+.capture-hint.is-error { color: var(--ember-ink); font-style: normal; }
+.capture-transcript { min-height: 1.6em; margin: 0 0 var(--sp-3); font-size: 18px; color: var(--ink); }
+.capture-text { width: 100%; padding: 8px 10px; font-size: 15px; resize: vertical; }
+.capture-draft { display: grid; gap: var(--sp-3); }
+.capture-field { display: grid; gap: 4px; font-family: var(--font-display); font-size: 12px; letter-spacing: 0.5px; color: var(--ink-soft); }
+.capture-field .goal-input, .capture-field .goal-textarea { width: 100%; padding: 6px 8px; font-size: 15px; }
+.capture-row { display: grid; grid-template-columns: 1fr 1.3fr auto; gap: var(--sp-3); align-items: end; }
+.capture-check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); padding-bottom: 6px; }
+.capture-check input { accent-color: var(--candle-ink); }
+.capture-where { margin: 0; font-family: var(--font-script); font-style: italic; font-size: 14px; color: var(--ink-soft); }
+.capture-actions { justify-content: space-between; }
+@media (max-width: 640px) { .capture-row { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .capture-mic.is-listening { animation: none; } }
+
 /* ---- Accounts (first-run "Connect your accounts") ---- */
 .accounts-modal-card { max-width: 680px; }
 .accounts-emblem { display: block; width: 64px; height: auto; margin: 0 auto var(--sp-2); filter: drop-shadow(0 3px 6px var(--shadow-soft)); }

@@ -25,6 +25,7 @@ PURPOSES: dict[str, str] = {
     "enrichment": "Sync enrichment and Regenerate",
     "recap": "Connect recaps",
     "goals": "Goals PDF import",
+    "capture": "Voice capture",
 }
 _KEYS = ("default", *PURPOSES)
 

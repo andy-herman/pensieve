@@ -57,6 +57,12 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   in `pensieve.sync`. The flag is intentionally separate from
   `PENSIEVE_MIRROR_TO_SOURCE` because completion is higher-impact than a
   category tag (visible to delegates, propagates to shared lists).
+- **Voice capture is the one additive writeback.** `pensieve/capture/`
+  (outside `pensieve/sources` on purpose) turns a spoken note into a draft
+  (Copilot, `capture` model purpose) and, only after the user confirms it in
+  the dashboard, creates a NEW task: an Outlook TaskItem for `outlook_com`,
+  or `POST /me/todo/lists/{id}/tasks` for `personal_graph`. It never edits,
+  completes, or deletes existing tasks. Gated by `PENSIEVE_ALLOW_TASK_CREATE`.
 - **Reversibility for any writeback.** Clearing the mirror tag (e.g.
   via `OutlookCOMSink.clear_column_tag`) restores the source task exactly
   to its pre-Pensieve state. Un-completing a task via the completion

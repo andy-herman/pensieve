@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Copilot CLI binary. Blank = COPILOT_CLI_PATH env, then the global npm
     # install, then the SDK's own download.
     copilot_cli_path: str = Field(default="", alias="COPILOT_CLI_PATH")
+    # Voice capture may create NEW tasks in the user's own list after they
+    # confirm (never edits or deletes). The one additive writeback.
+    allow_task_create: bool = Field(default=True, alias="PENSIEVE_ALLOW_TASK_CREATE")
     # Start the Copilot CLI in the background when the API starts (tests turn this off).
     copilot_prewarm: bool = Field(default=True, alias="COPILOT_PREWARM")
 
@@ -77,8 +80,10 @@ class Settings(BaseSettings):
         default="https://login.microsoftonline.com/consumers",
         alias="PERSONAL_GRAPH_AUTHORITY",
     )
+    # ReadWrite so voice capture can ADD new tasks; Pensieve never edits or
+    # deletes existing ones (see pensieve/capture/creators.py).
     personal_graph_scopes: str = Field(
-        default="Tasks.Read", alias="PERSONAL_GRAPH_SCOPES"
+        default="Tasks.ReadWrite", alias="PERSONAL_GRAPH_SCOPES"
     )
     personal_graph_token_cache_name: str = Field(
         default="personal-graph-token-cache.bin",
