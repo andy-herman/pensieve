@@ -308,9 +308,18 @@ const API_BASE = (() => {
 const STATE = {
   goals: loadGoals(),
   goalsMeta: {},
-  memories: SEED_MEMORIES.map(m => ({ ...m })),
+  // Empty until the API answers. The seed memories are only a fallback for
+  // when the API is unreachable, so they never flash before live data.
+  memories: [],
+  booting: true,          // true until the first API answer (or failure)
+  boardSig: "",           // last /api/memories + /api/goals payload; unchanged polls skip the re-render
+  boardChanged: false,    // set by loadMemoriesFromApi
+  mutationEpoch: 0,       // bumped on every local card change (see noteLocalMutation)
+  gardenAt: 0,            // when the Garden (health, quests, achievements) was last fetched
+  boardDirty: false,      // the board changed while another page was showing
+  renderPending: false,   // a render was requested mid-drag; run it on drop/dragend
   view: "lifecycle",      // "lifecycle" | "lanes"
-  page: "board",          // "board" | "recap" | "graph"
+  page: "board",          // "board" | "recap" | "graph" | "docs"
   weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
   theme: loadTheme(),     // "day" | "night" | "marauder"
   easterBuffer: "",       // last few keystrokes, for the Marauder's Map easter egg
@@ -331,6 +340,9 @@ const STATE = {
     return new Set();
   })(),
 };
+
+// Active card drag (see section 9). Declared up here so everything can read it.
+let DRAG = { id: null, fromCol: null, el: null, overCol: null };
 
 function loadGoals() {
   try {
@@ -363,8 +375,12 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
+// One MediaQueryList, queried live (the footprint trail asks on every few
+// dragover events, so avoid re-parsing the query each time).
+const REDUCED_MOTION_MQL = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+
 function prefersReducedMotion() {
-  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  return !!(REDUCED_MOTION_MQL && REDUCED_MOTION_MQL.matches);
 }
 
 // ----- 5. Helpers -----
@@ -474,43 +490,105 @@ async function fetchJson(path, opts = {}) {
   return res.json();
 }
 
-async function loadMemoriesFromApi() {
+async function fetchText(path, opts = {}) {
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+  return res.text();
+}
+
+// Requests where only the newest answer matters (semantic search, graph,
+// docs). Starting a new one aborts the previous so a slow, older response can
+// never land on top of a newer one.
+const SUPERSEDE = {};
+function supersede(key) {
+  if (SUPERSEDE[key]) SUPERSEDE[key].abort();
+  const ctrl = new AbortController();
+  SUPERSEDE[key] = ctrl;
+  return ctrl.signal;
+}
+function isAbortError(e) { return !!e && e.name === "AbortError"; }
+
+// Dashboard ids are "mem_<source id>"; the API expects the bare source id.
+function apiIdOf(memoryId) { return String(memoryId).replace(/^mem_/, ""); }
+
+function setFooterSource() {
+  const el = $("#api-source-label");
+  if (el) el.textContent = STATE.apiSourceLabel;
+}
+
+// Call before changing a memory locally. A poll that was already in flight
+// then discards its (older) snapshot instead of reverting the change on screen.
+function noteLocalMutation() {
+  STATE.mutationEpoch++;
+  STATE.boardSig = "";  // the next successful poll re-applies server state, even if unchanged
+}
+
+// Merge the server-authoritative copy of a memory returned by a PATCH.
+function mergeServerMemory(memory) {
+  if (!memory || !memory.id) return;
+  const idx = STATE.memories.findIndex(x => x.id === memory.id);
+  if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...memory };
+}
+
+// Loads the board snapshot (health check, memories, goals) in parallel and
+// returns true when the API answered. STATE.boardChanged tells the caller
+// whether the payload differs from what is already on screen. The Garden
+// (health pill, quests, achievements) refreshes in the background so it
+// never delays the cards.
+async function loadMemoriesFromApi({ garden = true } = {}) {
+  const epoch = STATE.mutationEpoch;
   try {
-    const health = await fetchJson("/api/healthz");
+    const [health, memText, goalsResp] = await Promise.all([
+      fetchJson("/api/healthz").catch(() => null),
+      fetchText("/api/memories"),
+      fetchJson("/api/goals").catch(() => null),  // keep local goals on failure
+    ]);
     STATE.apiConnected = true;
-    const data = await fetchJson("/api/memories");
-    if (Array.isArray(data.memories) && data.memories.length > 0) {
-      STATE.memories = data.memories.map(m => ({ ...m, column: m.column || "memory" }));
-      STATE.apiSourceLabel = `${health.default_source || "live"} (${data.count} memories)`;
-    } else {
-      STATE.memories = [];
-      STATE.apiSourceLabel = "API connected (0 memories, run `pensieve sync`)";
-    }
-    // Try to load Connect goals from the API too; fall back to localStorage defaults.
-    try {
-      const goalsResp = await fetchJson("/api/goals");
-      if (Array.isArray(goalsResp.goals) && goalsResp.goals.length > 0) {
+    STATE.booting = false;
+    const data = JSON.parse(memText);
+    const sig = memText + "\n" + (goalsResp ? JSON.stringify(goalsResp) : "");
+    // A card was moved or edited while this request was in flight: keep the
+    // optimistic local state; the next poll reconciles with the server.
+    STATE.boardChanged = sig !== STATE.boardSig && STATE.mutationEpoch === epoch;
+    if (STATE.boardChanged) {
+      STATE.boardSig = sig;
+      const mems = Array.isArray(data.memories) ? data.memories : [];
+      STATE.memories = mems.map(m => ({ ...m, column: m.column || "memory" }));
+      if (goalsResp && Array.isArray(goalsResp.goals) && goalsResp.goals.length > 0) {
         STATE.goals = goalsResp.goals.map(g => ({ ...g }));
       }
-      if (goalsResp && goalsResp._meta) {
-        STATE.goalsMeta = goalsResp._meta;
-      }
-    } catch (e) { /* keep local */ }
-    // Garden v1: refresh the board-health pill alongside the memories so
-    // Garden v1: refresh the board-health pill alongside the memories so
-    // the score reflects the same snapshot the user is looking at.
-    await loadBoardHealth();
-    // Garden v2: refresh today's quest panel + completion state.
-    await loadQuests();
-    // Garden v3: re-evaluate achievements; surfaces confetti on new unlocks.
-    await loadAchievements();
+      if (goalsResp && goalsResp._meta) STATE.goalsMeta = goalsResp._meta;
+    }
+    STATE.apiSourceLabel = (Array.isArray(data.memories) && data.memories.length > 0)
+      ? `${(health && health.default_source) || "live"} (${data.count} memories)`
+      : "API connected (0 memories, run `pensieve sync`)";
+    if (garden) refreshGarden();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
-    STATE.apiSourceLabel = "offline (seed data)";
+    if (STATE.booting) {
+      // Never reached the API this session: show the bundled demo memories.
+      STATE.booting = false;
+      STATE.memories = SEED_MEMORIES.map(m => ({ ...m }));
+      STATE.boardChanged = true;
+      STATE.apiSourceLabel = "offline (seed data)";
+    } else {
+      STATE.boardChanged = false;  // keep whatever is on screen
+      if (STATE.apiSourceLabel !== "offline (seed data)") {
+        STATE.apiSourceLabel = "offline (showing last refresh)";
+      }
+    }
     console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}. Using seed data.`);
     return false;
   }
+}
+
+// Garden v1-v3: health pill, quests, achievements, fetched in parallel.
+const GARDEN_MAX_AGE_MS = 5 * 60 * 1000;
+function refreshGarden() {
+  if (!STATE.apiConnected) return Promise.resolve();
+  STATE.gardenAt = Date.now();
+  return Promise.all([loadBoardHealth(), loadQuests(), loadAchievements()]);
 }
 
 // --- Garden v1: Board Health fetch + render -----------------------------
@@ -767,8 +845,8 @@ function renderAchievementsModal() {
     const when = def.unlocked_at
       ? `<div class="achievement-unlocked-at">${_formatUnlockedDate(def.unlocked_at)}</div>`
       : "";
-    const safeName = _escape(def.name);
-    const safeDesc = _escape(def.description || "");
+    const safeName = escapeHtml(def.name);
+    const safeDesc = escapeHtml(def.description || "");
     return `<div class="achievement-card" data-state="${state}" title="${safeDesc}">
       <div class="achievement-emoji" aria-hidden="true">${def.emoji}</div>
       <div class="achievement-name">${safeName}</div>
@@ -787,12 +865,6 @@ function _formatUnlockedDate(iso) {
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   } catch (e) { return ""; }
-}
-
-function _escape(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function openAchievementsModal() {
@@ -883,33 +955,47 @@ function burstConfettiAt(targetEl) {
 //   - the user is editing Connect goals (`#goals-modal` open)
 //   - the user is viewing achievements (`#achievements-modal` open)
 //   - a card is mid-drag (DRAG.id set)
-//   - a PATCH from the dashboard is in flight (patchInFlight > 0)
+//   - a PATCH from the dashboard is in flight (patchesInFlight > 0)
 //   - the document is hidden (Page Visibility API) - saves API calls when the tab is in the background
+//   - another page (Recap, Graph, Docs) is showing; switching back to Board refreshes
 // `pollInFlight` prevents stacked refreshes if the network call takes longer than the interval.
+// An unchanged snapshot skips the re-render entirely, and a changed one only
+// touches the cards that differ (see renderBoard), so scroll, focus, hover,
+// and open menus survive a refresh. The Garden refetches when the board
+// changed, or every GARDEN_MAX_AGE_MS so day rollovers still show up.
 const AUTO_REFRESH_MS = 30000;
 let pollInFlight = false;
-window.__pensievePatchInFlight = 0;
+let patchesInFlight = 0;
+
+// Wrap a dashboard write so the poll stands down while it is in flight.
+async function trackPatch(fn) {
+  patchesInFlight++;
+  try {
+    return await fn();
+  } finally {
+    patchesInFlight = Math.max(0, patchesInFlight - 1);
+  }
+}
 
 function _isModalOpen(id) {
   const el = document.getElementById(id);
   return !!(el && !el.hidden);
 }
 
+function anyModalOpen() {
+  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal"].some(_isModalOpen);
+}
+
 async function refreshMemoriesIfSafe() {
-  if (document.hidden) return;
-  if (pollInFlight) return;
-  if (window.__pensievePatchInFlight > 0) return;
-  if (typeof DRAG !== "undefined" && DRAG && DRAG.id) return;
-  if (
-    _isModalOpen("card-modal") ||
-    _isModalOpen("goals-modal") ||
-    _isModalOpen("vial-modal") ||
-    _isModalOpen("achievements-modal")
-  ) return;
+  if (document.hidden || pollInFlight || patchesInFlight > 0) return;
+  if (DRAG.id || anyModalOpen() || STATE.page !== "board") return;
   pollInFlight = true;
   try {
-    const ok = await loadMemoriesFromApi();
-    if (ok) {
+    const ok = await loadMemoriesFromApi({ garden: false });
+    setFooterSource();
+    if (!ok) return;
+    if (STATE.boardChanged || Date.now() - STATE.gardenAt > GARDEN_MAX_AGE_MS) refreshGarden();
+    if (STATE.boardChanged) {
       renderStrandFilter();
       renderBoard();
     }
@@ -943,8 +1029,7 @@ async function regenerateMemory(memoryId) {
     btn.innerHTML = "&#x2728; Brewing...";
   }
   try {
-    const apiId = memoryId.replace(/^mem_/, "");
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/regenerate`, {
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -957,21 +1042,20 @@ async function regenerateMemory(memoryId) {
     if (!fresh) throw new Error("API returned no memory");
     const newId = `mem_${fresh.source_task_id || fresh.id}`;
     fresh.id = newId;
+    noteLocalMutation();
     const idx = STATE.memories.findIndex(x => x.id === memoryId);
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
     // Garden v1+v2+v3: regenerate is a tend - refresh pill, quests, and achievements.
-    loadBoardHealth();
-    loadQuests();
-    loadAchievements();
-    // Re-open the modal with the regenerated memory so the user sees the new text live.
-    const refreshed = STATE.memories[idx] || fresh;
-    openModal(refreshed);
+    refreshGarden();
+    // Show the regenerated text live, but only if this card's modal is still
+    // open (brewing takes a while; never pop a closed or different card back up).
+    if (cardModalShows(memoryId)) openModal(STATE.memories[idx] || fresh);
     toast(`Regenerated (+${body.tokens_used || 0} tokens)`);
   } catch (e) {
     toast(`Regenerate failed: ${e.message}`);
-    if (btn) {
+    if (btn && btn.isConnected) {
       btn.disabled = false;
       btn.classList.remove("is-regenerating");
       btn.innerHTML = original;
@@ -1011,74 +1095,82 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
   throw new Error("sync timed out");
 }
 
+// PATCH a memory (`suffix` is "" for the general edit endpoint or "/column"),
+// merge the server-authoritative copy back into STATE, and return the parsed
+// payload. Throws with a short message on failure.
+async function patchMemoryApi(memoryId, suffix, body) {
+  return trackPatch(async () => {
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}${suffix}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status}: ${text.slice(0, 120)}`);
+    }
+    // The API returns the enriched memory so freshness updates in place
+    // (the dot must refresh, not just the score pill). Best-effort parse.
+    const payload = (await res.json().catch(() => null)) || {};
+    if (payload.memory) mergeServerMemory(payload.memory);
+    // If we got here, the API is up. Flip the flag so UI affordances that
+    // gate on apiConnected (e.g. semantic search) work without a reload.
+    if (!STATE.apiConnected) {
+      STATE.apiConnected = true;
+      if (STATE.apiSourceLabel === "offline (seed data)") {
+        STATE.apiSourceLabel = "live (reconnected)";
+        setFooterSource();
+      }
+    }
+    return payload;
+  });
+}
+
 async function persistColumnChange(memoryId, column) {
   // Always attempt the PATCH. Gating this on `apiConnected` caused silent data
   // loss when the dashboard first loaded against a down server (apiConnected
   // stuck on false), the user later dragged cards, and then Pull-from-To-Do
   // succeeded and triggered loadMemoriesFromApi which overwrote the un-saved
   // local drags with Chroma's columns.
-  window.__pensievePatchInFlight++;
   try {
-    // memoryId in dashboard is "mem_<source_id>"; API expects bare source id.
-    const apiId = memoryId.replace(/^mem_/, "");
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/column`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ column }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status}: ${text.slice(0, 120)}`);
-    }
+    const payload = await patchMemoryApi(memoryId, "/column", { column });
     // Surface the completion-mirror outcome so the user knows whether the
     // close also propagated to Microsoft To-Do (only fires when dragging to
     // 'closed' AND PENSIEVE_MIRROR_COMPLETION=true).
-    try {
-      const payload = await res.json();
-      const cm = payload && payload.completion_mirror;
-      if (cm && cm.reason === "ok") {
-        toast("Marked complete in To-Do");
-      } else if (cm && cm.reason && cm.reason.startsWith("sink-error")) {
-        toast(`Closed locally but To-Do writeback failed: ${cm.reason}`);
-      } else if (cm && cm.reason === "task-not-found-at-source") {
-        toast("Closed locally - upstream task not found in To-Do");
-      }
-      // Garden v1: the API returns the enriched memory so we can update
-      // freshness in place (the dot must refresh, not just the score pill).
-      if (payload && payload.memory) {
-        const idx = STATE.memories.findIndex(x => x.id === payload.memory.id);
-        if (idx >= 0) {
-          STATE.memories[idx] = { ...STATE.memories[idx], ...payload.memory };
-        }
-      }
-    } catch (_) { /* response body parsing is best-effort */ }
+    const cm = payload.completion_mirror;
+    if (cm && cm.reason === "ok") {
+      toast("Marked complete in To-Do");
+    } else if (cm && cm.reason && cm.reason.startsWith("sink-error")) {
+      toast(`Closed locally but To-Do writeback failed: ${cm.reason}`);
+    } else if (cm && cm.reason === "task-not-found-at-source") {
+      toast("Closed locally - upstream task not found in To-Do");
+    }
+    renderBoard();
     // Garden v1+v2+v3: refresh pill, quest panel, achievements so they all
     // reflect this tend (and a potential confetti burst on new unlocks).
-    loadBoardHealth().then(() => renderBoard());
-    loadQuests();
-    loadAchievements();
-    // If we got here, the API is up. Flip the flag so the next render of UI
-    // affordances that gate on apiConnected (e.g. semantic search) starts
-    // working without forcing a page reload.
-    if (!STATE.apiConnected) {
-      STATE.apiConnected = true;
-      const footerSource = $("#api-source-label");
-      if (footerSource && STATE.apiSourceLabel === "offline (seed data)") {
-        STATE.apiSourceLabel = "live (reconnected)";
-        footerSource.textContent = STATE.apiSourceLabel;
-      }
-    }
+    refreshGarden();
   } catch (e) {
     // Loud toast so the user knows the drag did NOT persist and the next
     // Pull-from-To-Do or Refresh will revert this card.
     toast(`Move not saved (${e.message}) - card will revert on next refresh`);
-  } finally {
-    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
+  }
+}
+
+// Houses view drop: persist the new Connect alignment (it used to live only
+// in the browser and silently revert on the next 30s refresh).
+async function persistGoalAlignment(memoryId, goalIds) {
+  try {
+    await patchMemoryApi(memoryId, "", { connect_goal_ids: goalIds });
+    renderBoard();
+    refreshGarden();
+  } catch (e) {
+    toast(`House change not saved (${e.message}) - card will revert on next refresh`);
   }
 }
 
 async function runSemanticSearch(q) {
   if (!q || !q.trim()) {
+    supersede("search");  // drop any query still in flight
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     renderBoard();
@@ -1088,8 +1180,9 @@ async function runSemanticSearch(q) {
     toast("Semantic search needs the API server (run `pensieve serve`)");
     return;
   }
+  const signal = supersede("search");
   try {
-    const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}&top_k=20`);
+    const data = await fetchJson(`/api/search?q=${encodeURIComponent(q)}&top_k=20`, { signal });
     STATE.semanticResultIds = new Set((data.memories || []).map(m => m.id));
     STATE.semanticQuery = q;
     if (STATE.semanticResultIds.size === 0) {
@@ -1097,7 +1190,7 @@ async function runSemanticSearch(q) {
     }
     renderBoard();
   } catch (e) {
-    toast(`Search failed: ${e.message}`);
+    if (!isAbortError(e)) toast(`Search failed: ${e.message}`);
   }
 }
 
@@ -1113,17 +1206,38 @@ function applyTheme() {
     btn.setAttribute("aria-label", `Switch to ${next} mode`);
     btn.title = STATE.theme === "marauder" ? "Mischief managed: back to day" : `Switch to ${next} mode`;
   }
-  // Canvas colors come from theme tokens; repaint the Constellation if visible.
-  if (typeof GRAPH !== "undefined" && STATE.page === "graph" && GRAPH.nodes.length && !GRAPH.raf) {
-    drawGraph();
-  }
+  // Canvas colors come from theme tokens; drop the cached palette and repaint
+  // the Constellation if it is visible and settled.
+  GRAPH.pal = null;
+  if (STATE.page === "graph" && GRAPH.nodes.length && !GRAPH.raf) drawGraph();
 }
 
+// Theme switches crossfade the whole page as one GPU snapshot (View
+// Transitions) instead of letting each surface run its own CSS transition,
+// which repainted every column for ~0.6s and showed half-switched states.
+// Falls back to the plain switch where unsupported or with reduced motion.
 function setTheme(theme, announce) {
-  STATE.theme = theme;
-  saveTheme();
-  applyTheme();
-  if (announce) toast(announce);
+  const apply = () => {
+    STATE.theme = theme;
+    saveTheme();
+    applyTheme();
+    if (announce) toast(announce);
+  };
+  const root = document.documentElement;
+  if (!document.startViewTransition || prefersReducedMotion() || document.hidden) {
+    apply();
+    return;
+  }
+  const done = () => root.classList.remove("theme-switching");
+  root.classList.add("theme-switching");  // CSS: transitions off, so the new snapshot is final
+  try {
+    const vt = document.startViewTransition(apply);
+    vt.ready.catch(() => { /* skipped transition: apply still ran, nothing to do */ });
+    vt.finished.then(done, done);
+  } catch (e) {
+    done();
+    apply();
+  }
 }
 
 function applyView() {
@@ -1135,150 +1249,198 @@ function applyView() {
 
 function renderStrandFilter() {
   const root = $("#strand-filter");
-  root.innerHTML = "";
   const usedStrandIds = new Set();
   STATE.memories.forEach(m => { if (m.suggested_strand) usedStrandIds.add(m.suggested_strand); });
-  STRANDS.filter(s => usedStrandIds.has(s.id)).forEach(s => {
-    const btn = document.createElement("button");
-    btn.className = "strand-pill";
-    btn.dataset.strand = s.id;
-    btn.textContent = s.display_name;
-    if (STATE.filter.strand === s.id) btn.classList.add("active");
-    btn.addEventListener("click", () => {
-      STATE.filter.strand = STATE.filter.strand === s.id ? null : s.id;
-      renderStrandFilter();
-      renderBoard();
-    });
-    root.appendChild(btn);
-  });
+  const strands = STRANDS.filter(s => usedStrandIds.has(s.id));
+  // Rebuild the pills only when the strand set changes (clicks are delegated,
+  // see init), so a poll never steals focus from the open Filter popover.
+  const ids = strands.map(s => s.id).join(",");
+  if (root.dataset.ids !== ids) {
+    root.dataset.ids = ids;
+    root.innerHTML = strands.map(s =>
+      `<button type="button" class="strand-pill" data-strand="${escapeHtml(s.id)}">${escapeHtml(s.display_name)}</button>`
+    ).join("");
+  }
+  $$(".strand-pill", root).forEach(btn => btn.classList.toggle("active", btn.dataset.strand === STATE.filter.strand));
   updateFilterBadge();
 }
 
+// ----- 6a. Board rendering (keyed reconcile) -----
+// renderBoard reconciles instead of rebuilding. Column shells are reused while
+// the column set is unchanged, and each column keeps its card elements keyed
+// by memory id plus the card's full markup. Only cards whose markup changed
+// are replaced, so the 30s refresh, a search keystroke, or a Garden update
+// leaves scroll position, focus, hover, and running animations alone.
+
+const INK_MS = 10 * 60 + 550 + 100;  // max stagger + ink-fade-in duration + slack
+let inkTimer = null;
+
 function renderBoard() {
-  const board = $("#board");
-  board.innerHTML = "";
-  // Ink-in only on first paint and view switches, never on the 30s auto-refresh
-  // or while typing in search, so the board doesn't shimmer constantly.
-  board.classList.toggle("ink-in", !!STATE.inkNextRender);
-  STATE.inkNextRender = false;
-
-  if (STATE.view === "lifecycle") {
-    LIFECYCLE_COLUMNS.forEach(col => board.appendChild(renderLifecycleColumn(col)));
-  } else {
-    STATE.goals.forEach(g => board.appendChild(renderLaneColumn(g)));
-    board.appendChild(renderUnassignedColumn());
-    board.appendChild(renderAddLaneTile());
-  }
-
+  // Never rebuild under an active drag: the dragged card would be detached
+  // and its dragend would never fire. endDrag() runs the pending render.
+  if (DRAG.id) { STATE.renderPending = true; return; }
+  STATE.renderPending = false;
   updateMemoryCount();
   updateReviewIndicator();
-  attachDragHandlers();
+  // The board is display:none on other pages; switchPage renders on return.
+  if (STATE.page !== "board") { STATE.boardDirty = true; return; }
+  STATE.boardDirty = false;
+
+  const board = $("#board");
+  // Ink-in only on the first paint of live data and on view switches, never on
+  // the 30s auto-refresh or while typing in search, so the board doesn't
+  // shimmer constantly. The class outlives this render until the stagger has
+  // finished, so a quick follow-up render cannot cut the fade short.
+  const ink = !!STATE.inkNextRender && !STATE.booting;
+  if (ink) {
+    STATE.inkNextRender = false;
+    board.classList.add("ink-in");
+    clearTimeout(inkTimer);
+    inkTimer = setTimeout(() => board.classList.remove("ink-in"), INK_MS);
+  }
+  board.classList.toggle("is-loading", STATE.booting);
+
+  const specs = boardColumnSpecs();
+  const layout = `${STATE.view}|${specs.map(s => s.key).join("|")}`;
+  if (board.dataset.layout !== layout) {
+    board.textContent = "";
+    specs.forEach(() => board.appendChild(createColumnShell()));
+    if (STATE.view === "lanes") board.appendChild(renderAddLaneTile());
+    board.dataset.layout = layout;
+  }
+  const shells = board.querySelectorAll(":scope > .column:not(.add-lane-tile)");
+  // Ink renders build fresh cards so every one of them plays the fade.
+  specs.forEach((spec, i) => updateColumn(shells[i], spec, !ink));
 }
 
-function renderLifecycleColumn(col) {
-  const wrap = document.createElement("section");
-  wrap.className = "column";
-  wrap.dataset.column = col.id;
-  wrap.dataset.view = "lifecycle";
+function boardColumnSpecs() {
+  if (STATE.view === "lifecycle") return LIFECYCLE_COLUMNS.map(lifecycleColumnSpec);
+  return STATE.goals.map(laneColumnSpec).concat(unassignedColumnSpec());
+}
 
+function lifecycleColumnSpec(col) {
   const inColumn = STATE.memories.filter(m => m.column === col.id && memoryMatchesFilter(m));
   const memos = inColumn.filter(m => passesWeeklyFilter(m, col.id));
   const hidden = inColumn.length - memos.length;
-  const subtitle = (hidden > 0)
-    ? `${col.subtitle} &middot; ${hidden} earlier hidden`
-    : col.subtitle;
-
-  wrap.innerHTML = `
-    <div class="column-header">
-      <h2 class="column-title">${col.title}</h2>
-      <p class="column-subtitle">${subtitle}</p>
-      <span class="column-count">${memos.length} ${memos.length === 1 ? "memory" : "memories"}</span>
-    </div>
-    <div class="column-cards"></div>
-  `;
-
-  const cards = $(".column-cards", wrap);
-  if (memos.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-column";
-    empty.textContent = "The surface is still.";
-    cards.appendChild(empty);
-  } else {
-    memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
-  }
-  return wrap;
+  return {
+    key: `lifecycle:${col.id}`,
+    data: { column: col.id, view: "lifecycle" },
+    title: col.title,
+    subtitle: hidden > 0 ? `${col.subtitle} &middot; ${hidden} earlier hidden` : col.subtitle,
+    count: `${memos.length} ${memos.length === 1 ? "memory" : "memories"}`,
+    memos,
+    empty: "The surface is still.",
+  };
 }
 
-function renderLaneColumn(goal) {
-  const wrap = document.createElement("section");
-  wrap.className = "column";
-  wrap.dataset.column = goal.id;
-  wrap.dataset.lane = goal.lane;
-  wrap.dataset.view = "lanes";
-
+function laneColumnSpec(goal) {
   const memos = STATE.memories.filter(m =>
     Array.isArray(m.connect_goal_ids) &&
     m.connect_goal_ids.includes(goal.id) &&
     memoryMatchesFilter(m)
   );
-
-  wrap.innerHTML = `
-    <div class="column-header">
-      <h2 class="column-title">#${goal.number} ${escapeHtml(goal.short_name)}</h2>
-      <p class="column-subtitle">${escapeHtml(houseName(goal.lane))}</p>
-      <span class="column-count">${memos.length} aligned</span>
-    </div>
-    <div class="column-cards"></div>
-  `;
-
-  const cards = $(".column-cards", wrap);
-  if (memos.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-column";
-    empty.textContent = "No memories yet for this House.";
-    cards.appendChild(empty);
-  } else {
-    memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
-  }
-  return wrap;
+  return {
+    key: `lanes:${goal.id}`,
+    data: { column: goal.id, lane: String(goal.lane || ""), view: "lanes" },
+    title: `#${goal.number} ${escapeHtml(goal.short_name)}`,
+    subtitle: escapeHtml(houseName(goal.lane)),
+    count: `${memos.length} aligned`,
+    memos,
+    empty: "No memories yet for this House.",
+  };
 }
 
-function renderUnassignedColumn() {
-  const wrap = document.createElement("section");
-  wrap.className = "column";
-  wrap.dataset.column = "unassigned";
-  wrap.dataset.lane = "unassigned";
-  wrap.dataset.view = "lanes";
-
+function unassignedColumnSpec() {
   const memos = STATE.memories.filter(m =>
     (!Array.isArray(m.connect_goal_ids) || m.connect_goal_ids.length === 0) &&
     memoryMatchesFilter(m)
   );
+  return {
+    key: "lanes:unassigned",
+    data: { column: "unassigned", lane: "unassigned", view: "lanes" },
+    title: "Unhoused",
+    subtitle: "Work not yet tied to a Connect goal",
+    count: `${memos.length} drifting`,
+    memos,
+    empty: "Everything aligns. Rare and excellent.",
+  };
+}
 
-  wrap.innerHTML = `
-    <div class="column-header">
-      <h2 class="column-title">Unhoused</h2>
-      <p class="column-subtitle">Work not yet tied to a Connect goal</p>
-      <span class="column-count">${memos.length} drifting</span>
-    </div>
-    <div class="column-cards"></div>
-  `;
-
-  const cards = $(".column-cards", wrap);
-  if (memos.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "empty-column";
-    empty.textContent = "Everything aligns. Rare and excellent.";
-    cards.appendChild(empty);
-  } else {
-    memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
-  }
+function createColumnShell() {
+  const wrap = document.createElement("section");
+  wrap.className = "column";
+  wrap.innerHTML = `<div class="column-header"></div><div class="column-cards"></div>`;
+  wrap._cards = new Map();  // memory id -> { el, key, delay }
   return wrap;
+}
+
+function setDataset(el, data) {
+  for (const [k, v] of Object.entries(data)) {
+    if (el.dataset[k] !== v) el.dataset[k] = v;
+  }
+}
+
+function updateColumn(col, spec, reuse) {
+  setDataset(col, spec.data);
+  const header = col.firstElementChild;
+  const headerHtml =
+    `<h2 class="column-title">${spec.title}</h2>` +
+    `<p class="column-subtitle">${spec.subtitle}</p>` +
+    `<span class="column-count">${STATE.booting ? "&hellip;" : spec.count}</span>`;
+  if (header._html !== headerHtml) {
+    header.innerHTML = headerHtml;
+    header._html = headerHtml;
+  }
+
+  const prev = reuse ? col._cards : new Map();
+  const next = new Map();
+  const wanted = spec.memos.map((m, idx) => {
+    const parts = cardParts(m);
+    let entry = prev.get(m.id);
+    if (!entry || entry.key !== parts.key) entry = { el: buildCard(parts), key: parts.key, delay: "" };
+    // Stagger the ink-in, capped so long columns don't wait seconds for the tail.
+    const delay = `${Math.min(idx, 10) * 60}ms`;
+    if (entry.delay !== delay) {
+      entry.el.style.setProperty("--ink-delay", delay);
+      entry.delay = delay;
+    }
+    next.set(m.id, entry);
+    return entry.el;
+  });
+  col._cards = next;
+  if (!wanted.length) {
+    if (!col._empty) {
+      col._empty = document.createElement("div");
+      col._empty.className = "empty-column";
+    }
+    col._empty.textContent = STATE.booting ? "Stirring the memories..." : spec.empty;
+    wanted.push(col._empty);
+  }
+  syncChildren(col.lastElementChild, wanted);
+}
+
+// Make parent's children exactly `wanted`, in order, moving existing nodes
+// instead of recreating them.
+function syncChildren(parent, wanted) {
+  let cursor = parent.firstChild;
+  for (const el of wanted) {
+    if (el === cursor) {
+      cursor = cursor.nextSibling;
+    } else {
+      parent.insertBefore(el, cursor);
+    }
+  }
+  while (cursor) {
+    const next = cursor.nextSibling;
+    parent.removeChild(cursor);
+    cursor = next;
+  }
 }
 
 // A lightweight "+ Add a House" tile shown at the end of the Houses view. Opens
 // the goals editor (which adds/edits/deletes lanes), so unclear work can get
-// its own House when a Connect goal doesn't fit.
+// its own House when a Connect goal doesn't fit. It has no data-column, so it
+// is never a drop target.
 function renderAddLaneTile() {
   const wrap = document.createElement("section");
   wrap.className = "column add-lane-tile";
@@ -1294,37 +1456,31 @@ function renderAddLaneTile() {
   return wrap;
 }
 
-function renderCard(m, idx) {
-  const el = document.createElement("article");
-  el.className = "card";
-  el.draggable = true;
-  el.dataset.memoryId = m.id;
-  // Stagger the ink-in, capped so long columns don't wait seconds for the tail.
-  el.style.setProperty("--ink-delay", `${Math.min(idx, 10) * 60}ms`);
-
+// Everything a card's DOM depends on. `key` doubles as the reconcile signature:
+// a card is rebuilt only when its key changes.
+function cardParts(m) {
+  const classes = ["card"];
+  const data = { memoryId: m.id };
   // Garden v1: per-card freshness dot via [data-freshness] CSS hook.
   // Only set when truthy so generic selectors aren't accidentally matched.
-  if (m.freshness) {
-    el.dataset.freshness = m.freshness;
-  }
-  if (m.is_overdue) {
-    el.classList.add("is-overdue");
-  }
+  if (m.freshness) data.freshness = m.freshness;
+  if (m.is_overdue) classes.push("is-overdue");
 
   // Primary goal color for the left rail
+  let goalColor = "";
   const primaryGoal = (m.connect_goal_ids && m.connect_goal_ids.length > 0) ? getGoal(m.connect_goal_ids[0]) : null;
   if (primaryGoal) {
-    el.dataset.goalColor = "1";
-    el.style.setProperty("--goal-color", primaryGoal.color_primary);
+    data.goalColor = "1";
+    goalColor = primaryGoal.color_primary || "";
     // data-lane lets CSS swap in the theme-aware House color for the rail.
-    if (primaryGoal.lane) el.dataset.lane = primaryGoal.lane;
+    if (primaryGoal.lane) data.lane = primaryGoal.lane;
   }
 
   const strand = getStrand(m.suggested_strand);
   const strandKind = m.strand_kind || (strand ? strand.kind : "");
 
   const review = isReviewNeeded(m);
-  if (review) el.classList.add("has-review");
+  if (review) classes.push("has-review");
 
   const goalsHtml = (m.connect_goal_ids || []).map(gid => {
     const g = getGoal(gid);
@@ -1338,7 +1494,7 @@ function renderCard(m, idx) {
     : "";
 
   const fullTitle = m.display_title || m.title || "";
-  el.innerHTML = `
+  const html = `
     ${review ? `<div class="wax-seal" title="Needs review" aria-label="Needs review">R</div>` : ""}
     <h3 class="card-title" title="${escapeHtml(fullTitle)}">${escapeHtml(fullTitle)}</h3>
     <div class="card-meta">
@@ -1349,13 +1505,20 @@ function renderCard(m, idx) {
     ${goalsHtml ? `<div class="card-goals">${goalsHtml}</div>` : ""}
     ${renderVialAffordance(m)}
   `;
+  const cls = classes.join(" ");
+  return { cls, data, goalColor, html, key: `${cls}|${JSON.stringify(data)}|${goalColor}|${html}` };
+}
 
-  el.addEventListener("click", e => {
-    if (el.classList.contains("dragging")) return;
-    // Chevron / badge clicks handle themselves - don't open the card modal
-    if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
-    openModal(m);
-  });
+// Cards carry no listeners of their own: click, keyboard, and drag are
+// delegated from #board (see wireBoardEvents), so reused cards stay live.
+function buildCard(parts) {
+  const el = document.createElement("article");
+  el.className = parts.cls;
+  el.draggable = true;
+  el.tabIndex = 0;  // keyboard: Tab to a card, Enter or Space opens it
+  Object.assign(el.dataset, parts.data);
+  if (parts.goalColor) el.style.setProperty("--goal-color", parts.goalColor);
+  el.innerHTML = parts.html;
   return el;
 }
 
@@ -1380,9 +1543,11 @@ function escapeHtml(s) {
 }
 
 function updateMemoryCount() {
+  const el = $("#memory-count");
+  if (STATE.booting) { el.textContent = "gathering memories"; return; }
   const visible = STATE.memories.filter(memoryMatchesFilter).length;
   const total = STATE.memories.length;
-  $("#memory-count").textContent = visible === total ? `${total} memories` : `${visible} of ${total} memories`;
+  el.textContent = visible === total ? `${total} memories` : `${visible} of ${total} memories`;
 }
 
 // Hedwig carries a letter with the review count; her label says "All clear"
@@ -1394,9 +1559,11 @@ function updateReviewIndicator() {
   const block = $(".review-block");
   if (count) count.textContent = reviewing > 99 ? "99+" : String(reviewing);
   if (label) {
-    label.textContent = STATE.filter.reviewOnly
-      ? "Showing review"
-      : (reviewing === 0 ? "All clear" : `${reviewing} need review`);
+    label.textContent = STATE.booting
+      ? "Awaiting post"
+      : STATE.filter.reviewOnly
+        ? "Showing review"
+        : (reviewing === 0 ? "All clear" : `${reviewing} need review`);
   }
   if (block) {
     block.classList.toggle("has-review", reviewing > 0);
@@ -1440,9 +1607,29 @@ function defaultDueDate() {
   return toInputDate(d);
 }
 
+// Card modal bookkeeping: which memory it shows, and what had focus before it
+// opened (focus returns there on close, so keyboard users keep their place).
+const CARD_MODAL = { memoryId: null, returnFocus: null };
+
+function cardModalShows(memoryId) {
+  return _isModalOpen("card-modal") && CARD_MODAL.memoryId === memoryId;
+}
+
+// Open the modal for the current copy of a memory (cards are looked up by id
+// at click time, so a refresh between render and click can't open stale data).
+function openCardById(memoryId) {
+  const m = STATE.memories.find(x => x.id === memoryId);
+  if (m) openModal(m);
+}
+
 function openModal(m) {
   const body = $("#modal-body");
   const review = isReviewNeeded(m);
+  if (!_isModalOpen("card-modal")) {
+    const active = document.activeElement;
+    CARD_MODAL.returnFocus = active && active !== document.body ? active : null;
+  }
+  CARD_MODAL.memoryId = m.id;
   // Pre-fill the due field with the card's existing due date, or default to
   // ~2 weeks out so saving a card without one sets it roughly two weeks ahead.
   const dueValue = m.due_date ? toInputDate(m.due_date) : defaultDueDate();
@@ -1570,6 +1757,7 @@ async function saveMemoryEdit(memoryId) {
   }
 
   // Always update local state so the UI is responsive even offline
+  noteLocalMutation();
   const mem = STATE.memories.find(x => x.id === memoryId);
   if (mem) {
     Object.assign(mem, patch);
@@ -1584,38 +1772,40 @@ async function saveMemoryEdit(memoryId) {
   }
 
   try {
-    window.__pensievePatchInFlight++;
-    const apiId = memoryId.replace(/^mem_/, "");
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-    const data = await res.json();
-    // Re-sync local state from the server-authoritative copy
-    if (data.memory && mem) {
-      Object.assign(mem, data.memory, { id: data.memory.id });
-    }
+    // Re-syncs local state from the server-authoritative copy.
+    await patchMemoryApi(memoryId, "", patch);
     renderStrandFilter();
     renderBoard();
     // Garden v1+v2+v3: editing tends the card - refresh pill, quests, achievements.
-    loadBoardHealth();
-    loadQuests();
-    loadAchievements();
+    refreshGarden();
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
-  } finally {
-    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
   }
 }
 
-function closeModal() { $("#card-modal").hidden = true; }
+function closeModal() {
+  const modal = $("#card-modal");
+  if (modal.hidden) return;
+  modal.hidden = true;
+  restoreFocus(CARD_MODAL.returnFocus);
+  CARD_MODAL.returnFocus = null;
+  CARD_MODAL.memoryId = null;
+}
+
+// Return focus after a modal closes. If the opener was a card that has since
+// been re-rendered (its markup changed on save), focus its replacement.
+function restoreFocus(el) {
+  if (!el) return;
+  if (!el.isConnected && el.dataset && el.dataset.memoryId) {
+    el = document.querySelector(`#board .card[data-memory-id="${CSS.escape(el.dataset.memoryId)}"]`);
+  }
+  if (el && el.isConnected && typeof el.focus === "function") el.focus({ preventScroll: true });
+}
 
 // ----- 7b. Vial modal (closure capture) -----
 
-const VIAL = { memoryId: null };
+const VIAL = { memoryId: null, saving: false };
 
 function openVialModal(memoryId) {
   const m = STATE.memories.find(x => x.id === memoryId);
@@ -1643,40 +1833,61 @@ async function saveVial(kind) {
     toast("Add a sentence, or use Skip to dismiss");
     return;
   }
-  const apiId = memoryId.replace(/^mem_/, "");
-  window.__pensievePatchInFlight = (window.__pensievePatchInFlight || 0) + 1;
+  // A double click on Save must not POST two Vials.
+  if (VIAL.saving) return;
+  VIAL.saving = true;
+  const buttons = [$("#vial-save"), $("#vial-skip")];
+  buttons.forEach(b => { if (b) b.disabled = true; });
   try {
-    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/vials`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+    await trackPatch(async () => {
+      const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiIdOf(memoryId))}/vials`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+      });
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new Error(`${res.status}: ${detail}`);
+      }
+      noteLocalMutation();
+      closeVialModal();
+      toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
+      await loadMemoriesFromApi();
+      renderBoard();
     });
-    if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(`${res.status}: ${detail}`);
-    }
-    closeVialModal();
-    toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
-    await loadMemoriesFromApi();
-    renderBoard();
   } catch (e) {
     toast(`Vial save failed: ${e.message}`);
   } finally {
-    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
+    VIAL.saving = false;
+    buttons.forEach(b => { if (b) b.disabled = false; });
   }
 }
 
 // ----- 8. Goals editor -----
 
+// The editor works on a draft copy. STATE.goals (and so the board) only
+// changes on Save; closing the modal discards the draft. Before, + Add goal,
+// delete, reset, and PDF import edited STATE.goals directly, so a cancelled
+// edit still left a blank or deleted House on the board.
+const GOALS_EDIT = { draft: [], meta: {} };
+
 function openGoalsEditor() {
+  GOALS_EDIT.draft = STATE.goals.map(g => ({ ...g }));
+  GOALS_EDIT.meta = { ...(STATE.goalsMeta || {}) };
+  const status = $("#goals-import-status");
+  if (status) status.textContent = "";
+  renderGoalsEditor();
+  $("#goals-modal").hidden = false;
+}
+
+function closeGoalsModal() {
+  $("#goals-modal").hidden = true;
+}
+
+function renderGoalsEditor() {
   const root = $("#goals-editor");
-  root.innerHTML = "";
-  STATE.goals.forEach((g, idx) => {
-    const card = document.createElement("div");
-    card.className = "goal-card";
-    card.style.setProperty("--goal-color", g.color_primary);
-    if (g.lane) card.dataset.lane = g.lane;
-    card.innerHTML = `
+  root.innerHTML = GOALS_EDIT.draft.map((g, idx) => `
+    <div class="goal-card"${g.lane ? ` data-lane="${escapeHtml(g.lane)}"` : ""} style="--goal-color:${escapeHtml(g.color_primary || "")}">
       <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
         <span class="goal-lane-pill" data-lane="${escapeHtml(g.lane || "")}" style="--goal-color:${escapeHtml(g.color_primary || "")}" title="Lane: ${escapeHtml(g.lane || "none")}"><span aria-hidden="true">${houseGlyph(g.lane)}</span> ${escapeHtml(houseName(g.lane))}</span>
@@ -1688,30 +1899,23 @@ function openGoalsEditor() {
       <input class="goal-input" data-field="name" data-idx="${idx}" value="${escapeHtml(g.name || "")}" />
       <label class="goal-input-label">Summary</label>
       <textarea class="goal-textarea" data-field="summary" data-idx="${idx}">${escapeHtml(g.summary || "")}</textarea>
-    `;
-    root.appendChild(card);
-  });
-  // Wire delete buttons (delegated would also work, but inline keeps things local).
-  $$(".goal-delete", root).forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.preventDefault();
-      const idx = parseInt(btn.dataset.idx, 10);
-      deleteGoalAt(idx);
-    });
-  });
-  $("#goals-modal").hidden = false;
+    </div>`).join("");
+  // Delete buttons are handled by one delegated listener (see init).
 }
 
-function collectEditorIntoState() {
+function collectEditorIntoDraft() {
   $$(".goal-input, .goal-textarea", $("#goals-editor")).forEach(input => {
     const idx = parseInt(input.dataset.idx, 10);
     const field = input.dataset.field;
-    if (STATE.goals[idx]) STATE.goals[idx][field] = input.value.trim();
+    if (GOALS_EDIT.draft[idx]) GOALS_EDIT.draft[idx][field] = input.value.trim();
   });
 }
 
 async function saveGoalsFromEditor() {
-  collectEditorIntoState();
+  collectEditorIntoDraft();
+  STATE.goals = GOALS_EDIT.draft.map(g => ({ ...g }));
+  STATE.goalsMeta = GOALS_EDIT.meta;
+  noteLocalMutation();
   // Persist locally first so an API outage never loses the user's edits.
   saveGoals();
 
@@ -1738,23 +1942,23 @@ async function saveGoalsFromEditor() {
     toast("Goals saved locally (server offline)");
   }
 
-  $("#goals-modal").hidden = true;
+  closeGoalsModal();
   renderStrandFilter();
   renderBoard();
 }
 
 function resetGoals() {
-  STATE.goals = DEFAULT_GOALS.map(g => ({ ...g }));
-  saveGoals();
-  openGoalsEditor();
-  toast("Goals reset to defaults");
+  GOALS_EDIT.draft = DEFAULT_GOALS.map(g => ({ ...g }));
+  renderGoalsEditor();
+  toast("Defaults loaded. Save goals to keep them.");
 }
 
 function addGoalToState() {
-  const number = (STATE.goals.length || 0) + 1;
+  collectEditorIntoDraft();
+  const number = (GOALS_EDIT.draft.length || 0) + 1;
   const palette = LANE_PALETTE[(number - 1) % LANE_PALETTE.length];
   const stamp = Date.now().toString(36);
-  STATE.goals.push({
+  GOALS_EDIT.draft.push({
     id: `goal-${number}-new-${stamp}`,
     number,
     short_name: "",
@@ -1767,17 +1971,19 @@ function addGoalToState() {
     impact_statement: "",
     keywords_for_alignment: [],
   });
-  openGoalsEditor();
+  renderGoalsEditor();
+  const inputs = $$(".goal-input[data-field='short_name']", $("#goals-editor"));
+  if (inputs.length) inputs[inputs.length - 1].focus();
 }
 
 function deleteGoalAt(idx) {
-  collectEditorIntoState();
-  if (idx < 0 || idx >= STATE.goals.length) return;
-  STATE.goals.splice(idx, 1);
+  collectEditorIntoDraft();
+  if (idx < 0 || idx >= GOALS_EDIT.draft.length) return;
+  GOALS_EDIT.draft.splice(idx, 1);
   // Re-number so the editor + saved JSON stay in order. Lane assignments
   // are left as-is so existing memories aligned to a goal id keep their color.
-  STATE.goals.forEach((g, i) => { g.number = i + 1; });
-  openGoalsEditor();
+  GOALS_EDIT.draft.forEach((g, i) => { g.number = i + 1; });
+  renderGoalsEditor();
 }
 
 async function uploadConnectPdf(file) {
@@ -1807,9 +2013,10 @@ async function uploadConnectPdf(file) {
     const proposal = body.proposal || {};
     const goals = Array.isArray(proposal.goals) ? proposal.goals : [];
     if (!goals.length) throw new Error("No goals found in PDF");
-    STATE.goals = goals.map(g => ({ ...g }));
-    STATE.goalsMeta = proposal._meta || {};
-    openGoalsEditor();
+    // Load the proposal into the editor draft; nothing changes until Save.
+    GOALS_EDIT.draft = goals.map(g => ({ ...g }));
+    GOALS_EDIT.meta = proposal._meta || {};
+    renderGoalsEditor();
     if (status) {
       const notes = (proposal._meta && proposal._meta.extraction_notes) || "";
       status.textContent = `Parsed ${goals.length} goals. Review and Save.` + (notes ? ` (${notes})` : "");
@@ -1822,67 +2029,135 @@ async function uploadConnectPdf(file) {
 }
 
 // ----- 9. Drag + drop -----
+// All card and column listeners are delegated from #board and bound once in
+// wireBoardEvents, so re-renders never re-bind (or leak) handlers.
 
-let DRAG = { id: null, fromCol: null };
+function resetDragState() {
+  return { id: null, fromCol: null, el: null, overCol: null };
+}
 
-function attachDragHandlers() {
-  $$(".card").forEach(card => {
-    card.addEventListener("dragstart", e => {
-      DRAG.id = card.dataset.memoryId;
-      DRAG.fromCol = card.closest(".column")?.dataset.column;
-      card.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-      try { e.dataTransfer.setData("text/plain", DRAG.id); } catch (_) { /* ignore */ }
-    });
-    card.addEventListener("dragend", () => {
-      card.classList.remove("dragging");
-      DRAG = { id: null, fromCol: null };
-      $$(".column.drop-target").forEach(c => c.classList.remove("drop-target"));
-    });
+// Drop targets are real board columns only (they carry data-column); the
+// "Add a House" tile has none, so it never accepts a card.
+function dropColumnAt(target) {
+  return target && target.closest ? target.closest("#board .column[data-column]") : null;
+}
+
+function markDropTarget(col) {
+  if (DRAG.overCol === col) return;
+  if (DRAG.overCol) DRAG.overCol.classList.remove("drop-target");
+  DRAG.overCol = col;
+  if (col) col.classList.add("drop-target");
+}
+
+function endDrag() {
+  markDropTarget(null);
+  if (DRAG.el) DRAG.el.classList.remove("dragging");
+  DRAG = resetDragState();
+  FOOTPRINT.last = null;
+  if (STATE.renderPending) renderBoard();
+}
+
+function wireBoardEvents() {
+  const board = $("#board");
+
+  board.addEventListener("click", e => {
+    // Chevron / badge clicks open the Vial modal (document-level delegate).
+    if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
+    const card = e.target.closest(".card");
+    if (!card || card.classList.contains("dragging")) return;
+    openCardById(card.dataset.memoryId);
   });
 
-  $$(".column").forEach(col => {
-    col.addEventListener("dragover", e => {
-      e.preventDefault();
-      col.classList.add("drop-target");
-    });
-    col.addEventListener("dragleave", e => {
-      if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target");
-    });
-    col.addEventListener("drop", e => {
-      e.preventDefault();
-      col.classList.remove("drop-target");
-      const memId = DRAG.id || e.dataTransfer.getData("text/plain");
-      if (!memId) return;
-      const m = STATE.memories.find(x => x.id === memId);
-      if (!m) return;
+  board.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (!e.target.classList || !e.target.classList.contains("card")) return;
+    e.preventDefault();
+    openCardById(e.target.dataset.memoryId);
+  });
 
-      if (STATE.view === "lifecycle") {
-        m.column = col.dataset.column;
-        persistColumnChange(m.id, m.column);
-      } else {
-        const targetGoalId = col.dataset.column;
-        if (targetGoalId === "unassigned") {
-          m.connect_goal_ids = [];
-        } else {
-          if (!Array.isArray(m.connect_goal_ids)) m.connect_goal_ids = [];
-          if (!m.connect_goal_ids.includes(targetGoalId)) {
-            m.connect_goal_ids = [targetGoalId, ...m.connect_goal_ids.filter(id => id !== targetGoalId)];
-          }
-        }
-      }
-      renderBoard();
-    });
+  board.addEventListener("dragstart", e => {
+    const card = e.target.closest && e.target.closest(".card");
+    if (!card) return;
+    DRAG = resetDragState();
+    DRAG.id = card.dataset.memoryId;
+    DRAG.fromCol = card.closest(".column")?.dataset.column || null;
+    DRAG.el = card;
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", DRAG.id); } catch (_) { /* ignore */ }
+  });
+
+  // dragend fires on the source card; a drop that re-rendered the card away
+  // already ran endDrag() itself.
+  board.addEventListener("dragend", () => { if (DRAG.id) endDrag(); });
+
+  board.addEventListener("dragover", e => {
+    const col = DRAG.id ? dropColumnAt(e.target) : null;
+    markDropTarget(col);
+    if (col) {
+      e.preventDefault();  // allow the drop here
+      e.dataTransfer.dropEffect = "move";
+    }
+  });
+
+  board.addEventListener("dragleave", e => {
+    if (!DRAG.id) return;
+    if (!e.relatedTarget || !board.contains(e.relatedTarget)) markDropTarget(null);
+  });
+
+  board.addEventListener("drop", e => {
+    const col = dropColumnAt(e.target);
+    if (!col) return;
+    e.preventDefault();
+    const memId = DRAG.id || e.dataTransfer.getData("text/plain");
+    const fromCol = DRAG.fromCol;
+    endDrag();
+    if (memId) moveMemoryTo(memId, fromCol, col.dataset.column);
   });
 }
 
+function sameIds(a, b) {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+function moveMemoryTo(memId, fromCol, target) {
+  const m = STATE.memories.find(x => x.id === memId);
+  if (!m || !target) return;
+
+  if (STATE.view === "lifecycle") {
+    // Dropped back where it started: nothing to save, and no needless
+    // writeback (or "tended" bump) for a card that did not move.
+    if (m.column === target) return;
+    noteLocalMutation();
+    m.column = target;
+    renderBoard();
+    persistColumnChange(m.id, target);
+    return;
+  }
+
+  // Houses view: dropping on a House makes it the card's primary House and
+  // moves the card out of the House it was dragged from (other alignments
+  // stay). Dropping on Unhoused clears every alignment.
+  const before = Array.isArray(m.connect_goal_ids) ? m.connect_goal_ids : [];
+  const next = target === "unassigned"
+    ? []
+    : [target, ...before.filter(id => id !== target && id !== fromCol)];
+  if (sameIds(before, next)) return;
+  noteLocalMutation();
+  m.connect_goal_ids = next;
+  renderBoard();
+  persistGoalAlignment(m.id, next);
+}
+
 // Footprint trail: while a card is dragged, faint footprints are stamped under
-// the cursor and fade out (every 5th dragover, to avoid spam). Cosmetic only.
-let footprintTick = 0;
+// the cursor and fade out. They are spaced by distance travelled (not by event
+// count), so a resting cursor does not pile prints on one spot. Cosmetic only.
+const FOOTPRINT = { last: null, step: 26 };
 document.addEventListener("dragover", e => {
-  if (!DRAG.id) return;
-  if (++footprintTick % 5 !== 0) return;
-  if (prefersReducedMotion()) return;
+  if (!DRAG.id || prefersReducedMotion()) return;
+  const last = FOOTPRINT.last;
+  if (last && Math.hypot(e.clientX - last.x, e.clientY - last.y) < FOOTPRINT.step) return;
+  FOOTPRINT.last = { x: e.clientX, y: e.clientY };
   const layer = $("#footprint-layer");
   if (!layer) return;
   const fp = document.createElement("div");
@@ -1890,9 +2165,49 @@ document.addEventListener("dragover", e => {
   fp.style.left = `${e.clientX}px`;
   fp.style.top = `${e.clientY}px`;
   fp.style.setProperty("--rot", `${Math.floor(Math.random() * 60 - 30)}deg`);
+  fp.addEventListener("animationend", () => fp.remove(), { once: true });
   layer.appendChild(fp);
-  setTimeout(() => fp.remove(), 1700);
+  setTimeout(() => fp.remove(), 1800);  // backstop if the animation never runs
 });
+
+// ----- 9a. Ambient motion: the Snitch's flights and Hedwig's blink -----
+// Both used to be infinite CSS animations on SVG shapes. The browser cannot
+// hand those to the compositor, so they kept the main thread producing frames
+// all day, even while nothing visible changed. Now each animation only runs
+// while it is actually on screen: the Snitch flits across now and then (CSS
+// .snitch.is-flying) and Hedwig blinks on a timer (CSS .hedwig.is-blinking).
+const SNITCH_FLIGHT_MS = 28000;          // matches snitch-drift in pensieve.css
+const SNITCH_REST_MS = [15000, 45000];   // random rest between flights
+const BLINK_EVERY_MS = 4500;
+const BLINK_MS = 400;                    // a little longer than hedwig-blink
+
+function initAmbientMotion() {
+  if (prefersReducedMotion()) return;  // CSS already hides the Snitch and stills Hedwig
+  const snitch = $(".snitch");
+  if (snitch) {
+    const rest = () => SNITCH_REST_MS[0] + Math.random() * (SNITCH_REST_MS[1] - SNITCH_REST_MS[0]);
+    const fly = () => {
+      if (document.hidden || STATE.theme === "marauder") {
+        setTimeout(fly, rest());
+        return;
+      }
+      snitch.classList.add("is-flying");
+      setTimeout(() => {
+        snitch.classList.remove("is-flying");
+        setTimeout(fly, rest());
+      }, SNITCH_FLIGHT_MS + 100);
+    };
+    setTimeout(fly, 4000);  // first flight shortly after load
+  }
+  const hedwig = $(".hedwig");
+  if (hedwig) {
+    setInterval(() => {
+      if (document.hidden) return;
+      hedwig.classList.add("is-blinking");
+      setTimeout(() => hedwig.classList.remove("is-blinking"), BLINK_MS);
+    }, BLINK_EVERY_MS);
+  }
+}
 
 // ----- 9b. Easter egg: the Marauder's Map -----
 // Type the oath anywhere outside a text field to reveal the map; type
@@ -1922,37 +2237,47 @@ document.addEventListener("keydown", e => {
 // ----- 10. Toast -----
 
 let toastTimer = null;
+let toastHideTimer = null;
 function toast(msg) {
   const t = $("#toast");
   if (!t) return;
   t.textContent = msg;
   t.hidden = false;
   requestAnimationFrame(() => t.classList.add("show"));
-  if (toastTimer) clearTimeout(toastTimer);
+  // Cancel both timers: a toast fired during the previous one's fade-out used
+  // to be hidden 350ms later by that fade's leftover timer.
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
   toastTimer = setTimeout(() => {
     t.classList.remove("show");
-    setTimeout(() => { t.hidden = true; }, 350);
+    toastHideTimer = setTimeout(() => { t.hidden = true; }, 350);
   }, 2200);
 }
 
 // ----- 12. Wire up -----
 
 function init() {
+  // Start the API round trip first so it overlaps with the first render.
+  // Until it answers, the board shows empty column shells ("Stirring the
+  // memories..."); seed cards only appear if the API is unreachable.
+  const firstLoad = loadMemoriesFromApi();
+
+  initDensityToggle();
   applyTheme();
+  wireBoardEvents();
   renderStrandFilter();
   applyView();
   applyWeeklyFilterState();
   initHeaderPopovers();
-  initDensityToggle();
   updateFilterBadge();
+  initAmbientMotion();
 
-  // Load from API (falls back to seed data on failure), then re-render
-  loadMemoriesFromApi().then(ok => {
+  firstLoad.then(ok => {
     renderStrandFilter();
     STATE.inkNextRender = true;  // ink the live memories onto the page
     renderBoard();
-    const footerSource = $("#api-source-label");
-    if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
+    try { performance.mark("pensieve:board-live"); } catch (_) { /* ignore */ }
+    setFooterSource();
     if (!ok) {
       toast(`API offline, using seed data. Start with: pensieve serve`);
     }
@@ -1961,9 +2286,23 @@ function init() {
   // Begin the auto-refresh loop (see refreshMemoriesIfSafe for guards).
   startAutoRefreshLoop();
 
-  // Text filter (fast in-memory match)
+  // Text filter (fast in-memory match), coalesced so a burst of keystrokes
+  // costs one board pass.
+  let searchTimer = null;
   $("#search").addEventListener("input", e => {
     STATE.filter.search = e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderBoard, 80);
+  });
+
+  // Strand pills live in the Filter popover and are re-rendered in place;
+  // one delegated listener handles them.
+  $("#strand-filter").addEventListener("click", e => {
+    const pill = e.target.closest(".strand-pill");
+    if (!pill) return;
+    const id = pill.dataset.strand;
+    STATE.filter.strand = STATE.filter.strand === id ? null : id;
+    renderStrandFilter();
     renderBoard();
   });
 
@@ -2007,6 +2346,7 @@ function init() {
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
     STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null };
+    supersede("search");  // a semantic query still in flight must not re-apply itself
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     $("#search").value = "";
@@ -2048,8 +2388,7 @@ function init() {
       await loadMemoriesFromApi();
       renderStrandFilter();
       renderBoard();
-      const footerSource = $("#api-source-label");
-      if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
+      setFooterSource();
       toast(STATE.apiConnected ? "Memories refreshed" : "API offline");
     });
   }
@@ -2083,8 +2422,7 @@ function init() {
         await loadMemoriesFromApi();
         renderStrandFilter();
         renderBoard();
-        const footerSource = $("#api-source-label");
-        if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
+        setFooterSource();
       } catch (e) {
         toast(`Pull failed: ${e.message}`);
       } finally {
@@ -2098,6 +2436,7 @@ function init() {
   // View toggle
   $$(".view-btn").forEach(btn => {
     btn.addEventListener("click", () => {
+      if (STATE.view === btn.dataset.view) return;  // no ink replay on a no-op click
       STATE.view = btn.dataset.view;
       applyView();
     });
@@ -2177,7 +2516,13 @@ function init() {
     if (e.target.dataset.close === "1") closeModal();
   });
   $("#goals-modal").addEventListener("click", e => {
-    if (e.target.dataset.close === "goals") $("#goals-modal").hidden = true;
+    if (e.target.dataset.close === "goals") closeGoalsModal();
+  });
+  $("#goals-editor").addEventListener("click", e => {
+    const del = e.target.closest(".goal-delete");
+    if (!del) return;
+    e.preventDefault();
+    deleteGoalAt(parseInt(del.dataset.idx, 10));
   });
   $("#vial-modal").addEventListener("click", e => {
     if (e.target.dataset.close === "vial") closeVialModal();
@@ -2206,7 +2551,7 @@ function init() {
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       closeModal();
-      $("#goals-modal").hidden = true;
+      closeGoalsModal();
       closeVialModal();
       closeAchievementsModal();
     }
@@ -2217,7 +2562,9 @@ function init() {
 
 function switchPage(page) {
   const known = ["recap", "graph", "docs"];
-  STATE.page = known.includes(page) ? page : "board";
+  const next = known.includes(page) ? page : "board";
+  if (next === STATE.page) return;  // re-clicking the active tab is a no-op
+  STATE.page = next;
   document.documentElement.setAttribute("data-page", STATE.page);
   $$(".page-tab").forEach(btn => {
     const on = btn.dataset.page === STATE.page;
@@ -2227,6 +2574,11 @@ function switchPage(page) {
   if (STATE.page === "graph") loadGraph();
   else stopGraphAnim();
   if (STATE.page === "docs") loadDocs();
+  if (STATE.page === "board") {
+    // The board skipped renders and polls while hidden; catch up now.
+    if (STATE.boardDirty) renderBoard();
+    refreshMemoriesIfSafe();
+  }
 }
 
 async function copyToClipboard(text) {
@@ -2518,7 +2870,14 @@ const GRAPH = {
   nodes: [], edges: [], byId: {},
   raf: null, dragging: null, hover: null, downAt: null, moved: false,
   width: 1200, height: 620, dpr: 1,
+  ticksLeft: 0, calmFrames: 0,
+  pal: null,  // cached theme palette; applyTheme clears it
 };
+
+// The simulation stops early once every node moves less than ~0.1px a frame
+// for a few frames in a row, instead of always burning the full tick budget.
+const GRAPH_CALM_ENERGY = 0.01;  // mean squared speed per node, px^2 / frame^2
+const GRAPH_CALM_FRAMES = 12;
 
 function stopGraphAnim() {
   if (GRAPH.raf) { cancelAnimationFrame(GRAPH.raf); GRAPH.raf = null; }
@@ -2536,8 +2895,10 @@ async function loadGraph() {
     return;
   }
   const threshold = parseFloat(($("#graph-threshold") || {}).value || "0.6");
+  const signal = supersede("graph");
   try {
-    const data = await fetchJson(`/api/graph?threshold=${threshold}`);
+    const data = await fetchJson(`/api/graph?threshold=${threshold}`, { signal });
+    if (STATE.page !== "graph") return;  // left the tab while it loaded
     const g = data.graph || { nodes: [], edges: [], stats: {} };
     renderGraphStats(g.stats || {});
     if (!g.nodes.length) {
@@ -2550,6 +2911,7 @@ async function loadGraph() {
     initGraphLayout(g);
     startGraph();
   } catch (e) {
+    if (isAbortError(e)) return;
     empty.hidden = false;
     empty.textContent = `Graph failed: ${e.message}`;
   }
@@ -2573,27 +2935,39 @@ function initGraphLayout(g) {
   const cx = GRAPH.width / 2, cy = GRAPH.height / 2;
   const goals = g.nodes.filter(n => n.type === "goal");
   const ringR = Math.min(GRAPH.width, GRAPH.height) * 0.32;
+  // Nodes that were already on screen keep their position, so coming back to
+  // the tab (or Rebuild) settles in place instead of re-exploding the layout.
+  const prev = GRAPH.byId || {};
+  let known = 0;
   const placed = {};
   goals.forEach((n, i) => {
     const a = (i / Math.max(1, goals.length)) * Math.PI * 2 - Math.PI / 2;
     n.ax = cx + ringR * Math.cos(a);
     n.ay = cy + ringR * Math.sin(a);
-    n.x = n.ax; n.y = n.ay; n.vx = 0; n.vy = 0;
+    const old = prev[n.id];
+    if (old) { n.x = old.x; n.y = old.y; known++; } else { n.x = n.ax; n.y = n.ay; }
+    n.vx = 0; n.vy = 0;
     placed[n.id] = n;
   });
   // tasks: start near their first goal (or center), with jitter
   g.nodes.filter(n => n.type === "task").forEach((n, i) => {
-    const home = (n.goal_ids || []).map(id => placed[id]).find(Boolean);
-    const jx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
-    const jy = (Math.sin(i * 78.233) * 12345.6789) % 1;
-    n.x = (home ? home.x : cx) + (jx - 0.5) * 120;
-    n.y = (home ? home.y : cy) + (jy - 0.5) * 120;
+    const old = prev[n.id];
+    if (old) {
+      n.x = old.x; n.y = old.y; known++;
+    } else {
+      const home = (n.goal_ids || []).map(id => placed[id]).find(Boolean);
+      const jx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+      const jy = (Math.sin(i * 78.233) * 12345.6789) % 1;
+      n.x = (home ? home.x : cx) + (jx - 0.5) * 120;
+      n.y = (home ? home.y : cy) + (jy - 0.5) * 120;
+    }
     n.vx = 0; n.vy = 0;
     placed[n.id] = n;
   });
   GRAPH.nodes = g.nodes;
   GRAPH.edges = g.edges;
   GRAPH.byId = placed;
+  GRAPH.warm = known === g.nodes.length;  // nothing new: a short settle is enough
 }
 
 function tickGraph() {
@@ -2629,7 +3003,8 @@ function tickGraph() {
     a.vx += ux * f; a.vy += uy * f;
     b.vx -= ux * f; b.vy -= uy * f;
   }
-  // gravity + goal anchors + integrate
+  // gravity + goal anchors + integrate; returns mean squared speed per node
+  let energy = 0;
   for (const n of nodes) {
     if (n === GRAPH.dragging) { n.vx = 0; n.vy = 0; continue; }
     n.vx += (cx - n.x) * 0.0016;
@@ -2642,7 +3017,9 @@ function tickGraph() {
     n.x += n.vx; n.y += n.vy;
     n.x = Math.max(20, Math.min(GRAPH.width - 20, n.x));
     n.y = Math.max(20, Math.min(GRAPH.height - 20, n.y));
+    energy += n.vx * n.vx + n.vy * n.vy;
   }
+  return nodes.length ? energy / nodes.length : 0;
 }
 
 function nodeRadius(n) {
@@ -2651,9 +3028,16 @@ function nodeRadius(n) {
 }
 
 // Theme-aware canvas palette, read from the CSS tokens on <html> so the
-// Constellation matches day / night / marauder. Re-read once per draw (cheap:
-// a handful of getPropertyValue calls), so a theme switch repaints correctly.
+// Constellation matches day / night / marauder. Cached between frames (it
+// used to be re-read with getComputedStyle on every animation frame);
+// applyTheme clears the cache so a theme switch repaints correctly.
 function graphPalette() {
+  if (GRAPH.pal) return GRAPH.pal;
+  GRAPH.pal = readGraphPalette();
+  return GRAPH.pal;
+}
+
+function readGraphPalette() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name, fb) => (cs.getPropertyValue(name).trim() || fb);
   const houses = {};
@@ -2747,11 +3131,18 @@ function drawGraph() {
   }
 }
 
+// One simulation step; true once the layout has been calm for a few frames.
+function stepGraph() {
+  const energy = tickGraph();
+  GRAPH.calmFrames = energy < GRAPH_CALM_ENERGY ? GRAPH.calmFrames + 1 : 0;
+  return GRAPH.calmFrames >= GRAPH_CALM_FRAMES;
+}
+
 function graphLoop() {
-  tickGraph();
+  const calm = stepGraph();
   drawGraph();
   GRAPH.ticksLeft--;
-  if (GRAPH.ticksLeft > 0 || GRAPH.dragging) {
+  if (GRAPH.dragging || (GRAPH.ticksLeft > 0 && !calm)) {
     GRAPH.raf = requestAnimationFrame(graphLoop);
   } else {
     GRAPH.raf = null;  // settled; stop burning frames until reheated
@@ -2760,10 +3151,10 @@ function graphLoop() {
 
 function startGraph() {
   stopGraphAnim();
-  GRAPH.ticksLeft = 600;
-  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) {
-    for (let i = 0; i < 400; i++) tickGraph();
+  GRAPH.ticksLeft = GRAPH.warm ? 150 : 600;
+  GRAPH.calmFrames = 0;
+  if (prefersReducedMotion()) {
+    for (let i = 0; i < 400; i++) if (stepGraph()) break;
     drawGraph();
     return;
   }
@@ -2772,6 +3163,7 @@ function startGraph() {
 
 function reheatGraph(ticks = 180) {
   GRAPH.ticksLeft = Math.max(GRAPH.ticksLeft || 0, ticks);
+  GRAPH.calmFrames = 0;
   if (!GRAPH.raf) GRAPH.raf = requestAnimationFrame(graphLoop);
 }
 
@@ -2860,11 +3252,16 @@ function wireGraphInteraction() {
     GRAPH.hover = null;
     if (!GRAPH.raf) drawGraph();
   });
+  // Resize events fire in bursts; resize the canvas at most once per frame.
+  let resizeQueued = false;
   window.addEventListener("resize", () => {
-    if (STATE.page === "graph" && GRAPH.nodes.length) {
+    if (resizeQueued || STATE.page !== "graph" || !GRAPH.nodes.length) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
       sizeGraphCanvas();
       reheatGraph(60);
-    }
+    });
   });
 }
 
@@ -2951,8 +3348,11 @@ function setDocsMode(editing) {
 }
 
 async function openDoc(id) {
+  // Clicking quickly through the list must show the last doc clicked, not
+  // whichever response happens to arrive last.
+  const signal = supersede("doc");
   try {
-    const data = await fetchJson(`/api/docs/${encodeURIComponent(id)}`);
+    const data = await fetchJson(`/api/docs/${encodeURIComponent(id)}`, { signal });
     DOCS.current = data.doc.id;
     $("#docs-current-title").textContent = data.doc.title;
     $("#docs-view").innerHTML = renderMarkdown(data.doc.content);
@@ -2960,7 +3360,7 @@ async function openDoc(id) {
     setDocsMode(false);
     renderDocsList();
   } catch (e) {
-    toast(`Open failed: ${e.message}`);
+    if (!isAbortError(e)) toast(`Open failed: ${e.message}`);
   }
 }
 

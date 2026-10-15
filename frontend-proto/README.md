@@ -50,11 +50,13 @@ Four columns walking a memory through its life:
 | Review | Flagged for a second look, needs another pass before closing |
 | Closed | Done. Tasks marked complete in To-Do auto-route here on the next sync (no LLM tokens spent). |
 
-Drag a card from one column to another to move it. The change is persisted to the local ChromaDB via `PATCH /api/memories/{id}/column`. While you drag, faint footprints trail behind the cursor.
+Drag a card from one column to another to move it. The change is persisted to the local ChromaDB via `PATCH /api/memories/{id}/column`. Dropping a card back on its own column does nothing (no save, no writeback). While you drag, faint footprints trail behind the cursor.
 
 **Houses view**
 
 One column per Connect Goal, each wearing a Hogwarts House color, plus an "Unhoused" column for memories the LLM declined to align (operational chores, personal admin, etc.) and an "Add a House" tile that opens the goals editor. Columns auto-fit, so any number of goals lays out cleanly.
+
+Drag a card onto a House to move it there: the target becomes its primary House, the House it was dragged from is dropped, and any other alignments stay. Dropping on Unhoused clears every alignment. The change is saved with `PATCH /api/memories/{id}` (`connect_goal_ids`). The "Add a House" tile is not a drop target.
 
 Under the hood each goal carries a neutral `lane` slug (the API and `data-lane` attributes never change). The dashboard maps slugs to Houses for presentation only:
 
@@ -112,10 +114,12 @@ Saves round-trip through `POST /api/goals` and persist to `data/connect-goals.js
 
 ## API client behavior
 
-On load, the dashboard tries `GET /api/healthz` to discover whether a local Pensieve API is running. Behavior:
+On load, the dashboard requests `/api/healthz`, `/api/memories`, and `/api/goals` in parallel. Until they answer, the board shows its empty column shells ("Stirring the memories..."), never sample cards. Behavior:
 
-- **API reachable**: pulls memories from `/api/memories`, pulls goals from `/api/goals`, persists column changes via PATCH, supports semantic search via `/api/search`, and polls every 30 seconds to pick up auto-sync results (skipped while a modal is open or a card is mid-drag).
+- **API reachable**: renders the live memories and goals, then loads the Garden (`/api/board/health`, `/api/quests`, `/api/achievements`) in parallel in the background. Persists column and House changes via PATCH and supports semantic search via `/api/search`.
 - **API unreachable**: falls back to the bundled `SEED_MEMORIES` array (demo memories from Phase 0), shows "offline (seed data)" in the footer, and disables semantic search with a toast message.
+
+Auto-refresh: every 30 seconds the dashboard re-reads `/api/memories` and `/api/goals` to pick up auto-sync results. The poll is skipped while a modal is open, a card is mid-drag, a save is in flight, the window is hidden, or another page (Recap, Graph, Docs) is showing; it runs right away when you come back. An unchanged snapshot does nothing at all. A changed one updates only the cards whose content changed (cards are keyed by memory id), so scroll position, keyboard focus, hover, and open menus survive. The Garden refetches when the board changed, or at least every 5 minutes. A refresh that started before you moved or edited a card is discarded rather than reverting your change.
 
 `API_BASE` is determined in this order:
 
@@ -127,13 +131,22 @@ On load, the dashboard tries `GET /api/healthz` to discover whether a local Pens
 
 - `i solemnly swear that i am up to no good` -> Marauder theme (Hedwig hides and the map's "MM" takes her place)
 - `mischief managed` -> back to day theme (only undoes Marauder; leaves day/night alone)
-- The golden Snitch occasionally flits across the page (CSS animation, just for vibes; hidden in Marauder mode)
+- The golden Snitch occasionally flits across the page (one 28-second pass, then a rest of 15 to 45 seconds; just for vibes; hidden in Marauder mode)
 
 ## Accessibility
 
 - Text tokens are tuned for WCAG AA contrast on parchment, navy, and the Marauder's Map.
 - Every interactive element gets a candle-gold keyboard focus ring.
-- `prefers-reduced-motion` turns off the candle flicker, ink-in, Snitch, footprints, and other animation.
+- Cards are keyboard reachable: Tab to a card, then Enter or Space opens it. Closing the card modal returns focus to the card.
+- `prefers-reduced-motion` turns off the candle flicker, ink-in, Snitch, footprints, the theme crossfade, and other animation.
+
+## Performance notes
+
+- The parchment background is a fixed, composited layer (`body::after`), not `background-attachment: fixed`, so scrolling never repaints it.
+- Theme switches crossfade the whole page with the View Transitions API (Edge and Chrome), with CSS transitions paused for the swap so no surface is caught half-switched.
+- Long-running decorative animations avoid main-thread work: the Snitch's wings and Hedwig's blink only animate while visible, the starfield twinkles only at night, and the Vial chevron pulses via opacity.
+- The Constellation stops simulating once the layout is calm, keeps node positions when you return to the tab, and caches its theme palette.
+- Search typing is coalesced (80ms), and semantic search, graph, and doc requests abort the previous one when superseded.
 
 ## Browser support
 
@@ -147,7 +160,7 @@ Tested in current Edge and Chrome on Windows. Uses standard ES2020 features, HTM
 | Rename a House or change its glyph | `pensieve.js` (`LANE_HOUSE`) |
 | Add a column, change Lifecycle labels, tweak strand badges | `pensieve.js` (look for `LIFECYCLE_COLUMNS` and `STRANDS`) |
 | Add a new toolbar button or footer element | `index.html` (markup) + `pensieve.js` (handler) |
-| Change how a card renders | `pensieve.js` `renderCard` |
+| Change how a card renders | `pensieve.js` `cardParts` (markup) and `buildCard` (element) |
 | Change how the dashboard talks to the API | `pensieve.js` section 5b ("API client + remote sync") |
 
 ## Constraints
@@ -157,6 +170,6 @@ The dashboard intentionally:
 - Has no build step
 - Has no framework dependency
 - Loads zero JavaScript modules from any CDN
-- Loads two webfonts from Google Fonts (Cinzel + IM Fell English); replace those with self-hosted fonts if you want a fully offline build
+- Loads two webfonts from Google Fonts (Cinzel + IM Fell English); replace those with self-hosted fonts if you want a fully offline build. Until they load, size-adjusted local Georgia faces stand in, so the swap barely shifts the layout
 - Reads only from the local Pensieve API; it never directly talks to Microsoft, Azure, or any third party
 - Never writes to your Outlook tasks directly (any writeback goes through the backend's opt-in TaskSink)

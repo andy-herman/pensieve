@@ -87,10 +87,10 @@ html[data-theme="day"] {
   --confetti-4: #2c4670;
   --confetti-5: #b54a1d;
 
-  /* Type */
-  --font-display: "Cinzel", "Georgia", serif;
+  /* Type (the "... Fallback" faces are defined at the top of section 2) */
+  --font-display: "Cinzel", "Cinzel Fallback", "Georgia", serif;
   --font-script: "IM Fell English SC", "IM Fell English", "Georgia", serif;
-  --font-body: "IM Fell English", "Georgia", serif;
+  --font-body: "IM Fell English", "IM Fell Fallback", "Georgia", serif;
   --font-mono: "Cascadia Code", "Consolas", monospace;
 
   /* Shape, spacing, motion */
@@ -252,6 +252,38 @@ html[data-theme="marauder"] {
 
 /* ----- 2. Base + atmosphere ----- */
 
+/* Metric-matched local fallbacks for the Google webfonts. Until Cinzel and
+   IM Fell arrive (font-display: swap), text renders in Georgia scaled to the
+   webfont's average glyph width, so the swap barely moves anything (card
+   titles keep their line breaks and clamps). Ratios were measured against
+   Georgia in Edge on two sample texts: plain Georgia is 8-20% off for Cinzel
+   and ~27% off for IM Fell italic; these faces bring that to within ~4%.
+   IM Fell English SC already matches Georgia closely, so it needs none. */
+@font-face {
+  font-family: "Cinzel Fallback";
+  src: local("Georgia");
+  font-weight: 100 600;
+  size-adjust: 122%;
+}
+@font-face {
+  font-family: "Cinzel Fallback";
+  src: local("Georgia Bold"), local("Georgia-Bold");
+  font-weight: 700 900;
+  size-adjust: 108%;
+}
+@font-face {
+  font-family: "IM Fell Fallback";
+  src: local("Georgia");
+  font-style: normal;
+  size-adjust: 95%;
+}
+@font-face {
+  font-family: "IM Fell Fallback";
+  src: local("Georgia Italic"), local("Georgia-Italic");
+  font-style: italic;
+  size-adjust: 79%;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body { margin: 0; padding: 0; min-height: 100%; }
@@ -267,6 +299,24 @@ body {
   line-height: var(--lh-normal);
   color: var(--ink);
   min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: color 0.6s ease;
+}
+
+/* The parchment itself (vignettes, paper grain, gradient). It lives on a
+   fixed, viewport-sized layer instead of `background-attachment: fixed` on
+   <body>: a fixed body background forces the browser to repaint the whole
+   blended background on the main thread for every scrolled frame, while a
+   fixed layer is painted once and simply composited as the page scrolls.
+   z-index -1 keeps it under every in-flow element. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-color: var(--parchment-2);
   background-image:
     var(--bg-vignette-1),
@@ -275,11 +325,7 @@ body {
     linear-gradient(180deg, var(--parchment-1), var(--parchment-3));
   background-blend-mode: multiply, normal, soft-light, normal;
   background-size: cover, cover, 220px 220px, cover;
-  background-attachment: fixed;
-  overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  transition: background-color 0.6s ease, color 0.6s ease;
+  transition: background-color 0.6s ease;
 }
 
 /* Candle flicker: a soft radial pulse from the two top corners */
@@ -295,7 +341,7 @@ body::before {
   z-index: 0;
 }
 
-html[data-theme="marauder"] body {
+html[data-theme="marauder"] body::after {
   background-image:
     var(--bg-vignette-1),
     var(--bg-vignette-2),
@@ -336,11 +382,11 @@ html[data-theme="marauder"] body::before { display: none; }
     radial-gradient(1px 1px at 70% 76%, rgba(255, 245, 210, 0.6), transparent 100%),
     radial-gradient(1.2px 1.2px at 81% 60%, rgba(255, 245, 210, 0.85), transparent 100%),
     radial-gradient(1px 1px at 90% 84%, rgba(255, 245, 210, 0.7), transparent 100%);
-  animation: twinkle 6s ease-in-out infinite;
   transition: opacity 0.8s ease;
 }
 
-html[data-theme="night"] .starfield { opacity: 0.9; }
+/* Twinkle only when the stars are out (it used to run invisibly all day). */
+html[data-theme="night"] .starfield { opacity: 0.9; animation: twinkle 6s ease-in-out infinite; }
 
 button, select, input, textarea { font: inherit; color: inherit; }
 
@@ -503,8 +549,9 @@ html[data-theme="night"] .title { text-shadow: 0 0 22px rgba(245, 215, 123, 0.35
   fill: #2a1d10;
   transform-box: fill-box;
   transform-origin: center;
-  animation: hedwig-blink 4.5s ease-in-out infinite;
 }
+/* pensieve.js adds .is-blinking every few seconds (see initAmbientMotion). */
+.hedwig.is-blinking .hedwig-eye { animation: hedwig-blink 0.36s ease-in-out; }
 .hedwig-beak { fill: #b54a1d; }
 .hedwig-letter { fill: #f0e3c4; stroke: #5b4327; stroke-width: 0.5; }
 .hedwig-letter-text { font-family: var(--font-display); font-size: 6px; fill: #2a1d10; font-weight: 700; }
@@ -1120,6 +1167,11 @@ html[data-page="docs"] #docs-page { display: flex; }
 .column[data-view="lifecycle"][data-column="closed"] .card { opacity: 0.88; }
 .column[data-view="lifecycle"][data-column="closed"] .card:hover { opacity: 1; }
 
+/* First load: column shells wait for the API instead of showing seed cards.
+   The placeholder stays invisible for the first 300ms (a fast API never
+   flashes it), fades in, then breathes gently until the memories arrive. */
+.board.is-loading .empty-column { animation: stir-appear 0.3s ease-out 0.3s both, stir 2s ease-in-out 0.6s infinite; }
+
 .empty-column,
 .empty-state {
   padding: 26px 8px;
@@ -1367,9 +1419,21 @@ html[data-page="docs"] #docs-page { display: flex; }
   cursor: pointer;
 }
 .card-vial-chevron {
+  position: relative;
   color: var(--candle-ink);
   border: 1px solid var(--candle);
   background: var(--tint);
+}
+/* The pulsing glow is a pre-drawn shadow whose opacity animates, so it runs
+   on the compositor (animating box-shadow itself repainted every frame). */
+.card-vial-chevron::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 6px 1px var(--glow);
+  opacity: 0;
+  pointer-events: none;
   animation: vial-chevron-pulse 2.6s ease-in-out infinite;
 }
 .card-vial-chevron:hover { background: color-mix(in srgb, var(--candle) 30%, transparent); }
@@ -1419,6 +1483,11 @@ html[data-page="docs"] #docs-page { display: flex; }
   background: var(--backdrop);
   backdrop-filter: blur(2px);
 }
+
+/* Open: the backdrop fades and the sheet rises in (opacity + transform only,
+   so it stays on the compositor). Close stays instant. */
+.modal:not([hidden]) .modal-backdrop { animation: modal-fade 0.18s ease-out both; }
+.modal:not([hidden]) .modal-card { animation: modal-rise 0.2s var(--ease) both; }
 
 .modal-card {
   position: relative;
@@ -2382,15 +2451,18 @@ html[data-theme="night"] .graph-stage-wrap::before {
 
 /* ----- 16. The golden Snitch ----- */
 
+/* The Snitch rests off-screen and flits across now and then: pensieve.js
+   adds .is-flying for one 28s pass (see initAmbientMotion). Wing flaps are
+   SVG animations the compositor cannot take over, so they only run in flight. */
 .snitch {
   position: fixed;
   top: 20%;
   left: -60px;
   z-index: 30;
   pointer-events: none;
-  animation: snitch-drift 28s linear infinite;
   filter: drop-shadow(0 2px 6px rgba(120, 80, 10, 0.45));
 }
+.snitch.is-flying { animation: snitch-drift 28s linear; }
 .snitch-body { fill: #c9a655; stroke: #5b4327; stroke-width: 0.5; }
 html[data-theme="night"] .snitch-body { fill: #f5d77b; stroke: #a08d63; }
 .snitch-wing {
@@ -2398,8 +2470,8 @@ html[data-theme="night"] .snitch-body { fill: #f5d77b; stroke: #a08d63; }
   stroke: rgba(120, 90, 40, 0.6);
   stroke-width: 0.5;
   transform-origin: 30px 15px;
-  animation: wing-flap 0.18s ease-in-out infinite;
 }
+.snitch.is-flying .snitch-wing { animation: wing-flap 0.18s ease-in-out infinite; }
 html[data-theme="marauder"] .snitch { display: none; }
 
 /* ----- 17. Toast ----- */
@@ -2488,8 +2560,8 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
 }
 
 @keyframes hedwig-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  94%, 98% { transform: scaleY(0.05); }
+  0%, 100% { transform: scaleY(1); }
+  25%, 75% { transform: scaleY(0.05); }
 }
 
 @keyframes hedwig-bob {
@@ -2508,8 +2580,28 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
 }
 
 @keyframes vial-chevron-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50%      { box-shadow: 0 0 6px 1px var(--glow); }
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes stir-appear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes stir {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
 }
 
 @keyframes wing-flap {
@@ -2525,6 +2617,18 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
   80% { transform: translate(40vw, 60vh); }
   100% { transform: translate(110vw, 24vh); }
 }
+
+/* ----- 20b. Theme switch crossfade -----
+   setTheme() in pensieve.js wraps the switch in a View Transition: the old and
+   new pages crossfade as two GPU snapshots. CSS transitions are switched off
+   while it runs so the new snapshot is already final (otherwise each surface
+   would still be easing its own colors underneath the crossfade). */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after { transition: none !important; }
+
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: 0.45s; }
 
 /* ----- 21. Responsive ----- */
 
@@ -2542,7 +2646,9 @@ html[data-theme="marauder"] .masthead { border-bottom-style: dotted; border-bott
 }
 
 @media (max-width: 760px) {
-  .masthead-row--identity { gap: var(--sp-3); }
+  .masthead-row--identity { gap: var(--sp-3); position: relative; padding-right: 44px; }
+  /* Keep the sun/moon in the title row instead of wrapping onto its own line. */
+  .theme-toggle { position: absolute; top: 0; right: 0; }
   .status-cluster { flex-wrap: wrap; }
   .tb-zone--actions { margin-left: 0; }
   .cmd-pop-panel { right: auto; left: 0; }
