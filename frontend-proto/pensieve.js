@@ -547,8 +547,10 @@ function supersede(key) {
 }
 function isAbortError(e) { return !!e && e.name === "AbortError"; }
 
-// Dashboard ids are "mem_<source id>"; the API expects the bare source id.
+// Dashboard ids are "mem_<source id>"; the API expects (and quests list) the
+// bare source id.
 function apiIdOf(memoryId) { return String(memoryId).replace(/^mem_/, ""); }
+function dashboardIdOf(apiId) { return `mem_${apiIdOf(apiId)}`; }
 
 function setFooterSource() {
   const el = $("#api-source-label");
@@ -733,7 +735,7 @@ function renderQuestPanel() {
       `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
       (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
     // Clicking a quest that has targets filters the board to them.
-    const filterIds = (quest.target_memory_ids || []).filter(Boolean);
+    const filterIds = (quest.target_memory_ids || []).filter(Boolean).map(dashboardIdOf);
     const isActiveFilter =
       STATE.filter.questTargetIds &&
       filterIds.length > 0 &&
@@ -746,7 +748,7 @@ function renderQuestPanel() {
 }
 
 function questProgressFor(quest) {
-  const targets = quest.target_memory_ids || [];
+  const targets = (quest.target_memory_ids || []).map(dashboardIdOf);
   if (!targets.length) return "";
   if (quest.completed_at) return `${targets.length}/${targets.length}`;
   const byId = new Map(STATE.memories.map(m => [m.id, m]));
