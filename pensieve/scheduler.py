@@ -95,6 +95,11 @@ def _sync_worker(
         # so its COM proxies are released before CoUninitialize below.
         traceback.clear_frames(e.__traceback__)
     finally:
+        # Anything that escaped the handler above (SystemExit, a KeyboardInterrupt
+        # in a dev server) must not leave the job "running" forever, or every
+        # later sync would be refused until the app restarts.
+        if tracker.snapshot()["status"] == "running":
+            tracker.finish_error("The sync stopped unexpectedly.")
         if _com_inited:
             try:
                 import pythoncom  # type: ignore[import-not-found]

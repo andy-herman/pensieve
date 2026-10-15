@@ -19,6 +19,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 from pensieve.config import Settings
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sync_state import SyncJobTracker
@@ -350,3 +352,23 @@ def test_sync_worker_logs_each_distinct_failure_once(monkeypatch, tmp_path, capl
     assert all(r.exc_info for r in logged)
     # Even on failure, the source is released before the apartment is torn down.
     assert events[:3] == ["init", "source-released", "uninit"]
+
+
+def test_sync_worker_never_leaves_a_job_running(monkeypatch, tmp_path):
+    import sys
+
+    import pensieve.cli as cli
+    import pensieve.scheduler as sched
+
+    monkeypatch.setitem(sys.modules, "pythoncom", _FakePythoncom([]))
+
+    def interrupted(name, list_names=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_build_source", interrupted)
+    tracker = SyncJobTracker()
+    tracker.try_begin(source="outlook_com", lists=[])
+    with pytest.raises(KeyboardInterrupt):
+        sched._sync_worker(_settings(data_dir=tmp_path), tracker, "outlook_com", [], False)
+    assert tracker.snapshot()["status"] == "error"
+    assert tracker.try_begin(source="outlook_com", lists=[])[0] is True
