@@ -99,7 +99,8 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
 | LLM (all phases) | Azure OpenAI `gpt-5.4-2` via Cortex hub, keyless via `DefaultAzureCredential` | Same auth path as other internal projects |
 | Phase 1 task source | Local Outlook desktop via `pywin32` COM interop, **read-only** | SFI bypass — see [`OPEN-QUESTIONS.md`](./OPEN-QUESTIONS.md) Q1. Zero Graph dependency, zero Entra app reg, zero admin consent. |
 | Memory store | **ChromaDB** `PersistentClient` at `data/chroma/` (cosine HNSW) | Local-only, semantic search out of the box, replaces earlier "SQLite" plan |
-| Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, HUD-themed (single dark holographic theme), served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
+| Dashboard | Vanilla HTML/CSS/JS at `frontend-proto/`, Harry Potter themed on this `personal-device` branch (day parchment / night / Marauder easter egg; rendered art in `frontend-proto/assets/`), served by FastAPI StaticFiles | Small enough to stay framework-free; no React/Vite build step |
+| Desktop app | `desktop/Pensieve.exe` (C# launcher built with the in-box .NET Framework csc via `desktop/build.ps1`) starts the backend hidden and opens Edge in app mode | No SDK/Rust/Node toolchain needed; see `desktop/README.md` |
 | Phase 4 polish (post-MVP) | Tauri v2 desktop shell | Matches sibling packaging strategy |
 | Telemetry | App Insights via `logger` MCP / SDK | Inherited from baseline |
 
@@ -147,10 +148,12 @@ Pensieve/
 │   └── api/
 │       └── server.py      # FastAPI + StaticFiles mount for the dashboard
 │
-├── frontend-proto/        # HUD kanban dashboard (single dark theme)
+├── desktop/               # Pensieve.exe launcher source, build + icon scripts, icon art
+├── frontend-proto/        # HP-themed kanban dashboard (day / night / Marauder)
 │   ├── index.html
 │   ├── pensieve.js        # vanilla JS; fetches from API; in-card edit modal; PDF importer
-│   ├── pensieve.css       # HUD theme tokens + lane color palette
+│   ├── pensieve.css       # HP theme tokens + House (lane) color palette
+│   ├── assets/            # rendered emblem, owl, Snitch, theme backdrops, splash loop
 │   └── README.md
 │
 ├── data/                  # local-only data

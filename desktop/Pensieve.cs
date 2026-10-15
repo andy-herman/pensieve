@@ -276,8 +276,30 @@ namespace PensieveDesktop
             }
         }
 
+        // Windows takes about 2 s to refuse a connection to a closed loopback
+        // port, so a plain HTTP probe pads every check while the backend is
+        // still starting. A short TCP connect answers "nobody listening" fast.
+        static bool PortOpen(int port, int timeoutMs)
+        {
+            using (System.Net.Sockets.TcpClient c = new System.Net.Sockets.TcpClient())
+            {
+                try
+                {
+                    IAsyncResult ar = c.BeginConnect("127.0.0.1", port, null, null);
+                    if (!ar.AsyncWaitHandle.WaitOne(timeoutMs)) return false;
+                    c.EndConnect(ar);
+                    return true;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            }
+        }
+
         static bool IsHealthy(string baseUrl)
         {
+            if (!PortOpen(new Uri(baseUrl).Port, 250)) return false;
             try
             {
                 string body = HttpGet(baseUrl + "api/healthz", 1500);
@@ -300,7 +322,7 @@ namespace PensieveDesktop
                     return false;
                 }
                 if (IsHealthy(baseUrl)) return true;
-                Thread.Sleep(500);
+                Thread.Sleep(200);
             }
             Log("backend did not become healthy in time");
             return false;
