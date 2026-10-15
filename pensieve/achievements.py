@@ -71,8 +71,6 @@ ACHIEVEMENTS: list[Achievement] = [
     ),
 ]
 
-ACHIEVEMENT_IDS = [a.id for a in ACHIEVEMENTS]
-
 
 def _captured_count(vials: Iterable[Vial]) -> int:
     return sum(1 for v in vials if (v.capture_kind or "captured") == "captured")

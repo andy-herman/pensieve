@@ -188,7 +188,6 @@ def start_sync_job(
         daemon=True,
         name=thread_name,
     )
-    tracker.attach_thread(t)
     t.start()
     return t
 

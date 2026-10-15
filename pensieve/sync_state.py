@@ -34,15 +34,10 @@ class SyncJobTracker:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._state = SyncJobState()
-        self._thread: Optional[threading.Thread] = None
 
     def snapshot(self) -> dict:
         with self._lock:
             return self._state.to_dict()
-
-    def is_running(self) -> bool:
-        with self._lock:
-            return self._state.status == "running"
 
     def try_begin(
         self, *, source: str, lists: list[str], message: str = "Starting sync"
@@ -86,10 +81,6 @@ class SyncJobTracker:
             self._state.finished_at = datetime.now(timezone.utc).isoformat()
             self._state.error = err
             self._state.message = f"Sync failed: {err}"
-
-    def attach_thread(self, t: threading.Thread) -> None:
-        with self._lock:
-            self._thread = t
 
 
 _TRACKER: Optional[SyncJobTracker] = None

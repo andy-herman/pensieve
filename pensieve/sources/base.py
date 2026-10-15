@@ -61,12 +61,3 @@ class TaskSource(ABC):
         to one list would have memories from other lists silently deleted.
         """
         return None
-
-    def health_check(self) -> tuple[bool, str]:
-        """Return (ok, message). Default just tries to list one task."""
-        try:
-            for _ in self.list_tasks():
-                return True, f"{self.name}: reachable"
-            return True, f"{self.name}: reachable (no tasks)"
-        except Exception as e:
-            return False, f"{self.name}: {e}"

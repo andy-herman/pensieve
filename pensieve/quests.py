@@ -403,18 +403,12 @@ def quest_bonus_for(quests: list[Quest]) -> int:
     return 5 if all_complete(quests) else 0
 
 
-def is_board_clean(
-    memories: Iterable[Memory],
-    now: Optional[datetime] = None,
-    *,
-    captured_counts: Optional[dict[str, int]] = None,
-) -> bool:
+def is_board_clean(memories: Iterable[Memory], now: Optional[datetime] = None) -> bool:
     """A board is "clean" iff zero stale, zero ghost, zero overdue OPEN cards.
 
     Used by quest_state to decide whether to bump ``clean_streak_d``.
     """
     now_u = garden._now_utc(now)
-    captured_counts = captured_counts or {}
     for m in memories:
         if (m.column or "memory") == "closed":
             continue

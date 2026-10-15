@@ -21,7 +21,6 @@ Design notes (see ``brainstorms/02-board-tending-game.md`` + plan):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Literal, Optional
 
@@ -31,7 +30,6 @@ from pensieve.store.schema import Memory
 FRESH_MAX_DAYS = 3   # < 3d => fresh
 ACTIVE_MAX_DAYS = 8  # 3..<8d => active
 STALE_MAX_DAYS = 30  # 8..<=30d => stale; > 30d => ghost
-GHOST_MIN_DAYS = 31  # documentation alias for > STALE_MAX_DAYS
 
 
 FreshnessState = Literal[
@@ -108,17 +106,6 @@ def is_overdue(memory: Memory, now: Optional[datetime] = None) -> bool:
     if due is None:
         return False
     return due < now_u
-
-
-@dataclass
-class HealthTerms:
-    stale_pct: float
-    stale_count: int
-    ghost_count: int
-    overdue_count: int
-    capture_pct: float
-    clean_streak_d: int
-    quest_bonus: int
 
 
 def compute_board_health(

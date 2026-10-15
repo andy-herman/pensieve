@@ -44,7 +44,6 @@ class SyncStats:
     new_enriched: int = 0
     updated_enriched: int = 0
     skipped_unchanged: int = 0
-    skipped_dry_run: int = 0
     failed: int = 0
     review_queue: int = 0
     tokens_used: int = 0
@@ -326,7 +325,6 @@ def run_sync(
     if dry_run:
         for t, reason in to_enrich:
             console.print(f"  [DRY] {reason:8} {t.title}")
-        stats.skipped_dry_run = len(to_enrich)
         return stats
 
     # Run enrichment with bounded concurrency

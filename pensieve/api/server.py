@@ -22,6 +22,7 @@ from pensieve import quest_state as quest_state_mod
 from pensieve import quests as quests_mod
 from pensieve.api import security
 from pensieve.config import REPO_ROOT, get_settings
+from pensieve.connections import effective_source
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
 from pensieve.sources.outlook_com_sink import get_sink_for_source
@@ -51,12 +52,6 @@ def _parse_due_date(raw: str) -> datetime:
     if len(text) == 10:  # date only: astimezone() reads a naive value as local time
         return parsed.astimezone(timezone.utc)
     return parsed.replace(tzinfo=timezone.utc)
-
-
-def _effective_source(settings: Any) -> str:
-    from pensieve.connections import effective_source
-
-    return effective_source(settings)
 
 
 def create_app() -> FastAPI:
@@ -175,9 +170,7 @@ def create_app() -> FastAPI:
             # Day rollover: generate today.
             mems = store.list_memories()
             captured_counts = vial_store.captured_count_by_memory()
-            was_clean = quests_mod.is_board_clean(
-                mems, now, captured_counts=captured_counts
-            )
+            was_clean = quests_mod.is_board_clean(mems, now)
             # Capture yesterday's intrinsic health snapshot for the level-summary
             # endpoint (Garden v3), using the streak we had BEFORE this rollover.
             snapshot = garden.compute_board_health(
@@ -247,17 +240,13 @@ def create_app() -> FastAPI:
         if now_done > prev_done:
             quest_state_mod.save_state(state, settings.garden_quests_path)
 
-    def _maybe_complete_quests(memory_id: Optional[str] = None) -> None:
+    def _maybe_complete_quests() -> None:
         """Re-evaluate today's quests against current store state.
 
         Called from every tending endpoint AFTER the ``last_tended_at``
-        bump succeeds. Idempotent: only persists when a quest actually
-        transitions pending → complete.
-
-        ``memory_id`` is unused today (we re-evaluate the full quest list
-        because completion may depend on cross-memory state like "all
-        targets tended"), but is kept as a hook for future per-quest
-        targeting if needed.
+        bump succeeds. Re-evaluates the whole quest list, because completion
+        can depend on cross-memory state ("all targets tended"). Idempotent:
+        only persists when a quest actually transitions pending to complete.
         """
         now = _now_utc()
         with garden_state_lock:
@@ -487,7 +476,7 @@ def create_app() -> FastAPI:
         try:
             return available_lists(settings)
         except Exception as e:
-            return {"source": _effective_source(settings), "enabled": False, "lists": [],
+            return {"source": effective_source(settings), "enabled": False, "lists": [],
                     "default": None, "error": str(e)}
 
     @app.post("/api/capture/parse")
@@ -606,7 +595,7 @@ def create_app() -> FastAPI:
         return {
             "ok": True,
             "memories": store.count(),
-            "default_source": _effective_source(settings),
+            "default_source": effective_source(settings),
         }
 
     @app.get("/api/memories")
@@ -801,7 +790,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
         mirror_result = _mirror_column_to_source(memory_id, col)
         completion_mirror = _mirror_completion_to_source(memory_id, col)
-        _maybe_complete_quests(memory_id)
+        _maybe_complete_quests()
         # Return the enriched memory so the frontend can update in place
         # (freshness dot must refresh, not just the board-health pill).
         mem = store.get_memory(memory_id)
@@ -865,7 +854,7 @@ def create_app() -> FastAPI:
         # the rewrite).
         mem.last_tended_at = _now_utc()
         store.upsert_memory(mem)
-        _maybe_complete_quests(memory_id)
+        _maybe_complete_quests()
         mirror_result = None
         completion_mirror = None
         if "column" in body and body["column"] is not None:
@@ -950,7 +939,7 @@ def create_app() -> FastAPI:
         # user care of the card. Bump independent of vial_store write so
         # we don't couple the two domains.
         store.bump_tended_at(memory_id, _now_utc())
-        _maybe_complete_quests(memory_id)
+        _maybe_complete_quests()
         return {"ok": True, "vial": vial.to_dashboard_dict()}
 
     @app.delete("/api/vials/{vial_id}")
@@ -992,7 +981,7 @@ def create_app() -> FastAPI:
         return {"goals": load_connect_goals(), "_meta": meta}
 
     @app.post("/api/goals/import")
-    async def import_goals(file: "UploadFile" = File(...)) -> dict[str, Any]:  # noqa: F821, B008
+    async def import_goals(file: UploadFile = File(...)) -> dict[str, Any]:  # noqa: B008
         """Parse an uploaded Connect PDF and return a proposed goals payload.
 
         Does NOT persist. The frontend shows the proposal for review, then
@@ -1084,18 +1073,16 @@ def create_app() -> FastAPI:
 
     @app.post("/api/sync")
     def trigger_sync(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        """Kick off a background sync from the configured source (default outlook_com).
+        """Kick off a background sync.
 
         Body (all optional):
-          source: "outlook_com" | "personal_graph" | "sample_file" (default: settings.default_source)
+          source: "outlook_com" | "personal_graph" | "sample_file" (default: the
+                  source chosen in Accounts, else PENSIEVE_DEFAULT_SOURCE)
           lists:  list[str] (task list names to restrict to; default = all)
           force:  bool (re-enrich every task, even unchanged ones)
         """
         body = body or {}
         tracker = get_tracker()
-
-        from pensieve.connections import effective_source
-
         src_name = (body.get("source") or effective_source(settings)).strip()
         lists_raw = body.get("lists") or []
         if isinstance(lists_raw, str):
@@ -1222,7 +1209,7 @@ def create_app() -> FastAPI:
         # Set BEFORE upsert (full-blob write would race with a post-bump).
         merged.last_tended_at = _now_utc()
         store.upsert_memory(merged)
-        _maybe_complete_quests(memory_id)
+        _maybe_complete_quests()
         captured_counts = vial_store.captured_count_by_memory()
         any_vial_ids = vial_store.has_any_vial_by_memory()
         d = merged.to_dashboard_dict()

@@ -17,7 +17,6 @@ by the source surface (mirrors OutlookCOMSource).
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Iterator, Optional
 
 import httpx
@@ -119,11 +118,10 @@ class PersonalGraphSource(TaskSource):
     def _paged(client: httpx.Client, url: str) -> Iterator[dict]:
         next_url: Optional[str] = url
         while next_url:
-            full = next_url if next_url.startswith("http") else next_url
-            resp = client.get(full)
+            resp = client.get(next_url)
             if resp.status_code >= 400:
                 raise PersonalGraphUnavailable(
-                    f"Graph call failed [{resp.status_code}] for {full}: {resp.text}"
+                    f"Graph call failed [{resp.status_code}] for {next_url}: {resp.text}"
                 )
             body = resp.json()
             for item in body.get("value", []):
@@ -200,8 +198,3 @@ class PersonalGraphSource(TaskSource):
 
     def covered_lists(self) -> Optional[set[str]]:
         return set(self._covered_lists) if self._covered_lists else None
-
-    @staticmethod
-    def cache_path(settings: Optional[Settings] = None) -> Path:
-        s = settings or get_settings()
-        return s.personal_graph_token_cache_path

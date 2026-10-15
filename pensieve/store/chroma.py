@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -100,16 +100,14 @@ class ChromaMemoryStore:
     def delete_memory(self, memory_id: str) -> None:
         self._memories.delete(ids=[memory_id])
 
-    def update_column(self, memory_id: str, column: str) -> bool:
-        return self.update_meta(memory_id, {"column": column})
-
     def update_meta(self, memory_id: str, updates: dict[str, Any]) -> bool:
         """Atomic-ish single-call metadata update.
 
-        Fetches once, merges in all updates, writes once. Use this instead
-        of chaining multiple ``update_column``/``bump_tended_at`` calls so
-        concurrent partial updates can't clobber each other (the second
-        read-modify-write would otherwise overwrite the first).
+        Fetches once, merges in all updates, writes once. Put every field in
+        one call rather than chaining several (for example a column change
+        plus ``bump_tended_at``) so concurrent partial updates can't clobber
+        each other (the second read-modify-write would otherwise overwrite
+        the first).
         Datetimes in ``updates`` are auto-serialised to ISO; ``None`` becomes "".
         Returns False when the memory_id doesn't exist.
         """
@@ -307,10 +305,3 @@ class ChromaMemoryStore:
             tended = enriched
         kwargs["last_tended_at"] = tended
         return Memory(**kwargs)
-
-    def upsert_many(self, memories: Iterable[Memory]) -> int:
-        n = 0
-        for m in memories:
-            self.upsert_memory(m)
-            n += 1
-        return n

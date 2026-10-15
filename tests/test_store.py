@@ -58,11 +58,12 @@ def test_idempotent_upsert(tmp_store):
     assert tmp_store.count() == 1
 
 
-def test_update_column(tmp_store):
+def test_update_meta_changes_column(tmp_store):
     tmp_store.upsert_memory(_mk_memory())
-    ok = tmp_store.update_column("t1", "dive")
+    ok = tmp_store.update_meta("t1", {"column": "dive"})
     assert ok
     assert tmp_store.get_memory("t1").column == "dive"
+    assert not tmp_store.update_meta("missing", {"column": "dive"})
 
 
 def test_search_finds_match(tmp_store):

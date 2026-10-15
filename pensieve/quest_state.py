@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Optional
 
 from pensieve import garden
-from pensieve.quests import Quest
+from pensieve.quests import Quest, quest_bonus_for
 
 MAX_HISTORY_ENTRIES = 120
 SCHEMA_VERSION = 1
@@ -113,10 +113,6 @@ class QuestState:
 
 
 # ----- persistence ----------------------------------------------------------
-
-
-def _state_path_from(quest_state_path: Path) -> Path:
-    return quest_state_path
 
 
 def load_state(path: Path) -> QuestState:
@@ -214,6 +210,4 @@ def record_yesterday_clean(
 
 def quest_bonus_today(state: QuestState) -> int:
     """+5 iff today's quests are all complete AND we have a today row."""
-    if state.today is None or not state.today.quests:
-        return 0
-    return 5 if all(q.is_complete for q in state.today.quests) else 0
+    return quest_bonus_for(state.today.quests) if state.today else 0
