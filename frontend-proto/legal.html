@@ -61,6 +61,7 @@
         <li>logs, which can include task titles when something goes wrong.</li>
       </ul>
       <p>Pensieve collects no analytics or usage telemetry and sends nothing to its author. In the installed app this lives in <code>%LOCALAPPDATA%\Pensieve</code>; uninstalling offers to delete it. More &gt; Accounts disconnects your sign-ins at any time.</p>
+      <p>The app's engine listens only on this PC (<code>127.0.0.1</code>) and answers only the Pensieve window it opened: each launch creates a new private key, so web pages and other people signed in to this PC cannot read your board.</p>
       <p><strong>What leaves this PC, and only when you use the feature:</strong></p>
       <ul>
         <li><strong>Microsoft (Microsoft Graph).</strong> After you sign in, Pensieve reads your To Do lists and tasks, and adds a task only when you confirm one. Governed by your Microsoft account terms and the Microsoft Privacy Statement.</li>

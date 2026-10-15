@@ -25,6 +25,9 @@ Stored in %LOCALAPPDATA%\Pensieve on this PC, for your Windows user only:
 - logs, which can include task titles when something goes wrong.
 Pensieve collects no analytics or usage telemetry and sends nothing to its
 author. Uninstalling offers to delete all of this.
+The app's engine listens only on this PC (127.0.0.1) and answers only the
+Pensieve window it opened; each launch creates a new private key, so web
+pages and other people signed in to this PC cannot read your board.
 
 -------------------------------------------------------------------------------
 3. PRIVACY: WHAT LEAVES THIS PC, AND ONLY WHEN YOU USE IT
