@@ -9,6 +9,8 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from pensieve.config import Settings, get_settings
+from pensieve.store import read_cache
+from pensieve.store.embedding import get_embedding_function
 from pensieve.store.schema import Memory
 
 # Fields that are owned by the user (set via the Pensieve UI) and must
@@ -57,7 +59,9 @@ class ChromaMemoryStore:
         self._memories = self._client.get_or_create_collection(
             name=self.settings.chroma_collection_memories,
             metadata={"hnsw:space": "cosine"},
+            embedding_function=get_embedding_function(),
         )
+        self._cache_key = read_cache.db_key(self.settings.chroma_dir)
 
     # ----- writes -----
 
@@ -145,14 +149,37 @@ class ChromaMemoryStore:
             res["ids"][0], (res.get("metadatas") or [{}])[0], (res.get("documents") or [""])[0]
         )
 
+    def _all_rows(self) -> dict[str, Any]:
+        """Raw full-collection read, served from the shared read cache when unchanged.
+
+        Treat the result as read-only: it is shared between callers.
+        """
+        return read_cache.cached_get(
+            self._cache_key,
+            self._memories.name,
+            lambda: self._memories.get(include=["metadatas", "documents"]),
+        )
+
     def list_memories(self) -> list[Memory]:
-        res = self._memories.get(include=["metadatas", "documents"])
+        res = self._all_rows()
+        ids = res.get("ids") or []
+        metas = res.get("metadatas") or []
+        docs = res.get("documents") or []
         out: list[Memory] = []
-        for i, mid in enumerate(res.get("ids", []) or []):
-            meta = (res.get("metadatas") or [{}])[i] or {}
-            doc = (res.get("documents") or [""])[i] or ""
+        for i, mid in enumerate(ids):
+            meta = (metas[i] if i < len(metas) else None) or {}
+            doc = (docs[i] if i < len(docs) else None) or ""
             out.append(self._reconstruct(mid, meta, doc))
         return out
+
+    def embeddings_by_id(self) -> dict[str, Any]:
+        """``{memory_id: vector}`` for every memory (vectors as stored by Chroma)."""
+        raw = self._memories.get(include=["embeddings"])
+        ids = raw.get("ids") or []
+        vecs = raw.get("embeddings")
+        if vecs is None:  # numpy array or list; never use truthiness on it
+            return {}
+        return {mid: vec for mid, vec in zip(ids, vecs, strict=False) if vec is not None}
 
     def search(self, query: str, top_k: int = 12) -> list[Memory]:
         if not query.strip():
@@ -172,8 +199,9 @@ class ChromaMemoryStore:
         return int(self._memories.count())
 
     def known_ids(self) -> set[str]:
-        res = self._memories.get(include=[])
-        return set(res.get("ids") or [])
+        # Chroma 0.6 reads every metadata row even for include=[], so the
+        # cached full read is never more expensive than an ids-only get().
+        return set(self._all_rows().get("ids") or [])
 
     def find_orphan_ids(
         self,

@@ -110,9 +110,22 @@ class OutlookCOMSink(TaskSink):
         item.Categories = ", ".join(categories)
         item.Save()
 
+    def _release_com(self) -> None:
+        """Drop the Outlook proxies while this thread's apartment is still up.
+
+        Every public method connects inside its own CoInitialize bracket, so
+        the proxies must not outlive it; releasing them after CoUninitialize
+        is undefined behavior in pywin32. The next call reconnects.
+        """
+        self._ns = None
+        self._app = None
+
     def set_column_tag(self, task_id: str, column: str, *, prefix: str) -> bool:
         with _ensured_com_apartment():
-            return self._set_column_tag_unguarded(task_id, column, prefix=prefix)
+            try:
+                return self._set_column_tag_unguarded(task_id, column, prefix=prefix)
+            finally:
+                self._release_com()
 
     def _set_column_tag_unguarded(self, task_id: str, column: str, *, prefix: str) -> bool:
         item = self._get_item(task_id)
@@ -127,7 +140,10 @@ class OutlookCOMSink(TaskSink):
 
     def clear_column_tag(self, task_id: str, *, prefix: str) -> bool:
         with _ensured_com_apartment():
-            return self._clear_column_tag_unguarded(task_id, prefix=prefix)
+            try:
+                return self._clear_column_tag_unguarded(task_id, prefix=prefix)
+            finally:
+                self._release_com()
 
     def _clear_column_tag_unguarded(self, task_id: str, *, prefix: str) -> bool:
         item = self._get_item(task_id)
@@ -142,7 +158,10 @@ class OutlookCOMSink(TaskSink):
 
     def set_completion(self, task_id: str, completed: bool) -> bool:
         with _ensured_com_apartment():
-            return self._set_completion_unguarded(task_id, completed)
+            try:
+                return self._set_completion_unguarded(task_id, completed)
+            finally:
+                self._release_com()
 
     def _set_completion_unguarded(self, task_id: str, completed: bool) -> bool:
         """Flip the source task's completed flag.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from pensieve import achievement_state as achievement_state_mod
 from pensieve import achievements as achievements_mod
@@ -25,6 +27,28 @@ from pensieve.sources.sink import TaskSink
 from pensieve.store import ChromaMemoryStore, ChromaVialStore
 from pensieve.store.schema import Vial
 from pensieve.sync_state import get_tracker
+
+
+def _parse_due_date(raw: str) -> datetime:
+    """Parse a due date sent by the dashboard into an aware UTC datetime.
+
+    The edit modal sends a bare calendar date ("YYYY-MM-DD") and renders due
+    dates back in the local zone. A bare date therefore means local midnight
+    on this desktop. Treating it as UTC midnight made the card show the day
+    before for anyone west of UTC, and every save of the modal moved the due
+    date one more day earlier. Full ISO datetimes keep their offset; naive
+    ones are still read as UTC, as before.
+    """
+    text = raw.strip()
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid due_date: {raw}") from e
+    if parsed.tzinfo is not None:
+        return parsed
+    if len(text) == 10:  # date only: astimezone() reads a naive value as local time
+        return parsed.astimezone(timezone.utc)
+    return parsed.replace(tzinfo=timezone.utc)
 
 
 def create_app() -> FastAPI:
@@ -55,6 +79,14 @@ def create_app() -> FastAPI:
 
     store = ChromaMemoryStore(settings)
     vial_store = ChromaVialStore(settings)
+
+    # Quest and achievement state are small JSON files that several endpoints
+    # read, update, and atomically replace, and the dashboard calls those
+    # endpoints in parallel. On Windows, replacing a file that another thread
+    # has open fails, and a failed read looks like "no state yet", which would
+    # regenerate today's quests and reset the clean streak. This lock
+    # serializes every read-modify-write of those files.
+    garden_state_lock = threading.RLock()
 
     def _enrich_with_vials(mem_dict: dict[str, Any], memory_id: str,
                            captured_counts: dict[str, int],
@@ -105,76 +137,68 @@ def create_app() -> FastAPI:
 
         Same-day calls are read-only.
         """
-        state = quest_state_mod.load_state(settings.garden_quests_path)
-        if quest_state_mod.is_today_row(state.today, now):
+        with garden_state_lock:
+            state = quest_state_mod.load_state(settings.garden_quests_path)
+            if quest_state_mod.is_today_row(state.today, now):
+                return state
+
+            # Day rollover: generate today.
+            mems = store.list_memories()
+            captured_counts = vial_store.captured_count_by_memory()
+            was_clean = quests_mod.is_board_clean(
+                mems, now, captured_counts=captured_counts
+            )
+            # Capture yesterday's intrinsic health snapshot for the level-summary
+            # endpoint (Garden v3), using the streak we had BEFORE this rollover.
+            snapshot = garden.compute_board_health(
+                mems,
+                now,
+                captured_counts=captured_counts,
+                clean_streak_d=state.clean_streak_d,
+                quest_bonus=0,
+            )
+            quest_state_mod.record_yesterday_clean(
+                state, was_clean=was_clean, now=now,
+                health_score=int(snapshot["score"]),
+            )
+            # Pre-compute today's intrinsic health to drive the hit-95-health gate.
+            prelim = garden.compute_board_health(
+                mems,
+                now,
+                captured_counts=captured_counts,
+                clean_streak_d=state.clean_streak_d,
+                quest_bonus=0,
+            )
+            new_quests = quests_mod.generate_quests(
+                mems,
+                now,
+                captured_counts=captured_counts,
+                current_health=int(prelim["score"]),
+            )
+            state.today = quest_state_mod.TodayRow(
+                date=now.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+                generated_at=now,
+                quests=new_quests,
+                all_done_bonus_grants=0,
+            )
+            quest_state_mod.save_state(state, settings.garden_quests_path)
             return state
 
-        # Day rollover — generate today.
-        mems = store.list_memories()
-        captured_counts = vial_store.captured_count_by_memory()
-        was_clean = quests_mod.is_board_clean(
-            mems, now, captured_counts=captured_counts
-        )
-        # Capture yesterday's intrinsic health snapshot for the level-summary
-        # endpoint (Garden v3) — uses the streak we had BEFORE this rollover.
-        snapshot = garden.compute_board_health(
-            mems,
-            now,
-            captured_counts=captured_counts,
-            clean_streak_d=state.clean_streak_d,
-            quest_bonus=0,
-        )
-        quest_state_mod.record_yesterday_clean(
-            state, was_clean=was_clean, now=now,
-            health_score=int(snapshot["score"]),
-        )
-        # Pre-compute today's intrinsic health to drive the hit-95-health gate.
-        prelim = garden.compute_board_health(
-            mems,
-            now,
-            captured_counts=captured_counts,
-            clean_streak_d=state.clean_streak_d,
-            quest_bonus=0,
-        )
-        new_quests = quests_mod.generate_quests(
-            mems,
-            now,
-            captured_counts=captured_counts,
-            current_health=int(prelim["score"]),
-        )
-        state.today = quest_state_mod.TodayRow(
-            date=now.astimezone(timezone.utc).strftime("%Y-%m-%d"),
-            generated_at=now,
-            quests=new_quests,
-            all_done_bonus_grants=0,
-        )
-        quest_state_mod.save_state(state, settings.garden_quests_path)
-        return state
+    def _evaluate_today_quests(
+        state: quest_state_mod.QuestState,
+        mems: list[Any],
+        captured_counts: dict[str, int],
+        now: datetime,
+    ) -> None:
+        """Mark today's pending quests complete against the given board state.
 
-    def _maybe_complete_quests(memory_id: Optional[str] = None) -> None:
-        """Re-evaluate today's quests against current store state.
-
-        Called from every tending endpoint AFTER the ``last_tended_at``
-        bump succeeds. Idempotent — only persists when a quest actually
-        transitions pending → complete.
-
-        ``memory_id`` is unused today (we re-evaluate the full quest list
-        because completion may depend on cross-memory state like "all
-        targets tended"), but is kept as a hook for future per-quest
-        targeting if needed.
+        Uses INTRINSIC health (no quest_bonus) for the hit-95-health check so
+        the bonus cannot complete itself. Persists only when at least one
+        quest transitions pending to complete.
         """
-        now = _now_utc()
-        state = quest_state_mod.load_state(settings.garden_quests_path)
-        if not quest_state_mod.is_today_row(state.today, now):
-            return  # today's row hasn't been generated yet
-        assert state.today is not None
-        if not state.today.quests:
+        if state.today is None or not state.today.quests:
             return
         prev_done = sum(1 for q in state.today.quests if q.is_complete)
-        mems = store.list_memories()
-        captured_counts = vial_store.captured_count_by_memory()
-        # Compute current intrinsic health for hit-95-health detection
-        # (without quest_bonus to avoid the bonus-completes-itself loop).
         live = garden.compute_board_health(
             mems,
             now,
@@ -192,6 +216,30 @@ def create_app() -> FastAPI:
         now_done = sum(1 for q in state.today.quests if q.is_complete)
         if now_done > prev_done:
             quest_state_mod.save_state(state, settings.garden_quests_path)
+
+    def _maybe_complete_quests(memory_id: Optional[str] = None) -> None:
+        """Re-evaluate today's quests against current store state.
+
+        Called from every tending endpoint AFTER the ``last_tended_at``
+        bump succeeds. Idempotent: only persists when a quest actually
+        transitions pending → complete.
+
+        ``memory_id`` is unused today (we re-evaluate the full quest list
+        because completion may depend on cross-memory state like "all
+        targets tended"), but is kept as a hook for future per-quest
+        targeting if needed.
+        """
+        now = _now_utc()
+        with garden_state_lock:
+            state = quest_state_mod.load_state(settings.garden_quests_path)
+            if not quest_state_mod.is_today_row(state.today, now):
+                return  # today's row hasn't been generated yet
+            assert state.today is not None
+            if not state.today.quests:
+                return
+            _evaluate_today_quests(
+                state, store.list_memories(), vial_store.captured_count_by_memory(), now
+            )
 
     def _mirror_column_to_source(memory_id: str, column: str) -> dict[str, Any]:
         """Best-effort writeback of `pensieve/col:<col>` to the upstream task.
@@ -303,30 +351,11 @@ def create_app() -> FastAPI:
         now = _now_utc()
         mems = store.list_memories()
         captured_counts = vial_store.captured_count_by_memory()
-        state = _get_or_init_quest_state(now)
-        # Auto-evaluate pending quests so the bonus reflects current state
-        # even if a tend happened outside an /api/* tending endpoint.
-        prev_done = (
-            sum(1 for q in state.today.quests if q.is_complete) if state.today else 0
-        )
-        if state.today is not None and state.today.quests:
-            prelim = garden.compute_board_health(
-                mems,
-                now,
-                captured_counts=captured_counts,
-                clean_streak_d=state.clean_streak_d,
-                quest_bonus=0,
-            )
-            quests_mod.evaluate_pending(
-                state.today.quests,
-                now=now,
-                all_memories=mems,
-                captured_counts=captured_counts,
-                current_health=int(prelim["score"]),
-            )
-            now_done = sum(1 for q in state.today.quests if q.is_complete)
-            if now_done > prev_done:
-                quest_state_mod.save_state(state, settings.garden_quests_path)
+        with garden_state_lock:
+            state = _get_or_init_quest_state(now)
+            # Auto-evaluate pending quests so the bonus reflects current state
+            # even if a tend happened outside an /api/* tending endpoint.
+            _evaluate_today_quests(state, mems, captured_counts, now)
         bonus = quest_state_mod.quest_bonus_today(state)
         result = garden.compute_board_health(
             mems,
@@ -349,29 +378,13 @@ def create_app() -> FastAPI:
         clean board with no recent closures).
         """
         now = _now_utc()
-        state = _get_or_init_quest_state(now)
-        # Re-evaluate pending quests against current store state.
-        if state.today is not None and state.today.quests:
-            mems = store.list_memories()
-            captured_counts = vial_store.captured_count_by_memory()
-            prev_done = sum(1 for q in state.today.quests if q.is_complete)
-            prelim = garden.compute_board_health(
-                mems,
-                now,
-                captured_counts=captured_counts,
-                clean_streak_d=state.clean_streak_d,
-                quest_bonus=0,
-            )
-            quests_mod.evaluate_pending(
-                state.today.quests,
-                now=now,
-                all_memories=mems,
-                captured_counts=captured_counts,
-                current_health=int(prelim["score"]),
-            )
-            now_done = sum(1 for q in state.today.quests if q.is_complete)
-            if now_done > prev_done:
-                quest_state_mod.save_state(state, settings.garden_quests_path)
+        with garden_state_lock:
+            state = _get_or_init_quest_state(now)
+            # Re-evaluate pending quests against current store state.
+            if state.today is not None and state.today.quests:
+                _evaluate_today_quests(
+                    state, store.list_memories(), vial_store.captured_count_by_memory(), now
+                )
 
         today_dict: dict[str, Any] = {
             "date": state.today.date if state.today else None,
@@ -423,10 +436,11 @@ def create_app() -> FastAPI:
             current_health=int(live["score"]),
             history=q_state.history,
         )
-        state = achievement_state_mod.load_state(settings.achievements_path)
-        state, new_ids = achievement_state_mod.merge_unlocked(state, should, now)
-        if new_ids:
-            achievement_state_mod.save_state(state, settings.achievements_path)
+        with garden_state_lock:
+            state = achievement_state_mod.load_state(settings.achievements_path)
+            state, new_ids = achievement_state_mod.merge_unlocked(state, should, now)
+            if new_ids:
+                achievement_state_mod.save_state(state, settings.achievements_path)
         return state, new_ids
 
     @app.get("/api/achievements")
@@ -544,18 +558,7 @@ def create_app() -> FastAPI:
         if "due_date" in body:
             raw_due = body["due_date"]
             if raw_due:
-                from datetime import datetime as _dt
-                from datetime import timezone as _tz
-
-                try:
-                    parsed = _dt.fromisoformat(str(raw_due).strip())
-                except ValueError as e:
-                    raise HTTPException(
-                        status_code=400, detail=f"Invalid due_date: {raw_due}"
-                    ) from e
-                if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=_tz.utc)
-                mem.due_date = parsed
+                mem.due_date = _parse_due_date(str(raw_due))
             else:
                 mem.due_date = None
         if mem.column not in ("memory", "dive", "review", "closed"):
@@ -709,7 +712,11 @@ def create_app() -> FastAPI:
         from pensieve.enrichment.goals_importer import import_pdf_to_goals
 
         try:
-            payload = import_pdf_to_goals(pdf_bytes, source_label=f"Imported from {file.filename}")
+            # PDF parsing + an LLM call take seconds. Run them on the threadpool
+            # so this async route does not freeze every other request meanwhile.
+            payload = await run_in_threadpool(
+                import_pdf_to_goals, pdf_bytes, source_label=f"Imported from {file.filename}"
+            )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
         except Exception as e:
@@ -835,8 +842,9 @@ def create_app() -> FastAPI:
                 pass
 
             try:
-                src = OutlookCOMSource()
-                folders = src.discover_lists()
+                # No named reference: the source (and its Outlook COM proxies)
+                # is released here, before CoUninitialize in the finally block.
+                folders = OutlookCOMSource().discover_lists()
             except OutlookCOMUnavailable as e:
                 raise HTTPException(status_code=503, detail=f"Outlook COM unavailable: {e}") from e
             return {"count": len(folders), "lists": folders}
@@ -1060,18 +1068,11 @@ def create_app() -> FastAPI:
         from pensieve.graph import build_graph
 
         memories = store.list_memories()
-        # Pull embeddings straight from the collection so we don't recompute them.
-        # Chroma returns embeddings as a numpy ndarray, so avoid truthiness on it
-        # (an `or []` fallback raises "truth value ambiguous") and convert per-row.
-        embeddings: dict[str, Any] = {}
+        # Reuse the stored vectors (the ones search uses) instead of recomputing
+        # them. build_graph stacks them into one numpy matrix, so the rows are
+        # passed through as-is rather than converted to Python floats.
         try:
-            raw = store._memories.get(include=["embeddings"])  # noqa: SLF001
-            ids = raw.get("ids") or []
-            vecs = raw.get("embeddings")
-            if vecs is not None:
-                for mid, vec in zip(ids, vecs, strict=False):
-                    if vec is not None:
-                        embeddings[mid] = [float(x) for x in vec]
+            embeddings: dict[str, Any] = store.embeddings_by_id()
         except Exception:
             embeddings = {}
 

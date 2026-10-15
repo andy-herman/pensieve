@@ -28,7 +28,9 @@ Design notes:
 
 from __future__ import annotations
 
+import logging
 import threading
+import traceback
 from typing import Callable, Optional
 
 from rich.console import Console
@@ -37,6 +39,26 @@ from pensieve.config import Settings
 from pensieve.sync_state import SyncJobTracker
 
 console = Console()
+logger = logging.getLogger(__name__)
+
+
+_last_logged_failure: Optional[str] = None
+
+
+def _log_sync_failure(exc: BaseException) -> None:
+    """Log a failed sync with its traceback, once per distinct error.
+
+    The tracker only keeps ``str(exc)``, so without this a failing auto-sync
+    left nothing in the server log to debug from. Repeats of the same error
+    (Outlook closed for an hour) are logged once, matching the scheduler's
+    own log-once policy; a successful sync resets it.
+    """
+    global _last_logged_failure
+    key = f"{type(exc).__name__}: {exc}"
+    if key == _last_logged_failure:
+        return
+    _last_logged_failure = key
+    logger.error("Sync failed: %s", key, exc_info=exc)
 
 
 def _sync_worker(
@@ -46,14 +68,16 @@ def _sync_worker(
     list_names: list[str],
     force: bool,
 ) -> None:
-    """Body of the spawned sync thread.
+    """Body of the spawned sync thread: COM apartment bracket around the job.
 
-    Mirrors the code in ``POST /api/sync``'s ``_runner`` closure: COM
-    bracket, build source, optional strand catalog + recent context for
-    outlook_com, run_sync, finish on the tracker. Kept as a free function
-    so both the API route and the scheduler can call into it without a
-    circular import on ``pensieve.api.server``.
+    Kept as a free function so both the API route and the scheduler can
+    call into it without a circular import on ``pensieve.api.server``.
+    The job itself runs in :func:`_run_sync_job` so that the source object,
+    which holds Outlook COM proxies, is released when that call returns,
+    before ``CoUninitialize``. Releasing COM proxies after the apartment is
+    torn down is undefined behavior in pywin32.
     """
+    global _last_logged_failure
     _com_inited = False
     try:
         try:
@@ -63,49 +87,14 @@ def _sync_worker(
             _com_inited = True
         except Exception:
             pass
-
-        from pensieve.cli import _build_recent_context_from_chroma, _build_source
-        from pensieve.sync import run_sync
-
-        src = _build_source(src_name, list_names=list_names or None)
-        strand_catalog = None
-        recent_context = None
-        if src_name in ("outlook_com", "personal_graph"):
-            if settings.samples_path.exists():
-                import json as _json
-
-                with settings.samples_path.open("r", encoding="utf-8") as f:
-                    blob = _json.load(f)
-                strand_catalog = blob.get("strand_catalog")
-            recent_context = _build_recent_context_from_chroma()
-        tracker.update("Enriching new and changed tasks...")
-        stats = run_sync(
-            src,
-            strand_catalog=strand_catalog,
-            recent_context=recent_context,
-            dry_run=False,
-            force=force,
-        )
-        tracker.finish_ok(
-            {
-                "total_tasks": stats.total_tasks,
-                "new_enriched": stats.new_enriched,
-                "updated_enriched": stats.updated_enriched,
-                "skipped_unchanged": stats.skipped_unchanged,
-                "deleted": stats.deleted,
-                "failed": stats.failed,
-                "review_queue": stats.review_queue,
-                "tokens_used": stats.tokens_used,
-            },
-            message=(
-                f"Sync complete: {stats.new_enriched} new, "
-                f"{stats.updated_enriched} updated, "
-                f"{stats.deleted} deleted, "
-                f"{stats.skipped_unchanged} unchanged."
-            ),
-        )
+        _run_sync_job(settings, tracker, src_name, list_names, force)
+        _last_logged_failure = None
     except Exception as e:
+        _log_sync_failure(e)
         tracker.finish_error(str(e))
+        # The traceback's frames still reference the source; drop their locals
+        # so its COM proxies are released before CoUninitialize below.
+        traceback.clear_frames(e.__traceback__)
     finally:
         if _com_inited:
             try:
@@ -114,6 +103,56 @@ def _sync_worker(
                 pythoncom.CoUninitialize()
             except Exception:
                 pass
+
+
+def _run_sync_job(
+    settings: Settings,
+    tracker: SyncJobTracker,
+    src_name: str,
+    list_names: list[str],
+    force: bool,
+) -> None:
+    """Build the source, run the sync, and record the result on the tracker."""
+    from pensieve.cli import _build_recent_context_from_chroma, _build_source
+    from pensieve.sync import run_sync
+
+    src = _build_source(src_name, list_names=list_names or None)
+    strand_catalog = None
+    recent_context = None
+    if src_name in ("outlook_com", "personal_graph"):
+        if settings.samples_path.exists():
+            import json as _json
+
+            with settings.samples_path.open("r", encoding="utf-8") as f:
+                blob = _json.load(f)
+            strand_catalog = blob.get("strand_catalog")
+        recent_context = _build_recent_context_from_chroma()
+    tracker.update("Enriching new and changed tasks...")
+    stats = run_sync(
+        src,
+        strand_catalog=strand_catalog,
+        recent_context=recent_context,
+        dry_run=False,
+        force=force,
+    )
+    tracker.finish_ok(
+        {
+            "total_tasks": stats.total_tasks,
+            "new_enriched": stats.new_enriched,
+            "updated_enriched": stats.updated_enriched,
+            "skipped_unchanged": stats.skipped_unchanged,
+            "deleted": stats.deleted,
+            "failed": stats.failed,
+            "review_queue": stats.review_queue,
+            "tokens_used": stats.tokens_used,
+        },
+        message=(
+            f"Sync complete: {stats.new_enriched} new, "
+            f"{stats.updated_enriched} updated, "
+            f"{stats.deleted} deleted, "
+            f"{stats.skipped_unchanged} unchanged."
+        ),
+    )
 
 
 def start_sync_job(

@@ -192,12 +192,14 @@ def run_sync(
     client = get_chat_client(settings) if not dry_run else None
     connect_goals = load_connect_goals()
 
-    known_ids = store.known_ids()
+    # One bulk read up front instead of a Chroma get per task in the
+    # skip-unchanged loop below (that loop runs on every auto-sync tick).
+    existing_by_id = {m.id: m for m in store.list_memories()}
     tasks = list(source.list_tasks())
     stats.total_tasks = len(tasks)
     console.print(
         f"[cyan]Source[/cyan] {source.name}: {stats.total_tasks} tasks. "
-        f"Chroma has {len(known_ids)} memories already."
+        f"Chroma has {len(existing_by_id)} memories already."
     )
 
     # Deletion sweep: any memory we previously ingested from this source
@@ -240,12 +242,9 @@ def run_sync(
         if force:
             to_enrich.append((t, "force"))
             continue
-        if t.id not in known_ids:
-            to_enrich.append((t, "new"))
-            continue
-        existing = store.get_memory(t.id)
+        existing = existing_by_id.get(t.id)
         if existing is None:
-            to_enrich.append((t, "missing"))
+            to_enrich.append((t, "new"))
             continue
         # Title or notes edited in the source → full re-enrich so why/impact/
         # strand reflect the new wording. (Outlook doesn't always bump
@@ -286,8 +285,8 @@ def run_sync(
         )
         if not ok:
             continue
-        mem = store.get_memory(t.id)  # re-read for display only
-        title = mem.title if mem else t.title
+        existing = existing_by_id.get(t.id)
+        title = existing.title if existing else t.title
         stats.updated_enriched += 1
         console.print(
             f"  [green]CLOSE [/green] (auto-close) {title} "

@@ -1,14 +1,23 @@
-"""Pytest config — clear settings cache before each test."""
+"""Pytest config: clear process-wide caches around each test."""
 
 from __future__ import annotations
 
 import pytest
 
 from pensieve.config import get_settings
+from pensieve.enrichment import connect_goals
+
+
+def _clear_caches() -> None:
+    get_settings.cache_clear()  # type: ignore[attr-defined]
+    # The goals catalog is cached per process, not per data dir, so a test that
+    # points PENSIEVE_DATA_DIR at an empty tmp dir must not leak [] to others.
+    connect_goals.load_connect_goals.cache_clear()  # type: ignore[attr-defined]
+    connect_goals.goals_index.cache_clear()  # type: ignore[attr-defined]
 
 
 @pytest.fixture(autouse=True)
 def _clear_settings_cache():
-    get_settings.cache_clear()  # type: ignore[attr-defined]
+    _clear_caches()
     yield
-    get_settings.cache_clear()  # type: ignore[attr-defined]
+    _clear_caches()

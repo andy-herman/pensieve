@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
-from azure.identity import DefaultAzureCredential
 
 from pensieve.config import Settings
+
+if TYPE_CHECKING:  # imported lazily below; azure.identity costs ~0.5 s at startup
+    from azure.identity import DefaultAzureCredential
 
 # Models that require max_completion_tokens instead of max_tokens
 _MAX_COMPLETION_PREFIXES = ("gpt-5", "o1", "o3", "o4")
@@ -20,7 +22,7 @@ _MAX_COMPLETION_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 # OAuth state. Serialize first-acquisition and reuse the token until expiry.
 _TOKEN_LOCK = threading.Lock()
 _TOKEN_CACHE: dict[str, tuple[str, float]] = {}  # scope -> (token, expires_on_epoch)
-_SHARED_CRED: Optional[DefaultAzureCredential] = None
+_SHARED_CRED: Optional["DefaultAzureCredential"] = None
 
 
 def _get_shared_token(scope: str) -> str:
@@ -35,6 +37,10 @@ def _get_shared_token(scope: str) -> str:
         if cached and cached[1] - now > 60:
             return cached[0]
         if _SHARED_CRED is None:
+            # Deferred import: only keyless Azure auth needs it, and importing it
+            # eagerly slowed every `pensieve serve` startup.
+            from azure.identity import DefaultAzureCredential
+
             _SHARED_CRED = DefaultAzureCredential(exclude_interactive_browser_credential=False)
         tok = _SHARED_CRED.get_token(scope)
         _TOKEN_CACHE[scope] = (tok.token, float(tok.expires_on))

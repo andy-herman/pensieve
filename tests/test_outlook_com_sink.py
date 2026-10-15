@@ -285,3 +285,48 @@ def test_real_sink_raises_outlookCOMUnavailable_when_pywin32_missing(monkeypatch
 
     with pytest.raises(OutlookCOMUnavailable):
         sink._connect()
+
+
+# ---------- COM proxy lifetime ----------
+
+
+def test_sink_releases_outlook_proxies_before_couninitialize(monkeypatch):
+    import sys
+
+    events: list[str] = []
+
+    class _FakePythoncom:
+        def CoInitialize(self) -> None:
+            events.append("init")
+
+        def CoUninitialize(self) -> None:
+            events.append("uninit")
+
+    class _Proxy:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def __del__(self) -> None:
+            events.append(f"{self.label}-released")
+
+    class _ConnectingSink(OutlookCOMSink):
+        def _connect(self) -> None:
+            if self._app is None:
+                self._app = _Proxy("app")
+                self._ns = _Proxy("ns")
+
+        def _get_item(self, task_id: str):
+            self._connect()
+            return _FakeItem(categories="Work")
+
+    monkeypatch.setitem(sys.modules, "pythoncom", _FakePythoncom())
+    sink = _ConnectingSink()
+    for call in (
+        lambda: sink.set_column_tag("abc", "dive", prefix=PREFIX),
+        lambda: sink.clear_column_tag("abc", prefix=PREFIX),
+        lambda: sink.set_completion("abc", True),
+    ):
+        events.clear()
+        assert call() is True
+        assert events[0] == "init" and events[-1] == "uninit"
+        assert sorted(events[1:-1]) == ["app-released", "ns-released"]

@@ -9,6 +9,8 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from pensieve.config import Settings, get_settings
+from pensieve.store import read_cache
+from pensieve.store.embedding import get_embedding_function
 from pensieve.store.schema import Vial
 
 
@@ -52,7 +54,9 @@ class ChromaVialStore:
         self._vials = self._client.get_or_create_collection(
             name=self.settings.chroma_collection_vials,
             metadata={"hnsw:space": "cosine"},
+            embedding_function=get_embedding_function(),
         )
+        self._cache_key = read_cache.db_key(self.settings.chroma_dir)
 
     # ----- writes -----
 
@@ -75,8 +79,19 @@ class ChromaVialStore:
             return None
         return self._reconstruct(res["ids"][0], (res.get("metadatas") or [{}])[0] or {})
 
+    def _all_rows(self) -> dict:
+        """Raw full-collection read, served from the shared read cache when unchanged.
+
+        Treat the result as read-only: it is shared between callers.
+        """
+        return read_cache.cached_get(
+            self._cache_key,
+            self._vials.name,
+            lambda: self._vials.get(include=["metadatas"]),
+        )
+
     def list_vials(self) -> list[Vial]:
-        res = self._vials.get(include=["metadatas"])
+        res = self._all_rows()
         out: list[Vial] = []
         for i, vid in enumerate(res.get("ids", []) or []):
             meta = (res.get("metadatas") or [{}])[i] or {}
@@ -105,7 +120,7 @@ class ChromaVialStore:
         Skipped Vials are excluded — they exist only to clear the
         ``pending_closure_capture`` chevron, not to count as evidence.
         """
-        res = self._vials.get(include=["metadatas"])
+        res = self._all_rows()
         counts: dict[str, int] = {}
         for meta in res.get("metadatas", []) or []:
             meta = meta or {}
@@ -121,7 +136,7 @@ class ChromaVialStore:
         """One bulk query returning the set of memory_ids that have ANY Vial
         (captured or skipped). Used to compute pending_closure_capture so
         that a Skip also clears the chevron."""
-        res = self._vials.get(include=["metadatas"])
+        res = self._all_rows()
         seen: set[str] = set()
         for meta in res.get("metadatas", []) or []:
             meta = meta or {}

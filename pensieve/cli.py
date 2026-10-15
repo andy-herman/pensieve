@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -65,12 +66,20 @@ def _build_source(name: str, list_names: Optional[list[str]] = None):
     )
 
 
+def _as_aware_utc(ts: Optional[datetime]) -> datetime:
+    if ts is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+
+
 def _build_recent_context_from_chroma() -> dict:
     """Compose recent_context from Chroma when not using a sample source."""
     store = ChromaMemoryStore()
     mems = store.list_memories()
-    # most-recent first by enriched_at
-    mems.sort(key=lambda m: m.enriched_at or "", reverse=True)
+    # most-recent first by enriched_at. Normalize to aware UTC first: a single
+    # naive timestamp from older data would otherwise raise TypeError on
+    # comparison and fail the whole sync.
+    mems.sort(key=lambda m: _as_aware_utc(m.enriched_at), reverse=True)
     recent_strands: list[str] = []
     recent_titles: list[str] = []
     seen_strands: set[str] = set()

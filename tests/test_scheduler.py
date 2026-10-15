@@ -263,3 +263,86 @@ def test_scheduler_stop_joins_loop_thread():
     scheduler.stop(timeout=2.0)
     assert scheduler._thread is not None
     assert not scheduler._thread.is_alive()
+
+
+# ---------- _sync_worker: COM teardown order + failure logging ----------
+
+
+class _FakePythoncom:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    def CoInitialize(self) -> None:
+        self.events.append("init")
+
+    def CoUninitialize(self) -> None:
+        self.events.append("uninit")
+
+
+class _ComHoldingSource:
+    """Stands in for OutlookCOMSource: records when its last reference goes away."""
+
+    name = "outlook_com"
+
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    def __del__(self) -> None:
+        self._events.append("source-released")
+
+
+def test_sync_worker_releases_source_before_couninitialize(monkeypatch, tmp_path):
+    import sys
+
+    import pensieve.cli as cli
+    import pensieve.sync as sync_mod
+    from pensieve.scheduler import _sync_worker
+    from pensieve.sync import SyncStats
+
+    events: list[str] = []
+    monkeypatch.setitem(sys.modules, "pythoncom", _FakePythoncom(events))
+    monkeypatch.setattr(cli, "_build_source", lambda name, list_names=None: _ComHoldingSource(events))
+    monkeypatch.setattr(cli, "_build_recent_context_from_chroma", lambda: {})
+    monkeypatch.setattr(sync_mod, "run_sync", lambda src, **kw: SyncStats(total_tasks=1))
+
+    tracker = SyncJobTracker()
+    tracker.try_begin(source="outlook_com", lists=[])
+    _sync_worker(_settings(data_dir=tmp_path), tracker, "outlook_com", [], False)
+    assert tracker.snapshot()["status"] == "done"
+    assert events == ["init", "source-released", "uninit"]
+
+
+def test_sync_worker_logs_each_distinct_failure_once(monkeypatch, tmp_path, caplog):
+    import logging
+    import sys
+
+    import pensieve.cli as cli
+    import pensieve.scheduler as sched
+
+    events: list[str] = []
+    monkeypatch.setitem(sys.modules, "pythoncom", _FakePythoncom(events))
+    monkeypatch.setattr(sched, "_last_logged_failure", None)
+    errors = iter(
+        [RuntimeError("Outlook closed"), RuntimeError("Outlook closed"), ValueError("bad list")]
+    )
+
+    def failing_build(name, list_names=None):
+        src = _ComHoldingSource(events)  # noqa: F841 - held by the failing frame
+        raise next(errors)
+
+    monkeypatch.setattr(cli, "_build_source", failing_build)
+    tracker = SyncJobTracker()
+    with caplog.at_level(logging.ERROR, logger="pensieve.scheduler"):
+        for _ in range(3):
+            tracker.try_begin(source="outlook_com", lists=[])
+            sched._sync_worker(_settings(data_dir=tmp_path), tracker, "outlook_com", [], False)
+            assert tracker.snapshot()["status"] == "error"
+
+    logged = [r for r in caplog.records if r.name == "pensieve.scheduler"]
+    assert [r.getMessage() for r in logged] == [
+        "Sync failed: RuntimeError: Outlook closed",
+        "Sync failed: ValueError: bad list",
+    ]
+    assert all(r.exc_info for r in logged)
+    # Even on failure, the source is released before the apartment is torn down.
+    assert events[:3] == ["init", "source-released", "uninit"]
