@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background badge for the app icon. Make-Icon.ps1 composites the
+       Blender-rendered basin (pensieve-emblem.png) on top of this. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="68%">
+      <stop offset="0" stop-color="#2f3e70"/>
+      <stop offset="0.55" stop-color="#161d3b"/>
+      <stop offset="1" stop-color="#0a0e1e"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="52%" r="40%">
+      <stop offset="0" stop-color="#9fbcf0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#9fbcf0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1d58a"/>
+      <stop offset="0.5" stop-color="#c9a655"/>
+      <stop offset="1" stop-color="#8f6d2c"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="238" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="200" fill="url(#halo)"/>
+  <g fill="#f5d77b">
+    <circle cx="132" cy="138" r="4.5"/>
+    <circle cx="384" cy="120" r="3.5"/>
+    <circle cx="410" cy="200" r="2.5"/>
+    <circle cx="104" cy="214" r="2.5"/>
+    <circle cx="352" cy="82" r="2"/>
+  </g>
+  <circle cx="256" cy="256" r="238" fill="none" stroke="url(#ring)" stroke-width="20"/>
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#f5d77b" stroke-opacity="0.35" stroke-width="3"/>
+</svg>

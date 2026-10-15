@@ -38,12 +38,28 @@ $generated = Join-Path $obj "Pensieve.generated.cs"
 Set-Content -Path $generated -Value $source -Encoding UTF8
 
 $exe = Join-Path $dist "Pensieve.exe"
+$staged = Join-Path $obj "Pensieve.exe"
 $icon = Join-Path $here "pensieve.ico"
 & $csc /nologo /target:winexe /platform:anycpu /optimize+ `
     "/win32icon:$icon" `
     /reference:System.Management.dll /reference:System.Windows.Forms.dll `
-    "/out:$exe" $generated
+    "/out:$staged" $generated
 if ($LASTEXITCODE -ne 0) { throw "csc failed with exit code $LASTEXITCODE" }
+
+# Swap the new build into dist. If Pensieve is running, its exe is locked
+# for writing but can still be renamed, so set it aside and clean it up on
+# the next build.
+Get-ChildItem $dist -Filter "Pensieve.old-*.exe" -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item $_.FullName -ErrorAction SilentlyContinue }
+if (Test-Path $exe) {
+    try {
+        Remove-Item $exe -ErrorAction Stop
+    } catch {
+        Rename-Item $exe ("Pensieve.old-" + [DateTime]::Now.ToString("yyyyMMddHHmmss") + ".exe")
+        Write-Host "Pensieve is running; the new build takes effect next launch."
+    }
+}
+Move-Item $staged $exe
 Write-Host "Built $exe"
 
 if ($NoShortcuts) { return }

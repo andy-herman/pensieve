@@ -389,11 +389,20 @@ namespace PensieveDesktop
         {
             string path = Path.Combine(appDataDir, "splash.html");
             string icon = Path.Combine(repo, "desktop\\pensieve.ico");
+            string video = Path.Combine(repo, "frontend-proto\\assets\\splash-loop.mp4");
+            string poster = Path.Combine(repo, "frontend-proto\\assets\\splash-poster.webp");
             string html = SplashHtml
                 .Replace("@@TARGET@@", baseUrl)
-                .Replace("@@ICON@@", File.Exists(icon) ? new Uri(icon).AbsoluteUri : "");
+                .Replace("@@ICON@@", FileUri(icon))
+                .Replace("@@VIDEO@@", FileUri(video))
+                .Replace("@@POSTER@@", FileUri(poster));
             File.WriteAllText(path, html, new UTF8Encoding(false));
             return path;
+        }
+
+        static string FileUri(string path)
+        {
+            return File.Exists(path) ? new Uri(path).AbsoluteUri : "";
         }
 
         // ---- Diagnostics ----------------------------------------------------
@@ -425,38 +434,62 @@ namespace PensieveDesktop
 <meta charset=""utf-8"">
 <title>The Pensieve</title>
 <link rel=""icon"" href=""@@ICON@@"">
+<link rel=""preconnect"" href=""https://fonts.googleapis.com"">
+<link rel=""preconnect"" href=""https://fonts.gstatic.com"" crossorigin>
+<link href=""https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@1&display=swap"" rel=""stylesheet"">
 <style>
   html, body { margin: 0; height: 100%; }
   body {
     display: flex; align-items: center; justify-content: center; flex-direction: column;
-    background: radial-gradient(ellipse at top, #f5e6c4 0%, #e8d7ac 55%, #cdb076 100%);
-    color: #2a1d10; font-family: 'Cinzel', 'Georgia', serif;
+    background: radial-gradient(ellipse at 50% 40%, #121a36 0%, #070a17 55%, #03050c 100%);
+    color: #e9cf8a; font-family: 'Cinzel', 'Georgia', serif;
+    transition: opacity 320ms ease;
   }
-  h1 { font-size: 2.4rem; letter-spacing: 0.08em; margin: 0 0 0.4rem; font-weight: 700; }
-  p { font-family: 'Georgia', serif; font-style: italic; color: #5b4327; margin: 0.2rem 0; }
-  .swirl {
-    width: 120px; height: 120px; margin-bottom: 1.6rem; border-radius: 50%;
-    background: conic-gradient(from 0deg, #f8fbff, #b9cde6, #6f8fb8, #e4eefb, #f8fbff);
-    box-shadow: 0 0 40px rgba(200, 220, 255, 0.9), inset 0 0 24px rgba(42, 29, 16, 0.25);
-    animation: stir 2.4s linear infinite;
+  body.leaving { opacity: 0; }
+  /* screen blend drops the clip's near-black backdrop into the page gradient;
+     it sits on the masked container because a mask isolates its children */
+  .bowl {
+    width: min(46vmin, 380px); aspect-ratio: 1; margin-bottom: 0.6rem; mix-blend-mode: screen;
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 52%, transparent 71%);
+            mask-image: radial-gradient(circle at 50% 50%, #000 52%, transparent 71%);
   }
-  @keyframes stir { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .swirl { animation: none; } }
-  #slow { margin-top: 1rem; font-size: 0.9rem; }
+  .bowl video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  h1 {
+    font-size: clamp(1.8rem, 4.2vmin, 2.6rem); letter-spacing: 0.14em; margin: 0 0 0.5rem;
+    font-weight: 700; text-shadow: 0 0 18px rgba(233, 207, 138, 0.35);
+  }
+  p { font-family: 'IM Fell English', 'Georgia', serif; font-style: italic; color: #cdbf9f; margin: 0.2rem 0; letter-spacing: 0.02em; }
+  #slow { margin-top: 1rem; font-size: 0.9rem; color: #9f977f; }
+  @media (prefers-reduced-motion: reduce) { body { transition: none; } }
 </style>
 </head>
 <body>
-  <div class=""swirl"" aria-hidden=""true""></div>
+  <div class=""bowl"" aria-hidden=""true"">
+    <video src=""@@VIDEO@@"" poster=""@@POSTER@@"" autoplay muted loop playsinline></video>
+  </div>
   <h1>The Pensieve</h1>
   <p>Stirring the surface...</p>
   <p id=""slow"" hidden>Still gathering memories. The first start after a reboot can take a little longer.</p>
 <script>
   var target = '@@TARGET@@';
+  var shownAt = Date.now();
+  var MIN_SHOW_MS = 1400; // long enough to read as a splash, never a flash
   var tries = 0;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var v = document.querySelector('video');
+    if (v) { v.removeAttribute('autoplay'); v.pause(); }
+  }
+  function go() {
+    var wait = Math.max(0, MIN_SHOW_MS - (Date.now() - shownAt));
+    setTimeout(function () {
+      document.body.classList.add('leaving');
+      setTimeout(function () { location.replace(target); }, 300);
+    }, wait);
+  }
   function poll() {
     tries++;
     fetch(target + 'api/healthz', { mode: 'no-cors', cache: 'no-store' })
-      .then(function () { location.replace(target); })
+      .then(go)
       .catch(function () {
         if (tries === 40) document.getElementById('slow').hidden = false;
         setTimeout(poll, 500);
