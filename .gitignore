@@ -55,3 +55,6 @@ data/chroma.bak*/
 # Local editor / preview config
 .claude/settings.local.json
 
+
+# Desktop launcher build intermediates (desktop/dist is covered by dist/ above)
+desktop/obj/
