@@ -44,10 +44,20 @@ class SyncJobTracker:
         with self._lock:
             return self._state.status == "running"
 
-    def begin(self, *, source: str, lists: list[str], message: str = "Starting sync") -> dict:
+    def try_begin(
+        self, *, source: str, lists: list[str], message: str = "Starting sync"
+    ) -> tuple[bool, dict]:
+        """Atomic 'mark running if currently idle'. Returns (transitioned, snapshot).
+
+        ``transitioned=True`` means this caller now owns the running job and
+        must arrange for finish_ok/finish_error to be called. ``False`` means
+        another sync was already in flight and the caller MUST NOT start a
+        second one (Chroma is single-writer). Either way, ``snapshot`` is the
+        current state — callers can inspect ``status`` to discriminate.
+        """
         with self._lock:
             if self._state.status == "running":
-                return self._state.to_dict()
+                return False, self._state.to_dict()
             self._state = SyncJobState(
                 status="running",
                 started_at=datetime.now(timezone.utc).isoformat(),
@@ -55,7 +65,7 @@ class SyncJobTracker:
                 lists=list(lists or []),
                 message=message,
             )
-            return self._state.to_dict()
+            return True, self._state.to_dict()
 
     def update(self, message: str) -> None:
         with self._lock:

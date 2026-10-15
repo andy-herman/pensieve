@@ -138,3 +138,79 @@ def test_dashboard_dict_shape(tmp_store):
     assert d["id"] == "mem_t1"
     assert d["title"] == "Hello world"
     assert d["connect_goal_ids"] == ["goal-1-dora-deep-dive"]
+
+
+def test_display_title_round_trip(tmp_store):
+    """display_title (LLM-curated card heading) must survive Chroma upsert + reload."""
+    m = _mk_memory()
+    m.display_title = "DORA RFI 0107 Article 6 mapping"
+    tmp_store.upsert_memory(m)
+
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.display_title == "DORA RFI 0107 Article 6 mapping"
+    assert fetched.title == "Hello world"  # source title preserved
+
+
+def test_display_title_defaults_to_none_when_absent(tmp_store):
+    """A memory upserted without a display_title (legacy / pre-feature) must
+    reconstruct with display_title=None so the frontend falls back to title.
+    """
+    tmp_store.upsert_memory(_mk_memory())
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.display_title is None
+
+
+def test_date_fields_round_trip(tmp_store):
+    """Regression: enriched_at, source_last_modified, source_created_at, due_date,
+    and completed_at must survive a Chroma upsert + reload.
+
+    Without this, sync.py's "task was modified at source" detection (which
+    compares task.last_modification_time against existing.source_last_modified)
+    silently no-ops because the reconstructed memory always has source_last_modified=None,
+    and overlay_regeneration's mirror-tag conflict policy (which compares
+    against existing.enriched_at) always sees enriched_at=now() instead of the
+    persisted value. Net effect: tasks edited in Outlook (without title/notes
+    changes) never get re-enriched.
+    """
+    created = datetime(2026, 5, 1, 8, 30, 0, tzinfo=timezone.utc)
+    modified = datetime(2026, 5, 28, 14, 41, 12, tzinfo=timezone.utc)
+    due = datetime(2026, 6, 15, 17, 0, 0, tzinfo=timezone.utc)
+    completed_at = datetime(2026, 5, 30, 9, 15, 0, tzinfo=timezone.utc)
+    enriched = datetime(2026, 5, 28, 22, 23, 28, tzinfo=timezone.utc)
+
+    m = _mk_memory()
+    m.source_created_at = created
+    m.source_last_modified = modified
+    m.due_date = due
+    m.completed = True
+    m.completed_at = completed_at
+    m.enriched_at = enriched
+    tmp_store.upsert_memory(m)
+
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.source_created_at == created
+    assert fetched.source_last_modified == modified
+    assert fetched.due_date == due
+    assert fetched.completed is True
+    assert fetched.completed_at == completed_at
+    assert fetched.enriched_at == enriched
+
+
+def test_enriched_at_falls_back_to_default_when_missing(tmp_store):
+    """Pre-fix memories upserted before enriched_at was round-tripped lack the
+    metadata key. Reading them must not crash and must fall back to the
+    default factory (now()) rather than raising.
+    """
+    tmp_store.upsert_memory(_mk_memory())
+    # Simulate a pre-fix row by stripping enriched_at from the persisted metadata.
+    existing = tmp_store._memories.get(ids=["t1"], include=["metadatas"])
+    meta = existing["metadatas"][0]
+    meta.pop("enriched_at", None)
+    tmp_store._memories.update(ids=["t1"], metadatas=[meta])
+
+    fetched = tmp_store.get_memory("t1")
+    assert fetched is not None
+    assert fetched.enriched_at is not None  # default factory fired

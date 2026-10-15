@@ -2,13 +2,36 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from datetime import datetime
+from typing import Any, Iterable, Optional
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from pensieve.config import Settings, get_settings
 from pensieve.store.schema import Memory
+
+# Fields that are owned by the user (set via the Pensieve UI) and must
+# never be silently overwritten by an auto-sync write. ``sync.py`` uses
+# ``upsert_memory_preserving_user_fields`` to merge these from whatever
+# is currently persisted at WRITE time (not just read time, which leaves
+# a race window between sync's read-enrich-write cycle and a concurrent
+# user tend). See plan.md adopted-critique fix #1.
+_USER_OWNED_FIELDS: tuple[str, ...] = (
+    "column",
+    "notes_for_user",
+    "last_tended_at",
+)
+
+
+def _parse_iso(value: object) -> Optional[datetime]:
+    """Parse an ISO datetime string from Chroma metadata; None if blank/invalid."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _build_document(m: Memory) -> str:
@@ -49,17 +72,68 @@ class ChromaMemoryStore:
             metadatas=[memory.to_chroma_metadata()],
         )
 
+    def upsert_memory_preserving_user_fields(self, memory: Memory) -> None:
+        """Upsert with user-owned fields re-read from persistence at WRITE time.
+
+        Auto-sync follows a read-enrich-write cycle. If a user tends the
+        card while enrichment is running, a bare ``upsert_memory`` would
+        clobber that tend with the older value. This helper closes that
+        race by re-reading ``_USER_OWNED_FIELDS`` from the currently
+        persisted row immediately before writing.
+        """
+        existing = self._memories.get(ids=[memory.id], include=["metadatas"])
+        if existing and existing.get("ids"):
+            current_meta = (existing.get("metadatas") or [{}])[0] or {}
+            if current_meta.get("column"):
+                memory.column = current_meta["column"]
+            if "notes_for_user" in current_meta:
+                memory.notes_for_user = current_meta.get("notes_for_user", "") or ""
+            current_tended = _parse_iso(current_meta.get("last_tended_at"))
+            if current_tended is not None:
+                memory.last_tended_at = current_tended
+        self.upsert_memory(memory)
+
     def delete_memory(self, memory_id: str) -> None:
         self._memories.delete(ids=[memory_id])
 
     def update_column(self, memory_id: str, column: str) -> bool:
+        return self.update_meta(memory_id, {"column": column})
+
+    def update_meta(self, memory_id: str, updates: dict[str, Any]) -> bool:
+        """Atomic-ish single-call metadata update.
+
+        Fetches once, merges in all updates, writes once. Use this instead
+        of chaining multiple ``update_column``/``bump_tended_at`` calls so
+        concurrent partial updates can't clobber each other (the second
+        read-modify-write would otherwise overwrite the first).
+        Datetimes in ``updates`` are auto-serialised to ISO; ``None`` becomes "".
+        Returns False when the memory_id doesn't exist.
+        """
         existing = self._memories.get(ids=[memory_id], include=["metadatas"])
         if not existing or not existing.get("ids"):
             return False
         meta = (existing.get("metadatas") or [{}])[0] or {}
-        meta["column"] = column
+        for k, v in updates.items():
+            if isinstance(v, datetime):
+                meta[k] = v.isoformat()
+            elif v is None:
+                meta[k] = ""
+            else:
+                meta[k] = v
         self._memories.update(ids=[memory_id], metadatas=[meta])
         return True
+
+    def bump_tended_at(self, memory_id: str, when: Optional[datetime] = None) -> bool:
+        """Mark a Memory as deliberately tended right now (Garden v1).
+
+        Thin wrapper over ``update_meta`` — cheap because Chroma only
+        rewrites the metadata blob (no document rebuild, no embedding
+        recompute). Auto-sync must NEVER call this.
+        """
+        from datetime import timezone as _tz
+
+        ts = when or datetime.now(_tz.utc)
+        return self.update_meta(memory_id, {"last_tended_at": ts})
 
     # ----- reads -----
 
@@ -150,18 +224,19 @@ class ChromaMemoryStore:
         # memory in the old columns rehydrates into its closest successor; the
         # next upsert writes the migrated column back to Chroma.
         _COL_MIGRATE = {
-            "reverie": "memory",      # Phase 2.5 concept; deferred
-            "reflection": "closed",   # closure-debrief collapsed into closed
-            "vial": "review",         # vial-as-column became user-driven review
+            "reverie": "memory",  # Phase 2.5 concept; deferred
+            "reflection": "closed",  # closure-debrief collapsed into closed
+            "vial": "review",  # vial-as-column became user-driven review
         }
         column = meta.get("column", "memory")
         column = _COL_MIGRATE.get(column, column)
-        return Memory(
+        kwargs: dict = dict(
             id=mid,
             source=meta.get("source", "unknown"),
             source_task_id=meta.get("source_task_id", mid),
             list_name=meta.get("list_name", ""),
             title=meta.get("title", ""),
+            display_title=(meta.get("display_title") or None),
             original_notes=meta.get("original_notes", ""),
             suggested_strand=(meta.get("suggested_strand") or None),
             strand_kind=(meta.get("strand_kind") or None),
@@ -176,11 +251,29 @@ class ChromaMemoryStore:
             notes_for_user=meta.get("notes_for_user", ""),
             categories=cats,
             column=column,
+            source_created_at=_parse_iso(meta.get("source_created_at")),
+            source_last_modified=_parse_iso(meta.get("source_last_modified")),
+            due_date=_parse_iso(meta.get("due_date")),
             completed=bool(meta.get("completed", False)),
+            completed_at=_parse_iso(meta.get("completed_at")),
             enrichment_version=meta.get("enrichment_version", "v2"),
             tokens_used=int(meta.get("tokens_used", 0) or 0),
             embedding_text=doc,
         )
+        # Only override the default-factory enriched_at if Chroma actually has
+        # the persisted value. Pre-fix memories upserted before this field was
+        # round-tripped will fall back to the schema default (now()).
+        enriched = _parse_iso(meta.get("enriched_at"))
+        if enriched is not None:
+            kwargs["enriched_at"] = enriched
+        # Garden v1: last_tended_at backfills from enriched_at when missing
+        # (no migration script). Pre-Garden rows then have a sensible
+        # freshness signal on first read; subsequent tends overwrite it.
+        tended = _parse_iso(meta.get("last_tended_at"))
+        if tended is None:
+            tended = enriched
+        kwargs["last_tended_at"] = tended
+        return Memory(**kwargs)
 
     def upsert_many(self, memories: Iterable[Memory]) -> int:
         n = 0

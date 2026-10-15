@@ -25,3 +25,14 @@ def test_payload_builds_valid_json():
     payload = _build_user_payload(task, [], load_connect_goals(), {})
     assert '"task"' in payload
     assert '"connect_goals"' in payload
+
+
+def test_prompt_declares_display_title_in_output_schema():
+    """The v2 prompt must ask the LLM to emit display_title (the LLM-curated
+    card heading). Without this, enricher.py captures an empty string and the
+    kanban card always falls back to the verbatim source subject \u2014 which
+    defeats the whole 'AI rewrites long source titles' feature.
+    """
+    prompt = load_system_prompt()
+    assert '"display_title"' in prompt, "prompt must declare display_title in the output schema"
+    assert "display_title rules" in prompt, "prompt must include the display_title guidance section"

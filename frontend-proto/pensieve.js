@@ -1,9 +1,9 @@
 /* ============================================================
-   The Pensieve - Phase 2 prototype JS (v2)
-   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Houses (Connect goals)
+   Pensieve HUD theme JS (v3)
+   - Two views: Lifecycle (4 columns: Memory / Dive / Review / Closed) + Lanes (Connect goals)
    - Connect goals editable via in-app modal (persisted in localStorage)
-   - Themes: day / night (toggle) + marauder (easter egg)
-   - Hedwig review counter, footprint trail on drag, snitch
+   - Single HUD theme. No theme toggle. No easter eggs.
+   - Drag-and-drop kanban, semantic search, PDF goals import.
    ============================================================ */
 
 // ----- 1. Connect goals (canonical defaults; mirrors data/connect-goals.json) -----
@@ -14,8 +14,7 @@ const DEFAULT_GOALS = [
     number: 1,
     short_name: "DORA Deep Dive",
     name: "DORA Deep Dive Compliance",
-    house: "gryffindor",
-    glyph: "\u26A1",
+    lane: "crimson",
     color_primary: "#7a2018",
     color_accent: "#c9a655",
     summary: "Lead CISO GRC role on DORA Core Team through deep dive examination. Deliver accurate JET responses, co-develop regulatory readiness playbook.",
@@ -25,8 +24,7 @@ const DEFAULT_GOALS = [
     number: 2,
     short_name: "UK CTP",
     name: "UK CTP Year 1 Complete + Year 2 Launch",
-    house: "hufflepuff",
-    glyph: "\u2698",
+    lane: "gold",
     color_primary: "#b08a26",
     color_accent: "#2a1d10",
     summary: "Deliver Year 1 obligations post-designation, submit Self-Assessment in 3-month window. Launch Year 2 roadmap (scenario testing, incident mgmt playbook).",
@@ -36,8 +34,7 @@ const DEFAULT_GOALS = [
     number: 3,
     short_name: "NIS2",
     name: "NIS2 Readiness Foundation",
-    house: "slytherin",
-    glyph: "\u269C",
+    lane: "emerald",
     color_primary: "#2e5a3a",
     color_accent: "#a8a8a8",
     summary: "Build NIS2 foundational posture during H1. Lead scoping + gap analysis, apply communication-first model day one, identify core team partners.",
@@ -47,8 +44,7 @@ const DEFAULT_GOALS = [
     number: 4,
     short_name: "AI Program + Argus",
     name: "AI Strategy, Innovation, and Transformation Program for CISO GRC",
-    house: "ravenclaw",
-    glyph: "\u269B",
+    lane: "azure",
     color_primary: "#2c4670",
     color_accent: "#c9a655",
     summary: "Operationalize AI transformation program. Scale Argus from MVP to wider-used regulatory compliance platform. Four capability areas, biweekly triage, quarterly pilots.",
@@ -64,17 +60,17 @@ const LIFECYCLE_COLUMNS = [
   { id: "closed", title: "Closed", subtitle: "Done, complete in your source list" },
 ];
 
-// Mirror of pensieve/enrichment/goals_importer.py HOUSE_PALETTE so the
-// frontend can auto-assign a house when the user adds a goal manually.
-const HOUSE_PALETTE = [
-  { house: "gryffindor", house_glyph: "\u26a1", color_primary: "#7a2018", color_accent: "#c9a655" },
-  { house: "hufflepuff", house_glyph: "\u2698", color_primary: "#b08a26", color_accent: "#2a1d10" },
-  { house: "slytherin",  house_glyph: "\u269c", color_primary: "#2e5a3a", color_accent: "#a8a8a8" },
-  { house: "ravenclaw",  house_glyph: "\u269b", color_primary: "#2c4670", color_accent: "#c9a655" },
-  { house: "internal",   house_glyph: "\u2697", color_primary: "#5a5a5a", color_accent: "#c9a655" },
-  { house: "muggleborn", house_glyph: "\u270e", color_primary: "#8a4b1f", color_accent: "#e0c690" },
-  { house: "centaur",    house_glyph: "\u2618", color_primary: "#3c5e2c", color_accent: "#c9a655" },
-  { house: "phoenix",    house_glyph: "\u2741", color_primary: "#a83a1f", color_accent: "#f5d77b" },
+// Mirror of pensieve/enrichment/goals_importer.py LANE_PALETTE so the
+// frontend can auto-assign a lane when the user adds a goal manually.
+const LANE_PALETTE = [
+  { lane: "crimson",    color_primary: "#7a2018", color_accent: "#c9a655" },
+  { lane: "gold",       color_primary: "#b08a26", color_accent: "#2a1d10" },
+  { lane: "emerald",    color_primary: "#2e5a3a", color_accent: "#a8a8a8" },
+  { lane: "azure",      color_primary: "#2c4670", color_accent: "#c9a655" },
+  { lane: "slate",      color_primary: "#5a5a5a", color_accent: "#c9a655" },
+  { lane: "ember",      color_primary: "#8a4b1f", color_accent: "#e0c690" },
+  { lane: "sage",       color_primary: "#3c5e2c", color_accent: "#c9a655" },
+  { lane: "rose",       color_primary: "#a83a1f", color_accent: "#f5d77b" },
 ];
 
 const STRANDS = [
@@ -284,14 +280,25 @@ const STATE = {
   goals: loadGoals(),
   goalsMeta: {},
   memories: SEED_MEMORIES.map(m => ({ ...m })),
-  view: "lifecycle",      // "lifecycle" | "houses"
-  theme: loadTheme(),     // "day" | "night" | "marauder"
-  filter: { strand: null, search: "" },
+  view: "lifecycle",      // "lifecycle" | "lanes"
+  page: "board",          // "board" | "recap" | "graph"
+  weeklyFilter: (() => { try { return localStorage.getItem("pensieve-weekly") === "1"; } catch (e) { return false; } })(),
+  theme: "hud",           // single theme; legacy state field kept for compatibility
+  filter: { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null },
   semanticResultIds: null, // null = no semantic filter; Set<string> = restrict to these ids
   semanticQuery: "",
   apiConnected: false,
   apiSourceLabel: "seed",
-  easterBuffer: "",
+  boardHealth: null,       // {score, tier, terms, counts, computed_at} | null
+  quests: null,            // {today: {date, quests, generated_at}, clean_streak_d, all_done, quest_bonus} | null
+  achievements: null,      // {achievements, total, unlocked_count, new_unlocks} | null
+  achievementsSeenIds: (() => {
+    try {
+      const raw = localStorage.getItem("pensieve-ach-seen");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (e) { /* fall through */ }
+    return new Set();
+  })(),
 };
 
 function loadGoals() {
@@ -307,13 +314,11 @@ function saveGoals() {
 }
 
 function loadTheme() {
-  const saved = localStorage.getItem("pensieve-theme");
-  if (saved === "night" || saved === "day" || saved === "marauder") return saved;
-  return "day";
+  return "hud";
 }
 
 function saveTheme() {
-  localStorage.setItem("pensieve-theme", STATE.theme);
+  // No-op. HUD is the only theme.
 }
 
 // ----- 5. Helpers -----
@@ -338,12 +343,80 @@ function isReviewNeeded(m) {
 
 function memoryMatchesFilter(m) {
   if (STATE.semanticResultIds && !STATE.semanticResultIds.has(m.id)) return false;
+  if (STATE.filter.reviewOnly && !isReviewNeeded(m)) return false;
+  if (STATE.filter.boardHealthOffenders && !isBoardHealthOffender(m)) return false;
+  if (STATE.filter.questTargetIds && !STATE.filter.questTargetIds.has(m.id)) return false;
   if (STATE.filter.strand && m.suggested_strand !== STATE.filter.strand) return false;
   if (STATE.filter.search) {
-    const hay = `${m.title} ${m.why} ${m.impact}`.toLowerCase();
+    const hay = `${m.display_title || ""} ${m.title} ${m.why} ${m.impact}`.toLowerCase();
     if (!hay.includes(STATE.filter.search.toLowerCase())) return false;
   }
   return true;
+}
+
+// Garden v1: a card is an "offender" if it's stale, ghost, or overdue.
+// Click the Board Health pill to filter the board down to just these.
+function isBoardHealthOffender(m) {
+  if (m.is_overdue) return true;
+  const f = m.freshness;
+  return f === "stale" || f === "ghost";
+}
+
+// Format a due_date ISO string as a compact "DUE Mon 8" pill, or null if absent/invalid.
+// Returns { text, urgency } where urgency is "overdue" | "soon" | "later".
+function formatDueDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const midnightNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const midnightDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const daysOut = Math.round((midnightDue - midnightNow) / 86400000);
+  let urgency = "later";
+  if (daysOut < 0) urgency = "overdue";
+  else if (daysOut <= 3) urgency = "soon";
+  const weekday = d.toLocaleDateString(undefined, { weekday: "short" });
+  const dayNum = d.getDate();
+  const month = d.toLocaleDateString(undefined, { month: "short" });
+  // Within +/-7 days, show weekday; otherwise show month + day for context.
+  const text = (daysOut >= -7 && daysOut <= 7) ? `${weekday} ${dayNum}` : `${month} ${dayNum}`;
+  return { text, urgency };
+}
+
+// Most recent Monday at 00:00 local time.
+function mostRecentMonday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();              // 0=Sun..6=Sat
+  const diff = (day === 0 ? 6 : day - 1); // days since Monday
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+// Best available "closed on" date for a memory: source completion, else when
+// Pensieve enriched it (approximation for manually-closed cards).
+function closedDate(m) {
+  const iso = m.completed_at || m.enriched_at;
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Weekly filter only affects the Closed column: when on, hide closed cards
+// from before this week's Monday. Open columns and other views are unaffected.
+// Non-destructive: data stays in the store (Recap/graph/search still see it).
+function passesWeeklyFilter(m, colId) {
+  if (!STATE.weeklyFilter) return true;
+  if (colId !== "closed") return true;
+  const cd = closedDate(m);
+  if (!cd) return true;  // unknown date: keep visible rather than hide silently
+  return cd >= mostRecentMonday();
+}
+
+function applyWeeklyFilterState() {
+  const btn = $("#weekly-filter-btn");
+  if (btn) btn.classList.toggle("active", !!STATE.weeklyFilter);
+  updateFilterBadge();
 }
 
 // ----- 5b. API client + remote sync -----
@@ -365,7 +438,7 @@ async function loadMemoriesFromApi() {
       STATE.apiSourceLabel = `${health.default_source || "live"} (${data.count} memories)`;
     } else {
       STATE.memories = [];
-      STATE.apiSourceLabel = "API connected (0 memories — run `pensieve sync`)";
+      STATE.apiSourceLabel = "API connected (0 memories, run `pensieve sync`)";
     }
     // Try to load Connect goals from the API too; fall back to localStorage defaults.
     try {
@@ -377,6 +450,14 @@ async function loadMemoriesFromApi() {
         STATE.goalsMeta = goalsResp._meta;
       }
     } catch (e) { /* keep local */ }
+    // Garden v1: refresh the board-health pill alongside the memories so
+    // Garden v1: refresh the board-health pill alongside the memories so
+    // the score reflects the same snapshot the user is looking at.
+    await loadBoardHealth();
+    // Garden v2: refresh today's quest panel + completion state.
+    await loadQuests();
+    // Garden v3: re-evaluate achievements; surfaces confetti on new unlocks.
+    await loadAchievements();
     return true;
   } catch (e) {
     STATE.apiConnected = false;
@@ -384,6 +465,422 @@ async function loadMemoriesFromApi() {
     console.warn(`Pensieve API not reachable at ${API_BASE}: ${e.message}. Using seed data.`);
     return false;
   }
+}
+
+// --- Garden v1: Board Health fetch + render -----------------------------
+async function loadBoardHealth() {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.boardHealth = await fetchJson("/api/board/health");
+  } catch (e) {
+    STATE.boardHealth = null;
+  }
+  renderBoardHealth();
+}
+
+function renderBoardHealth() {
+  const el = document.getElementById("board-health");
+  if (!el) return;
+  const scoreEl = document.getElementById("board-health-score");
+  const tipEl = document.getElementById("board-health-tip");
+  const h = STATE.boardHealth;
+  if (!h) {
+    el.removeAttribute("data-tier");
+    if (scoreEl) scoreEl.textContent = "--";
+    if (tipEl) { tipEl.hidden = true; tipEl.innerHTML = ""; }
+    return;
+  }
+  el.dataset.tier = h.tier || "yellow";
+  if (scoreEl) scoreEl.textContent = String(h.score);
+  el.classList.toggle("filter-active", !!STATE.filter.boardHealthOffenders);
+  if (tipEl) {
+    const t = h.terms || {};
+    const c = h.counts || {};
+    const streakD = t.clean_streak_d || 0;
+    const questB = t.quest_bonus || 0;
+    const lines = [
+      `<strong>Board Health: ${h.score}/100</strong>`,
+      `<ul>`,
+      `<li>open: ${c.open ?? 0} / closed: ${c.closed ?? 0}</li>`,
+      `<li>stale: ${t.stale_count ?? 0} (-${Math.round((t.stale_pct ?? 0) * 30)} pts)</li>`,
+      `<li>ghost: ${t.ghost_count ?? 0} (-${(t.ghost_count ?? 0) * 10} pts)</li>`,
+      `<li>overdue: ${t.overdue_count ?? 0} (-${(t.overdue_count ?? 0) * 5} pts)</li>`,
+      `<li>capture: ${Math.round((t.capture_pct ?? 0) * 100)}% (+${Math.round((t.capture_pct ?? 0) * 10)} pts)</li>`,
+    ];
+    if (streakD > 0) {
+      lines.push(`<li>clean streak: ${streakD}d (+${Math.min(10, streakD)} pts)</li>`);
+    }
+    if (questB > 0) {
+      lines.push(`<li>quests: all done (+${questB} pts)</li>`);
+    }
+    lines.push(`</ul>`);
+    lines.push(`<div style="opacity:.7;margin-top:6px">click to filter to offenders</div>`);
+    tipEl.innerHTML = lines.join("");
+  }
+}
+
+function toggleBoardHealthFilter() {
+  STATE.filter.boardHealthOffenders = !STATE.filter.boardHealthOffenders;
+  // Mutually exclusive with the quest filter (avoids confusing combined view).
+  if (STATE.filter.boardHealthOffenders) STATE.filter.questTargetIds = null;
+  renderBoardHealth();
+  renderQuestPanel();
+  renderBoard();
+}
+
+// --- Garden v2: daily quests fetch + render -----------------------------
+async function loadQuests() {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.quests = await fetchJson("/api/quests");
+  } catch (e) {
+    STATE.quests = null;
+  }
+  renderQuestPanel();
+}
+
+function renderQuestPanel() {
+  const panel = document.getElementById("quest-panel");
+  if (!panel) return;
+  const chipsEl = document.getElementById("quest-panel-chips");
+  const streakEl = document.getElementById("quest-panel-streak");
+  const allDoneEl = document.getElementById("quest-panel-alldone");
+  const q = STATE.quests;
+  const list = q && q.today && Array.isArray(q.today.quests) ? q.today.quests : [];
+  if (!q || list.length === 0) {
+    panel.hidden = true;
+    if (chipsEl) chipsEl.innerHTML = "";
+    if (streakEl) { streakEl.hidden = true; streakEl.textContent = ""; }
+    if (allDoneEl) allDoneEl.hidden = true;
+    panel.classList.remove("is-collapsed");
+    return;
+  }
+  panel.hidden = false;
+
+  if (streakEl) {
+    const streak = Number(q.clean_streak_d || 0);
+    if (streak > 0) {
+      streakEl.hidden = false;
+      streakEl.textContent = `\u{1F525} ${streak}-day clean streak`;
+    } else {
+      streakEl.hidden = true;
+      streakEl.textContent = "";
+    }
+  }
+
+  const allDone = !!q.all_done;
+  if (allDoneEl) allDoneEl.hidden = !allDone;
+  panel.classList.toggle("is-collapsed", allDone);
+
+  if (chipsEl) {
+    chipsEl.innerHTML = "";
+    for (const quest of list) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "quest-chip" + (quest.completed_at ? " is-complete" : "");
+      chip.dataset.questId = quest.id;
+      chip.dataset.targetIds = (quest.target_memory_ids || []).join(",");
+      const progress = questProgressFor(quest);
+      const icon = quest.completed_at ? "\u2705" : "\u25A2";
+      chip.title = quest.description || quest.title || "";
+      chip.innerHTML =
+        `<span class="quest-chip-icon">${icon}</span>` +
+        `<span class="quest-chip-title">${escapeHtml(quest.title || "")}</span>` +
+        (progress ? `<span class="quest-chip-progress">${progress}</span>` : "");
+      // Filter board to this quest's targets when clicked (if it has targets
+      // and is not already complete — completed quests just show status).
+      const filterIds = (quest.target_memory_ids || []).filter(Boolean);
+      const isActiveFilter =
+        STATE.filter.questTargetIds &&
+        filterIds.length > 0 &&
+        filterIds.every(id => STATE.filter.questTargetIds.has(id)) &&
+        STATE.filter.questTargetIds.size === filterIds.length;
+      if (isActiveFilter) chip.classList.add("filter-active");
+      chip.addEventListener("click", () => {
+        if (filterIds.length === 0) return;
+        toggleQuestFilter(filterIds);
+      });
+      chipsEl.appendChild(chip);
+    }
+  }
+}
+
+function questProgressFor(quest) {
+  const targets = quest.target_memory_ids || [];
+  if (!targets.length) return "";
+  if (quest.completed_at) return `${targets.length}/${targets.length}`;
+  if (!STATE.memories) return `0/${targets.length}`;
+  const byId = new Map(STATE.memories.map(m => [m.id, m]));
+  let done = 0;
+  for (const id of targets) {
+    const m = byId.get(id);
+    if (!m) { done += 1; continue; }  // target gone => counts done
+    if (quest.kind === "capture-yesterday-closures") {
+      if ((m.vials_count || 0) > 0) done += 1;
+    } else if (quest.kind === "triage-inbox") {
+      if (m.column !== "memory") done += 1;
+      else if (isTendedToday(m)) done += 1;
+    } else {
+      if (isTendedToday(m)) done += 1;
+    }
+  }
+  return `${done}/${targets.length}`;
+}
+
+function isTendedToday(m) {
+  if (!m.last_tended_at) return false;
+  const t = new Date(m.last_tended_at);
+  if (isNaN(t.getTime())) return false;
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return t.getTime() >= todayStart.getTime();
+}
+
+function toggleQuestFilter(targetIds) {
+  if (!Array.isArray(targetIds) || targetIds.length === 0) return;
+  const setIds = new Set(targetIds);
+  const current = STATE.filter.questTargetIds;
+  const sameFilter =
+    current &&
+    current.size === setIds.size &&
+    Array.from(setIds).every(id => current.has(id));
+  STATE.filter.questTargetIds = sameFilter ? null : setIds;
+  // Mutually exclusive with the offenders filter.
+  if (STATE.filter.questTargetIds) STATE.filter.boardHealthOffenders = false;
+  renderBoardHealth();
+  renderQuestPanel();
+  renderBoard();
+}
+
+// --- Garden v3: achievements + confetti ---------------------------------
+async function loadAchievements({ allowConfetti = true } = {}) {
+  if (!STATE.apiConnected) return;
+  try {
+    STATE.achievements = await fetchJson("/api/achievements");
+  } catch (e) {
+    STATE.achievements = null;
+  }
+  renderAchievementsButton();
+  if (
+    allowConfetti &&
+    STATE.achievements &&
+    Array.isArray(STATE.achievements.new_unlocks) &&
+    STATE.achievements.new_unlocks.length > 0
+  ) {
+    const unseen = STATE.achievements.new_unlocks.filter(
+      id => !STATE.achievementsSeenIds.has(id)
+    );
+    if (unseen.length > 0) {
+      const btn = document.getElementById("achievements-btn");
+      if (btn) {
+        btn.classList.add("has-new-unlock");
+        setTimeout(() => btn.classList.remove("has-new-unlock"), 2600);
+        burstConfettiAt(btn);
+      }
+      const names = unseen.map(id => {
+        const def = STATE.achievements.achievements.find(a => a.id === id);
+        return def ? `${def.emoji} ${def.name}` : id;
+      }).join(", ");
+      toast(`Unlocked: ${names}`);
+      unseen.forEach(id => STATE.achievementsSeenIds.add(id));
+      try {
+        localStorage.setItem(
+          "pensieve-ach-seen",
+          JSON.stringify(Array.from(STATE.achievementsSeenIds)),
+        );
+      } catch (e) { /* ignore quota */ }
+    }
+  }
+}
+
+function renderAchievementsButton() {
+  const countEl = document.getElementById("achievements-btn-count");
+  if (!countEl) return;
+  const a = STATE.achievements;
+  if (!a || !a.total) {
+    countEl.hidden = true;
+    countEl.textContent = "0";
+    return;
+  }
+  countEl.hidden = false;
+  countEl.textContent = `${a.unlocked_count}/${a.total}`;
+}
+
+function renderAchievementsModal() {
+  const grid = document.getElementById("achievements-grid");
+  const summary = document.getElementById("achievements-summary");
+  if (!grid) return;
+  const a = STATE.achievements;
+  if (!a || !Array.isArray(a.achievements)) {
+    grid.innerHTML = "<p style='opacity:.6'>No achievement data yet.</p>";
+    if (summary) summary.textContent = "";
+    return;
+  }
+  grid.innerHTML = a.achievements.map(def => {
+    const state = def.unlocked ? "unlocked" : "locked";
+    const when = def.unlocked_at
+      ? `<div class="achievement-unlocked-at">${_formatUnlockedDate(def.unlocked_at)}</div>`
+      : "";
+    const safeName = _escape(def.name);
+    const safeDesc = _escape(def.description || "");
+    return `<div class="achievement-card" data-state="${state}" title="${safeDesc}">
+      <div class="achievement-emoji" aria-hidden="true">${def.emoji}</div>
+      <div class="achievement-name">${safeName}</div>
+      <div class="achievement-desc">${safeDesc}</div>
+      ${when}
+    </div>`;
+  }).join("");
+  if (summary) {
+    summary.textContent = `${a.unlocked_count} of ${a.total} unlocked.`;
+  }
+}
+
+function _formatUnlockedDate(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch (e) { return ""; }
+}
+
+function _escape(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function openAchievementsModal() {
+  const modal = document.getElementById("achievements-modal");
+  if (!modal) return;
+  renderAchievementsModal();
+  modal.hidden = false;
+  // Reset the new-unlock styling on the button once the user has seen them.
+  if (STATE.achievements && Array.isArray(STATE.achievements.achievements)) {
+    STATE.achievements.achievements.forEach(def => {
+      if (def.unlocked) STATE.achievementsSeenIds.add(def.id);
+    });
+    try {
+      localStorage.setItem(
+        "pensieve-ach-seen",
+        JSON.stringify(Array.from(STATE.achievementsSeenIds)),
+      );
+    } catch (e) { /* ignore */ }
+  }
+}
+
+function closeAchievementsModal() {
+  const modal = document.getElementById("achievements-modal");
+  if (modal) modal.hidden = true;
+}
+
+// Hand-rolled canvas confetti burst centered on the target element. ~30 lines
+// so we avoid an external library. Particles fall under gravity for ~1s.
+function burstConfettiAt(targetEl) {
+  const canvas = document.getElementById("confetti-canvas");
+  if (!canvas || !targetEl) return;
+  const rect = targetEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  canvas.style.width = `${window.innerWidth}px`;
+  canvas.style.height = `${window.innerHeight}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  canvas.classList.add("is-firing");
+  const colors = ["#7cffff", "#ffe07c", "#7cff9d", "#ff8da1", "#c9a0ff"];
+  const N = 36;
+  const particles = Array.from({ length: N }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 5;
+    return {
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      size: 4 + Math.random() * 4,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 0,
+    };
+  });
+  const start = performance.now();
+  function frame(now) {
+    const t = now - start;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.vy += 0.18;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life = t;
+      ctx.globalAlpha = Math.max(0, 1 - t / 1100);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    });
+    if (t < 1100) {
+      requestAnimationFrame(frame);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.classList.remove("is-firing");
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// --- Auto-refresh poll ---------------------------------------------------
+// The backend has an auto-sync scheduler (PENSIEVE_AUTO_SYNC_INTERVAL_SECONDS,
+// default 120s) that pulls fresh Microsoft To-Do data and writes enrichments
+// to Chroma. To surface those updates without a manual page reload, the
+// dashboard polls /api/memories every AUTO_REFRESH_MS. The poll bails out
+// in any situation where a re-render would clobber unsaved UI state:
+//   - the user is editing a card (`#card-modal` open)
+//   - the user is editing Connect goals (`#goals-modal` open)
+//   - the user is viewing achievements (`#achievements-modal` open)
+//   - a card is mid-drag (DRAG.id set)
+//   - a PATCH from the dashboard is in flight (patchInFlight > 0)
+//   - the document is hidden (Page Visibility API) — saves API calls when the tab is in the background
+// `pollInFlight` prevents stacked refreshes if the network call takes longer than the interval.
+const AUTO_REFRESH_MS = 30000;
+let pollInFlight = false;
+window.__pensievePatchInFlight = 0;
+
+function _isModalOpen(id) {
+  const el = document.getElementById(id);
+  return !!(el && !el.hidden);
+}
+
+async function refreshMemoriesIfSafe() {
+  if (document.hidden) return;
+  if (pollInFlight) return;
+  if (window.__pensievePatchInFlight > 0) return;
+  if (typeof DRAG !== "undefined" && DRAG && DRAG.id) return;
+  if (
+    _isModalOpen("card-modal") ||
+    _isModalOpen("goals-modal") ||
+    _isModalOpen("vial-modal") ||
+    _isModalOpen("achievements-modal")
+  ) return;
+  pollInFlight = true;
+  try {
+    const ok = await loadMemoriesFromApi();
+    if (ok) {
+      renderStrandFilter();
+      renderBoard();
+    }
+  } catch (_) {
+    // soft-fail; the next tick will try again. loadMemoriesFromApi already
+    // logs its own warning to the console.
+  } finally {
+    pollInFlight = false;
+  }
+}
+
+function startAutoRefreshLoop() {
+  setInterval(refreshMemoriesIfSafe, AUTO_REFRESH_MS);
+  // Refresh as soon as the tab comes back into focus so the user sees fresh
+  // data immediately instead of waiting up to AUTO_REFRESH_MS for the next tick.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshMemoriesIfSafe();
+  });
 }
 
 async function regenerateMemory(memoryId) {
@@ -396,7 +893,7 @@ async function regenerateMemory(memoryId) {
   if (btn) {
     btn.disabled = true;
     btn.classList.add("is-regenerating");
-    btn.innerHTML = "&#x2728; Brewing...";
+    btn.innerHTML = "&#x2728; Working...";
   }
   try {
     const apiId = memoryId.replace(/^mem_/, "");
@@ -417,6 +914,10 @@ async function regenerateMemory(memoryId) {
     if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
     renderStrandFilter();
     renderBoard();
+    // Garden v1+v2+v3: regenerate is a tend — refresh pill, quests, and achievements.
+    loadBoardHealth();
+    loadQuests();
+    loadAchievements();
     // Re-open the modal with the regenerated memory so the user sees the new text live.
     const refreshed = STATE.memories[idx] || fresh;
     openModal(refreshed);
@@ -452,7 +953,7 @@ async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 }
       if (s.updated_enriched != null) parts.push(`${s.updated_enriched} updated`);
       if (s.skipped_unchanged != null) parts.push(`${s.skipped_unchanged} unchanged`);
       if (s.failed) parts.push(`${s.failed} failed`);
-      toast(`Pulled from Microsoft To-Do — ${parts.join(", ") || "complete"}`);
+      toast(`Pulled from Microsoft To-Do, ${parts.join(", ") || "complete"}`);
       return state;
     }
     if (state.status === "error") {
@@ -469,6 +970,7 @@ async function persistColumnChange(memoryId, column) {
   // stuck on false), the user later dragged cards, and then Pull-from-To-Do
   // succeeded and triggered loadMemoriesFromApi which overwrote the un-saved
   // local drags with Chroma's columns.
+  window.__pensievePatchInFlight++;
   try {
     // memoryId in dashboard is "mem_<source_id>"; API expects bare source id.
     const apiId = memoryId.replace(/^mem_/, "");
@@ -481,6 +983,33 @@ async function persistColumnChange(memoryId, column) {
       const text = await res.text().catch(() => "");
       throw new Error(`${res.status}: ${text.slice(0, 120)}`);
     }
+    // Surface the completion-mirror outcome so the user knows whether the
+    // close also propagated to Microsoft To-Do (only fires when dragging to
+    // 'closed' AND PENSIEVE_MIRROR_COMPLETION=true).
+    try {
+      const payload = await res.json();
+      const cm = payload && payload.completion_mirror;
+      if (cm && cm.reason === "ok") {
+        toast("Marked complete in To-Do");
+      } else if (cm && cm.reason && cm.reason.startsWith("sink-error")) {
+        toast(`Closed locally but To-Do writeback failed: ${cm.reason}`);
+      } else if (cm && cm.reason === "task-not-found-at-source") {
+        toast("Closed locally - upstream task not found in To-Do");
+      }
+      // Garden v1: the API returns the enriched memory so we can update
+      // freshness in place (the dot must refresh, not just the score pill).
+      if (payload && payload.memory) {
+        const idx = STATE.memories.findIndex(x => x.id === payload.memory.id);
+        if (idx >= 0) {
+          STATE.memories[idx] = { ...STATE.memories[idx], ...payload.memory };
+        }
+      }
+    } catch (_) { /* response body parsing is best-effort */ }
+    // Garden v1+v2+v3: refresh pill, quest panel, achievements so they all
+    // reflect this tend (and a potential confetti burst on new unlocks).
+    loadBoardHealth().then(() => renderBoard());
+    loadQuests();
+    loadAchievements();
     // If we got here, the API is up. Flip the flag so the next render of UI
     // affordances that gate on apiConnected (e.g. semantic search) starts
     // working without forcing a page reload.
@@ -496,6 +1025,8 @@ async function persistColumnChange(memoryId, column) {
     // Loud toast so the user knows the drag did NOT persist and the next
     // Pull-from-To-Do or Refresh will revert this card.
     toast(`Move not saved (${e.message}) - card will revert on next refresh`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
   }
 }
 
@@ -526,9 +1057,9 @@ async function runSemanticSearch(q) {
 // ----- 6. Rendering -----
 
 function applyTheme() {
-  document.documentElement.setAttribute("data-theme", STATE.theme);
+  document.documentElement.setAttribute("data-theme", "hud");
   const label = $("#theme-label");
-  if (label) label.textContent = `${STATE.theme} mode`;
+  if (label) label.textContent = "hud theme";
 }
 
 function applyView() {
@@ -555,6 +1086,7 @@ function renderStrandFilter() {
     });
     root.appendChild(btn);
   });
+  updateFilterBadge();
 }
 
 function renderBoard() {
@@ -564,12 +1096,13 @@ function renderBoard() {
   if (STATE.view === "lifecycle") {
     LIFECYCLE_COLUMNS.forEach(col => board.appendChild(renderLifecycleColumn(col)));
   } else {
-    STATE.goals.forEach(g => board.appendChild(renderHouseColumn(g)));
-    board.appendChild(renderUnhousedColumn());
+    STATE.goals.forEach(g => board.appendChild(renderLaneColumn(g)));
+    board.appendChild(renderUnassignedColumn());
+    board.appendChild(renderAddLaneTile());
   }
 
   updateMemoryCount();
-  updateHedwig();
+  updateReviewIndicator();
   attachDragHandlers();
 }
 
@@ -579,12 +1112,17 @@ function renderLifecycleColumn(col) {
   wrap.dataset.column = col.id;
   wrap.dataset.view = "lifecycle";
 
-  const memos = STATE.memories.filter(m => m.column === col.id && memoryMatchesFilter(m));
+  const inColumn = STATE.memories.filter(m => m.column === col.id && memoryMatchesFilter(m));
+  const memos = inColumn.filter(m => passesWeeklyFilter(m, col.id));
+  const hidden = inColumn.length - memos.length;
+  const subtitle = (hidden > 0)
+    ? `${col.subtitle} &middot; ${hidden} earlier hidden`
+    : col.subtitle;
 
   wrap.innerHTML = `
     <div class="column-header">
       <h2 class="column-title">${col.title}</h2>
-      <p class="column-subtitle">${col.subtitle}</p>
+      <p class="column-subtitle">${subtitle}</p>
       <span class="column-count">${memos.length} ${memos.length === 1 ? "memory" : "memories"}</span>
     </div>
     <div class="column-cards"></div>
@@ -602,12 +1140,12 @@ function renderLifecycleColumn(col) {
   return wrap;
 }
 
-function renderHouseColumn(goal) {
+function renderLaneColumn(goal) {
   const wrap = document.createElement("section");
   wrap.className = "column";
   wrap.dataset.column = goal.id;
-  wrap.dataset.house = goal.house;
-  wrap.dataset.view = "houses";
+  wrap.dataset.lane = goal.lane;
+  wrap.dataset.view = "lanes";
 
   const memos = STATE.memories.filter(m =>
     Array.isArray(m.connect_goal_ids) &&
@@ -618,7 +1156,6 @@ function renderHouseColumn(goal) {
   wrap.innerHTML = `
     <div class="column-header">
       <h2 class="column-title">#${goal.number} ${goal.short_name}</h2>
-      <p class="column-subtitle">${goal.house}</p>
       <span class="column-count">${memos.length} aligned</span>
     </div>
     <div class="column-cards"></div>
@@ -628,7 +1165,7 @@ function renderHouseColumn(goal) {
   if (memos.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-column";
-    empty.textContent = "No memories yet for this House.";
+    empty.textContent = "No memories yet for this lane.";
     cards.appendChild(empty);
   } else {
     memos.forEach((m, idx) => cards.appendChild(renderCard(m, idx)));
@@ -636,12 +1173,12 @@ function renderHouseColumn(goal) {
   return wrap;
 }
 
-function renderUnhousedColumn() {
+function renderUnassignedColumn() {
   const wrap = document.createElement("section");
   wrap.className = "column";
-  wrap.dataset.column = "unhoused";
-  wrap.dataset.house = "unhoused";
-  wrap.dataset.view = "houses";
+  wrap.dataset.column = "unassigned";
+  wrap.dataset.lane = "unassigned";
+  wrap.dataset.view = "lanes";
 
   const memos = STATE.memories.filter(m =>
     (!Array.isArray(m.connect_goal_ids) || m.connect_goal_ids.length === 0) &&
@@ -650,7 +1187,7 @@ function renderUnhousedColumn() {
 
   wrap.innerHTML = `
     <div class="column-header">
-      <h2 class="column-title">Unhoused</h2>
+      <h2 class="column-title">Unassigned</h2>
       <p class="column-subtitle">Work not yet tied to a Connect goal</p>
       <span class="column-count">${memos.length} drifting</span>
     </div>
@@ -669,12 +1206,39 @@ function renderUnhousedColumn() {
   return wrap;
 }
 
+// A lightweight "+ Add lane" tile shown at the end of the Lanes view. Opens
+// the goals editor (which adds/edits/deletes lanes), so unclear work can get
+// its own lane when a Connect goal doesn't fit.
+function renderAddLaneTile() {
+  const wrap = document.createElement("section");
+  wrap.className = "column add-lane-tile";
+  wrap.dataset.view = "lanes";
+  wrap.innerHTML = `
+    <button class="add-lane-btn" title="Add or edit your lanes">
+      <span class="add-lane-plus">+</span>
+      <span>Add lane</span>
+      <span class="add-lane-hint">Edit lanes too</span>
+    </button>
+  `;
+  wrap.querySelector(".add-lane-btn").addEventListener("click", openGoalsEditor);
+  return wrap;
+}
+
 function renderCard(m, idx) {
   const el = document.createElement("article");
   el.className = "card";
   el.draggable = true;
   el.dataset.memoryId = m.id;
   el.style.setProperty("--ink-delay", `${idx * 60}ms`);
+
+  // Garden v1: per-card freshness dot via [data-freshness] CSS hook.
+  // Only set when truthy so generic selectors aren't accidentally matched.
+  if (m.freshness) {
+    el.dataset.freshness = m.freshness;
+  }
+  if (m.is_overdue) {
+    el.classList.add("is-overdue");
+  }
 
   // Primary goal color for the left rail
   const primaryGoal = (m.connect_goal_ids && m.connect_goal_ids.length > 0) ? getGoal(m.connect_goal_ids[0]) : null;
@@ -691,24 +1255,44 @@ function renderCard(m, idx) {
   const goalsHtml = (m.connect_goal_ids || []).map(gid => {
     const g = getGoal(gid);
     if (!g) return "";
-    return `<span class="goal-chip" data-house="${g.house}" title="${g.name}"><span class="goal-chip-glyph">${g.glyph}</span>#${g.number} ${g.short_name}</span>`;
+    return `<span class="goal-chip" data-lane="${g.lane}" title="${g.name}">#${g.number} ${g.short_name}</span>`;
   }).join("");
 
+  const due = formatDueDate(m.due_date);
+  const dueHtml = due
+    ? `<span class="card-due" data-urgency="${due.urgency}" title="Due ${escapeHtml(m.due_date)}">DUE ${escapeHtml(due.text)}</span>`
+    : "";
+
+  const fullTitle = m.display_title || m.title || "";
   el.innerHTML = `
-    ${review ? `<div class="wax-seal" title="Needs review">R</div>` : ""}
-    <h3 class="card-title">${escapeHtml(m.title)}</h3>
+    <h3 class="card-title" title="${escapeHtml(fullTitle)}">${escapeHtml(fullTitle)}</h3>
+    ${review ? `<div class="card-status" title="Flagged for review">&gt; STATUS // REVIEW</div>` : ""}
     <div class="card-meta">
       <span class="card-strand" data-kind="${strandKind || ""}">${escapeHtml(strandDisplay(m.suggested_strand))}</span>
+      ${dueHtml}
     </div>
     <p class="card-why">${escapeHtml(m.why)}</p>
     ${goalsHtml ? `<div class="card-goals">${goalsHtml}</div>` : ""}
+    ${renderVialAffordance(m)}
   `;
 
   el.addEventListener("click", e => {
     if (el.classList.contains("dragging")) return;
+    // Chevron / badge clicks handle themselves — don't open the card modal
+    if (e.target.closest(".card-vial-chevron, .card-vial-badge")) return;
     openModal(m);
   });
   return el;
+}
+
+function renderVialAffordance(m) {
+  if (m.pending_closure_capture) {
+    return `<button class="card-vial-chevron" type="button" data-memory-id="${escapeHtml(m.id)}" title="Capture what changed when this closed">&#x1F4DC; CAPTURE</button>`;
+  }
+  if (m.vials_count && m.vials_count > 0) {
+    return `<button class="card-vial-badge" type="button" data-memory-id="${escapeHtml(m.id)}" title="${m.vials_count} closure note(s) captured">&#x1F4DC; ${m.vials_count}</button>`;
+  }
+  return "";
 }
 
 function escapeHtml(s) {
@@ -727,14 +1311,27 @@ function updateMemoryCount() {
   $("#memory-count").textContent = visible === total ? `${total} memories` : `${visible} of ${total} memories`;
 }
 
-function updateHedwig() {
+function updateReviewIndicator() {
   const reviewing = STATE.memories.filter(isReviewNeeded).length;
-  const text = $("#hedwig-count");
-  const label = $("#hedwig-label");
-  const block = $(".hedwig-block");
-  if (text) text.textContent = reviewing;
-  if (block) block.classList.toggle("has-review", reviewing > 0);
-  if (label) label.textContent = reviewing === 0 ? "All clear" : `${reviewing} need review`;
+  const text = $("#review-count");
+  const block = $(".review-block");
+  if (text) {
+    text.textContent = reviewing === 0 ? "CLEAR" : String(reviewing).padStart(2, "0");
+  }
+  if (block) {
+    block.classList.toggle("has-review", reviewing > 0);
+    block.classList.toggle("filter-active", !!STATE.filter.reviewOnly);
+    block.style.cursor = reviewing > 0 || STATE.filter.reviewOnly ? "pointer" : "default";
+  }
+}
+
+// Click handler for the masthead REVIEW indicator: toggles a board-wide
+// "show only review-flagged cards" filter. Bound once during init().
+function toggleReviewOnlyFilter() {
+  const reviewing = STATE.memories.filter(isReviewNeeded).length;
+  if (reviewing === 0 && !STATE.filter.reviewOnly) return; // nothing to filter to
+  STATE.filter.reviewOnly = !STATE.filter.reviewOnly;
+  renderBoard();
 }
 
 // ----- 7. Modal -----
@@ -746,9 +1343,29 @@ const LIFECYCLE_OPTIONS = [
   { id: "closed", label: "Closed" },
 ];
 
+// Format a Date or ISO string as a YYYY-MM-DD value for <input type="date">.
+function toInputDate(d) {
+  const x = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(x.getTime())) return "";
+  const y = x.getFullYear();
+  const mo = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
+}
+
+// Default due date for a card with none set: ~2 weeks from today.
+function defaultDueDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 14);
+  return toInputDate(d);
+}
+
 function openModal(m) {
   const body = $("#modal-body");
   const review = isReviewNeeded(m);
+  // Pre-fill the due field with the card's existing due date, or default to
+  // ~2 weeks out so saving a card without one sets it roughly two weeks ahead.
+  const dueValue = m.due_date ? toInputDate(m.due_date) : defaultDueDate();
 
   const strandOptions = [`<option value="">&lt;unstranded&gt;</option>`]
     .concat(STRANDS.map(s =>
@@ -762,16 +1379,17 @@ function openModal(m) {
   const goalCheckboxes = STATE.goals.map(g => {
     const checked = (m.connect_goal_ids || []).includes(g.id);
     return `
-      <label class="goal-check" data-house="${g.house}">
+      <label class="goal-check" data-lane="${g.lane}">
         <input type="checkbox" data-goal-id="${escapeHtml(g.id)}" ${checked ? "checked" : ""} />
-        <span class="goal-chip" data-house="${g.house}" title="${escapeHtml(g.name)}">
-          <span class="goal-chip-glyph">${g.glyph}</span>#${g.number} ${escapeHtml(g.short_name)}
+        <span class="goal-chip" data-lane="${g.lane}" title="${escapeHtml(g.name)}">
+          #${g.number} ${escapeHtml(g.short_name)}
         </span>
       </label>`;
   }).join("");
 
   body.innerHTML = `
-    <input id="edit-title" class="modal-title-edit" value="${escapeHtml(m.title)}" />
+    <input id="edit-title" class="modal-title-edit" value="${escapeHtml(m.display_title || m.title)}" placeholder="Card display title (5 to 12 words)" />
+    <p class="modal-source-title" title="Verbatim subject from Microsoft To-Do. Pensieve never edits this.">From To-Do: ${escapeHtml(m.title)}</p>
 
     <div class="modal-meta">
       <label class="inline-label">Strand
@@ -780,12 +1398,15 @@ function openModal(m) {
       <label class="inline-label">Column
         <select id="edit-column" class="inline-select">${colOptions}</select>
       </label>
+      <label class="inline-label">Due
+        <input type="date" id="edit-due" class="inline-select" value="${dueValue}" title="Defaults to ~2 weeks out; clear to remove" />
+      </label>
       <label class="inline-label review-toggle">
         <input type="checkbox" id="edit-review" ${m.needs_human_strand_review ? "checked" : ""} />
         Flag for review
       </label>
-      ${review ? `<span class="review-pill">Needs review</span>` : ""}
     </div>
+    ${review ? `<div class="review-status-line"><span class="review-status-rule"></span><span class="review-status-label">REVIEW FLAG ACTIVE</span><span class="review-status-rule"></span></div>` : ""}
 
     <div class="modal-section">
       <div class="modal-label">Why</div>
@@ -830,6 +1451,17 @@ function openModal(m) {
   $("#edit-cancel").addEventListener("click", closeModal);
   const regenBtn = $("#edit-regen");
   if (regenBtn) regenBtn.addEventListener("click", () => regenerateMemory(m.id));
+
+  // Auto-focus the display-title field so the user can edit immediately
+  // without a mouse click. setTimeout lets the layout settle first so the
+  // focus ring renders against the visible modal.
+  setTimeout(() => {
+    const titleEl = document.getElementById("edit-title");
+    if (titleEl) {
+      titleEl.focus();
+      titleEl.select();
+    }
+  }, 0);
 }
 
 function readEditedFields() {
@@ -837,7 +1469,7 @@ function readEditedFields() {
     .filter(cb => cb.checked)
     .map(cb => cb.dataset.goalId);
   return {
-    title: $("#edit-title").value.trim(),
+    display_title: $("#edit-title").value.trim(),
     suggested_strand: $("#edit-strand").value || null,
     column: $("#edit-column").value,
     needs_human_strand_review: $("#edit-review").checked,
@@ -846,13 +1478,14 @@ function readEditedFields() {
     connect_goal_ids: selectedGoalIds,
     connect_alignment_note: $("#edit-align-note").value,
     notes_for_user: $("#edit-notes-user").value,
+    due_date: $("#edit-due").value || null,
   };
 }
 
 async function saveMemoryEdit(memoryId) {
   const patch = readEditedFields();
-  if (!patch.title) {
-    toast("Title cannot be empty");
+  if (!patch.display_title) {
+    toast("Display title cannot be empty");
     return;
   }
 
@@ -871,6 +1504,7 @@ async function saveMemoryEdit(memoryId) {
   }
 
   try {
+    window.__pensievePatchInFlight++;
     const apiId = memoryId.replace(/^mem_/, "");
     const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}`, {
       method: "PATCH",
@@ -885,13 +1519,72 @@ async function saveMemoryEdit(memoryId) {
     }
     renderStrandFilter();
     renderBoard();
+    // Garden v1+v2+v3: editing tends the card — refresh pill, quests, achievements.
+    loadBoardHealth();
+    loadQuests();
+    loadAchievements();
     toast("Saved");
   } catch (e) {
     toast(`Save failed: ${e.message}`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
   }
 }
 
 function closeModal() { $("#card-modal").hidden = true; }
+
+// ----- 7b. Vial modal (closure capture) -----
+
+const VIAL = { memoryId: null };
+
+function openVialModal(memoryId) {
+  const m = STATE.memories.find(x => x.id === memoryId);
+  if (!m) return;
+  VIAL.memoryId = memoryId;
+  const titleText = m.display_title || m.title || "(untitled)";
+  const ctx = $("#vial-context");
+  if (ctx) ctx.textContent = titleText;
+  const ta = $("#vial-text");
+  if (ta) { ta.value = ""; }
+  $("#vial-modal").hidden = false;
+  setTimeout(() => { if (ta) ta.focus(); }, 0);
+}
+
+function closeVialModal() {
+  $("#vial-modal").hidden = true;
+  VIAL.memoryId = null;
+}
+
+async function saveVial(kind) {
+  const memoryId = VIAL.memoryId;
+  if (!memoryId) return;
+  const text = ($("#vial-text").value || "").trim();
+  if (kind === "captured" && !text) {
+    toast("Add a sentence, or use Skip to dismiss");
+    return;
+  }
+  const apiId = memoryId.replace(/^mem_/, "");
+  window.__pensievePatchInFlight = (window.__pensievePatchInFlight || 0) + 1;
+  try {
+    const res = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(apiId)}/vials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captured_text: kind === "captured" ? text : "", capture_kind: kind }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`${res.status}: ${detail}`);
+    }
+    closeVialModal();
+    toast(kind === "skipped" ? "Closure skipped" : "Vial saved");
+    await loadMemoriesFromApi();
+    renderBoard();
+  } catch (e) {
+    toast(`Vial save failed: ${e.message}`);
+  } finally {
+    window.__pensievePatchInFlight = Math.max(0, window.__pensievePatchInFlight - 1);
+  }
+}
 
 // ----- 8. Goals editor -----
 
@@ -905,7 +1598,7 @@ function openGoalsEditor() {
     card.innerHTML = `
       <button class="goal-delete" data-idx="${idx}" title="Remove this goal" aria-label="Remove goal">&times;</button>
       <div class="goal-card-header">
-        <span class="goal-house-pill" data-house="${g.house}" style="--goal-color:${g.color_primary}">${escapeHtml(g.house || "house")}</span>
+        <span class="goal-lane-pill" data-lane="${g.lane}" style="--goal-color:${g.color_primary}">${escapeHtml(g.lane || "lane")}</span>
         <strong style="font-family:var(--font-display);font-size:13px">Goal #${g.number || idx + 1}</strong>
       </div>
       <label class="goal-input-label">Short name</label>
@@ -978,7 +1671,7 @@ function resetGoals() {
 
 function addGoalToState() {
   const number = (STATE.goals.length || 0) + 1;
-  const palette = HOUSE_PALETTE[(number - 1) % HOUSE_PALETTE.length];
+  const palette = LANE_PALETTE[(number - 1) % LANE_PALETTE.length];
   const stamp = Date.now().toString(36);
   STATE.goals.push({
     id: `goal-${number}-new-${stamp}`,
@@ -986,8 +1679,7 @@ function addGoalToState() {
     short_name: "",
     name: "",
     summary: "",
-    house: palette.house,
-    house_glyph: palette.house_glyph,
+    lane: palette.lane,
     color_primary: palette.color_primary,
     color_accent: palette.color_accent,
     success_criteria: [],
@@ -1001,7 +1693,7 @@ function deleteGoalAt(idx) {
   collectEditorIntoState();
   if (idx < 0 || idx >= STATE.goals.length) return;
   STATE.goals.splice(idx, 1);
-  // Re-number so the editor + saved JSON stay in order. House assignments
+  // Re-number so the editor + saved JSON stay in order. Lane assignments
   // are left as-is so existing memories aligned to a goal id keep their color.
   STATE.goals.forEach((g, i) => { g.number = i + 1; });
   openGoalsEditor();
@@ -1048,7 +1740,7 @@ async function uploadConnectPdf(file) {
   }
 }
 
-// ----- 9. Drag + drop + footprints -----
+// ----- 9. Drag + drop -----
 
 let DRAG = { id: null, fromCol: null };
 
@@ -1089,7 +1781,7 @@ function attachDragHandlers() {
         persistColumnChange(m.id, m.column);
       } else {
         const targetGoalId = col.dataset.column;
-        if (targetGoalId === "unhoused") {
+        if (targetGoalId === "unassigned") {
           m.connect_goal_ids = [];
         } else {
           if (!Array.isArray(m.connect_goal_ids)) m.connect_goal_ids = [];
@@ -1103,50 +1795,7 @@ function attachDragHandlers() {
   });
 }
 
-// Footprint trail (mousemove during drag; only stamps every N moves to avoid spam)
-let footprintTick = 0;
-document.addEventListener("dragover", e => {
-  if (!DRAG.id) return;
-  if (++footprintTick % 5 !== 0) return;
-  const layer = $("#footprint-layer");
-  if (!layer) return;
-  const fp = document.createElement("div");
-  fp.className = "footprint";
-  fp.style.left = `${e.clientX}px`;
-  fp.style.top = `${e.clientY}px`;
-  fp.style.setProperty("--rot", `${Math.floor(Math.random() * 60 - 30)}deg`);
-  layer.appendChild(fp);
-  setTimeout(() => fp.remove(), 1700);
-});
-
-// ----- 10. Easter egg ----- 
-
-const SWEAR = "i solemnly swear that i am up to no good";
-const MANAGED = "mischief managed";
-
-document.addEventListener("keydown", e => {
-  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
-  if (e.key.length !== 1) {
-    if (e.key === "Backspace") STATE.easterBuffer = STATE.easterBuffer.slice(0, -1);
-    return;
-  }
-  STATE.easterBuffer = (STATE.easterBuffer + e.key.toLowerCase()).slice(-60);
-  if (STATE.easterBuffer.endsWith(SWEAR)) {
-    STATE.theme = "marauder";
-    saveTheme();
-    applyTheme();
-    toast("I solemnly swear I am up to no good");
-    STATE.easterBuffer = "";
-  } else if (STATE.easterBuffer.endsWith(MANAGED)) {
-    STATE.theme = STATE.theme === "marauder" ? "day" : STATE.theme;
-    saveTheme();
-    applyTheme();
-    toast("Mischief managed");
-    STATE.easterBuffer = "";
-  }
-});
-
-// ----- 11. Toast -----
+// ----- 10. Toast -----
 
 let toastTimer = null;
 function toast(msg) {
@@ -1168,6 +1817,10 @@ function init() {
   applyTheme();
   renderStrandFilter();
   applyView();
+  applyWeeklyFilterState();
+  initHeaderPopovers();
+  initDensityToggle();
+  updateFilterBadge();
 
   // Load from API (falls back to seed data on failure), then re-render
   loadMemoriesFromApi().then(ok => {
@@ -1176,9 +1829,12 @@ function init() {
     const footerSource = $("#api-source-label");
     if (footerSource) footerSource.textContent = STATE.apiSourceLabel;
     if (!ok) {
-      toast(`API offline — using seed data. Start with: pensieve serve`);
+      toast(`API offline, using seed data. Start with: pensieve serve`);
     }
   });
+
+  // Begin the auto-refresh loop (see refreshMemoriesIfSafe for guards).
+  startAutoRefreshLoop();
 
   // Text filter (fast in-memory match)
   $("#search").addEventListener("input", e => {
@@ -1202,15 +1858,54 @@ function init() {
     });
   }
 
+  // Click filter from Board Health pill -> show only stale/ghost/overdue
+  const boardHealthEl = document.getElementById("board-health");
+  if (boardHealthEl) {
+    boardHealthEl.addEventListener("click", toggleBoardHealthFilter);
+    boardHealthEl.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleBoardHealthFilter();
+      }
+    });
+    const tipEl = document.getElementById("board-health-tip");
+    if (tipEl) {
+      const show = () => { tipEl.hidden = false; };
+      const hide = () => { tipEl.hidden = true; };
+      boardHealthEl.addEventListener("mouseenter", show);
+      boardHealthEl.addEventListener("mouseleave", hide);
+      boardHealthEl.addEventListener("focus", show);
+      boardHealthEl.addEventListener("blur", hide);
+    }
+  }
+
   // Clear filters
   $("#clear-filters").addEventListener("click", () => {
-    STATE.filter = { strand: null, search: "" };
+    STATE.filter = { strand: null, search: "", reviewOnly: false, boardHealthOffenders: false, questTargetIds: null };
     STATE.semanticResultIds = null;
     STATE.semanticQuery = "";
     $("#search").value = "";
     renderStrandFilter();
+    renderBoardHealth();
+    renderQuestPanel();
     renderBoard();
   });
+
+  // Click the masthead REVIEW indicator to filter board to review-flagged cards.
+  const reviewBlock = document.querySelector(".review-block");
+  if (reviewBlock) reviewBlock.addEventListener("click", toggleReviewOnlyFilter);
+
+  // Weekly filter toggle (Closed column rolls over each Monday)
+  const weeklyBtn = $("#weekly-filter-btn");
+  if (weeklyBtn) {
+    weeklyBtn.addEventListener("click", () => {
+      STATE.weeklyFilter = !STATE.weeklyFilter;
+      try { localStorage.setItem("pensieve-weekly", STATE.weeklyFilter ? "1" : "0"); } catch (e) { /* ignore */ }
+      applyWeeklyFilterState();
+      renderBoard();
+      toast(STATE.weeklyFilter ? "Showing Closed from this week only" : "Showing all Closed tasks");
+    });
+  }
 
   // Refresh from API
   const refreshBtn = $("#refresh-btn");
@@ -1233,7 +1928,7 @@ function init() {
       if (pullTodoBtn.disabled) return;
       pullTodoBtn.disabled = true;
       const original = pullTodoBtn.innerHTML;
-      pullTodoBtn.innerHTML = "&#x1F989; Hedwig is flying...";
+      pullTodoBtn.innerHTML = "Pulling from To-Do...";
       pullTodoBtn.classList.add("is-pulling");
       try {
         const res = await fetch(`${API_BASE}/api/sync`, {
@@ -1275,17 +1970,7 @@ function init() {
     });
   });
 
-  // Theme toggle (day <-> night; marauder is easter-egg only)
-  $("#theme-toggle").addEventListener("click", () => {
-    if (STATE.theme === "marauder") {
-      STATE.theme = "day";
-    } else {
-      STATE.theme = STATE.theme === "day" ? "night" : "day";
-    }
-    saveTheme();
-    applyTheme();
-    toast(`${STATE.theme} mode`);
-  });
+  // Theme toggle removed: HUD is the only theme.
 
   // Goals editor
   $("#open-goals").addEventListener("click", openGoalsEditor);
@@ -1310,6 +1995,43 @@ function init() {
     });
   }
 
+  // Page tabs (Board / Recap)
+  $$(".page-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchPage(btn.dataset.page));
+  });
+  const recapGen = $("#recap-generate");
+  if (recapGen) recapGen.addEventListener("click", generateRecap);
+  const recapExport = $("#recap-export");
+  if (recapExport) recapExport.addEventListener("click", exportRecapDocx);
+  const recapHistBtn = $("#recap-history-btn");
+  if (recapHistBtn) recapHistBtn.addEventListener("click", toggleRecapHistory);
+
+  // Graph page controls
+  wireGraphInteraction();
+  const gThresh = $("#graph-threshold");
+  if (gThresh) {
+    gThresh.addEventListener("input", () => {
+      const v = parseFloat(gThresh.value).toFixed(2);
+      const label = $("#graph-threshold-val");
+      if (label) label.textContent = v;
+    });
+    gThresh.addEventListener("change", () => { if (STATE.page === "graph") loadGraph(); });
+  }
+  const gRefresh = $("#graph-refresh");
+  if (gRefresh) gRefresh.addEventListener("click", loadGraph);
+
+  // Docs page controls
+  const docsNew = $("#docs-new");
+  if (docsNew) docsNew.addEventListener("click", newDoc);
+  const docsEdit = $("#docs-edit");
+  if (docsEdit) docsEdit.addEventListener("click", () => { setDocsMode(true); $("#docs-editor").focus(); });
+  const docsSave = $("#docs-save");
+  if (docsSave) docsSave.addEventListener("click", saveDoc);
+  const docsCancel = $("#docs-cancel");
+  if (docsCancel) docsCancel.addEventListener("click", () => { if (DOCS.current) openDoc(DOCS.current); });
+  const docsDelete = $("#docs-delete");
+  if (docsDelete) docsDelete.addEventListener("click", deleteDoc);
+
   // Modal close
   $("#card-modal").addEventListener("click", e => {
     if (e.target.dataset.close === "1") closeModal();
@@ -1317,12 +2039,866 @@ function init() {
   $("#goals-modal").addEventListener("click", e => {
     if (e.target.dataset.close === "goals") $("#goals-modal").hidden = true;
   });
+  $("#vial-modal").addEventListener("click", e => {
+    if (e.target.dataset.close === "vial") closeVialModal();
+  });
+  $("#vial-save").addEventListener("click", () => saveVial("captured"));
+  $("#vial-skip").addEventListener("click", () => saveVial("skipped"));
+
+  // Garden v3: achievements button + modal.
+  const achBtn = document.getElementById("achievements-btn");
+  if (achBtn) achBtn.addEventListener("click", openAchievementsModal);
+  const achModal = document.getElementById("achievements-modal");
+  if (achModal) {
+    achModal.addEventListener("click", e => {
+      if (e.target.dataset.close === "achievements") closeAchievementsModal();
+    });
+  }
+
+  // Delegate chevron/badge clicks on the kanban board
+  document.addEventListener("click", e => {
+    const chevron = e.target.closest(".card-vial-chevron, .card-vial-badge");
+    if (chevron) {
+      e.stopPropagation();
+      openVialModal(chevron.dataset.memoryId);
+    }
+  });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
       closeModal();
       $("#goals-modal").hidden = true;
+      closeVialModal();
+      closeAchievementsModal();
     }
   });
+}
+
+// ----- Recap page (Phase 3: Connect recap) -----
+
+function switchPage(page) {
+  const known = ["recap", "graph", "docs"];
+  STATE.page = known.includes(page) ? page : "board";
+  document.documentElement.setAttribute("data-page", STATE.page);
+  $$(".page-tab").forEach(btn => {
+    const on = btn.dataset.page === STATE.page;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if (STATE.page === "graph") loadGraph();
+  else stopGraphAnim();
+  if (STATE.page === "docs") loadDocs();
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function blockToText(b) {
+  const lines = [];
+  if (b.heading) lines.push(b.heading);
+  if (b.narrative) lines.push(b.narrative);
+  if (b.impact) lines.push(`Impact: ${b.impact}`);
+  return lines.join("\n\n");
+}
+
+function recapToText(recap) {
+  const out = [];
+  if (recap.period_label) out.push(`Reflection Period: ${recap.period_label}\n`);
+  if (Array.isArray(recap.list_names_applied) && recap.list_names_applied.length) {
+    out.push(`Included lists: ${recap.list_names_applied.join(", ")}\n`);
+  }
+  (recap.sections || []).forEach(s => {
+    out.push(`=== ${s.short_name || s.name} ===`);
+    (s.accomplishments || []).forEach(b => out.push(blockToText(b)));
+    out.push("");
+  });
+  return out.join("\n\n").trim();
+}
+
+async function generateRecap() {
+  const btn = $("#recap-generate");
+  const status = $("#recap-status");
+  const output = $("#recap-output");
+  if (!STATE.apiConnected) {
+    toast("Recap needs the Pensieve API. Start `pensieve serve` and refresh.");
+    return;
+  }
+  const scope = $("#recap-scope").value || "all";
+  const period = $("#recap-period").value.trim();
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = "Drafting...";
+  if (status) status.textContent = "Calling the model, this can take a moment...";
+  try {
+    const res = await fetch(`${API_BASE}/api/recap`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, period_label: period }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+    STATE.lastRecap = data.recap;
+    STATE.lastScope = scope;
+    renderRecap(data.recap);
+    const r = data.recap || {};
+    if (status) {
+      const lists = Array.isArray(r.list_names_applied) && r.list_names_applied.length
+        ? ` Lists: ${r.list_names_applied.join(", ")}.`
+        : "";
+      status.textContent =
+        `${r.section_count || 0} goal section(s) from ${r.memories_considered || 0} task(s).${lists} ` +
+        `${r.tokens_used || 0} tokens.`;
+    }
+    refreshRecapHistory();
+  } catch (e) {
+    if (status) status.textContent = "";
+    output.innerHTML = `<p class="recap-empty">Recap failed: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+function recapBlocksHtml(s) {
+  return (s.accomplishments || [])
+    .map((b, i) => `
+      <article class="recap-block" data-block="${i}">
+        <div class="recap-block-head">
+          <h3>${escapeHtml(b.heading || "Accomplishment")}</h3>
+          <button class="ghost-button recap-copy" data-block="${i}" title="Copy this block">Copy</button>
+        </div>
+        <p class="recap-narrative">${escapeHtml(b.narrative || "")}</p>
+        ${b.impact ? `<p class="recap-impact"><strong>Impact:</strong> ${escapeHtml(b.impact)}</p>` : ""}
+      </article>`)
+    .join("") || '<p class="recap-impact">No accomplishment drafted.</p>';
+}
+
+function wireRecapSectionCopies(section, s) {
+  section.querySelectorAll(".recap-copy").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const idx = parseInt(btn.dataset.block, 10);
+      const block = (s.accomplishments || [])[idx];
+      if (!block) return;
+      const ok = await copyToClipboard(blockToText(block));
+      toast(ok ? "Block copied" : "Copy failed");
+    });
+  });
+}
+
+async function reviseSection(section, s) {
+  const fb = section.querySelector(".recap-revise-input");
+  const btn = section.querySelector(".recap-revise-send");
+  const feedback = (fb.value || "").trim();
+  if (!feedback) { toast("Type what should change first."); return; }
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Rewriting...";
+  try {
+    const res = await fetch(`${API_BASE}/api/recap/revise`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal_id: s.goal_id, feedback, scope: STATE.lastScope || "all" }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const data = await res.json();
+    const newSection = data.section;
+    // update in-memory recap + re-render this section's blocks
+    s.accomplishments = newSection.accomplishments || [];
+    if (STATE.lastRecap && STATE.lastRecap.sections) {
+      const idx = STATE.lastRecap.sections.findIndex(x => x.goal_id === s.goal_id);
+      if (idx >= 0) STATE.lastRecap.sections[idx] = s;
+    }
+    section.querySelector(".recap-blocks").innerHTML = recapBlocksHtml(s);
+    wireRecapSectionCopies(section, s);
+    section.querySelector(".recap-revise").hidden = true;
+    fb.value = "";
+    toast("Section rewritten");
+  } catch (e) {
+    toast(`Revise failed: ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function renderRecap(recap) {
+  const output = $("#recap-output");
+  const copyAll = $("#recap-copy-all");
+  const exportBtn = $("#recap-export");
+  STATE.lastRecap = recap;
+  output.innerHTML = "";
+  const sections = (recap && recap.sections) || [];
+  if (sections.length === 0) {
+    output.innerHTML =
+      `<p class="recap-empty">No tasks matched this scope. Try "All tasks", or sync more from To-Do.</p>`;
+    if (copyAll) copyAll.hidden = true;
+    if (exportBtn) exportBtn.hidden = true;
+    return;
+  }
+
+  sections.forEach(s => {
+    const section = document.createElement("section");
+    section.className = "recap-section";
+    if (s.lane) section.dataset.lane = s.lane;
+
+    const sourcesHtml = (s.task_titles && s.task_titles.length)
+      ? `<details class="recap-sources">
+           <summary>Source tasks (${s.task_titles.length})</summary>
+           <ul>${s.task_titles.map(t => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+         </details>`
+      : "";
+
+    section.innerHTML = `
+      <div class="recap-section-head">
+        <h2>${escapeHtml(s.short_name || s.name || "Goal")}</h2>
+        <span class="recap-goal-name">${escapeHtml(s.name || "")}</span>
+        <span class="recap-task-count">${s.task_count || 0} task(s)</span>
+        <button class="ghost-button recap-revise-toggle" title="Tell the agent it misread something and rewrite">Revise</button>
+      </div>
+      <div class="recap-blocks">${recapBlocksHtml(s)}</div>
+      <div class="recap-revise" hidden>
+        <textarea class="recap-revise-input" rows="2" placeholder="e.g. 'The Touchstone task was about NIS2 testing for Rob, not a status report' - then Rewrite."></textarea>
+        <button class="primary-button recap-revise-send">Rewrite this section</button>
+      </div>
+      ${sourcesHtml}`;
+
+    wireRecapSectionCopies(section, s);
+
+    const toggle = section.querySelector(".recap-revise-toggle");
+    const reviseBox = section.querySelector(".recap-revise");
+    const openRevise = () => {
+      reviseBox.hidden = !reviseBox.hidden;
+      if (!reviseBox.hidden) section.querySelector(".recap-revise-input").focus();
+    };
+    toggle.addEventListener("click", openRevise);
+    section.addEventListener("dblclick", e => {
+      if (e.target.closest("button, textarea, a, details")) return;
+      reviseBox.hidden = false;
+      section.querySelector(".recap-revise-input").focus();
+    });
+    section.querySelector(".recap-revise-send").addEventListener("click", () => reviseSection(section, s));
+
+    output.appendChild(section);
+  });
+
+  if (copyAll) {
+    copyAll.hidden = false;
+    copyAll.onclick = async () => {
+      const ok = await copyToClipboard(recapToText(recap));
+      toast(ok ? "Full recap copied" : "Copy failed");
+    };
+  }
+  if (exportBtn) exportBtn.hidden = false;
+}
+
+async function exportRecapDocx() {
+  if (!STATE.lastRecap || !(STATE.lastRecap.sections || []).length) {
+    toast("Generate a recap first."); return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/recap/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recap: STATE.lastRecap }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "connect-recap.docx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast("DOCX downloaded");
+  } catch (e) {
+    toast(`Export failed: ${e.message}`);
+  }
+}
+
+async function refreshRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel || panel.hidden) return;  // only refresh when visible
+  await renderRecapHistory();
+}
+
+async function renderRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel) return;
+  try {
+    const data = await fetchJson("/api/recap/history");
+    const runs = data.runs || [];
+    if (!runs.length) {
+      panel.innerHTML = `<p class="recap-empty" style="padding:12px">No saved recaps yet.</p>`;
+      return;
+    }
+    panel.innerHTML = `<div class="recap-history-list">` + runs.map(r => `
+      <button class="recap-history-item" data-id="${r.id}">
+        <span class="rh-date">${escapeHtml((r.created_at || "").replace("T", " ").slice(0, 16))}</span>
+        <span class="rh-meta">${escapeHtml(r.scope || "all")} &middot; ${r.section_count || 0} sections &middot; ${r.memories_considered || 0} tasks</span>
+        ${r.period_label ? `<span class="rh-period">${escapeHtml(r.period_label)}</span>` : ""}
+      </button>`).join("") + `</div>`;
+    panel.querySelectorAll(".recap-history-item").forEach(btn => {
+      btn.addEventListener("click", () => loadHistoryRun(btn.dataset.id));
+    });
+  } catch (e) {
+    panel.innerHTML = `<p class="recap-empty" style="padding:12px">History failed: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+async function loadHistoryRun(id) {
+  try {
+    const data = await fetchJson(`/api/recap/history/${encodeURIComponent(id)}`);
+    const recap = data.record && data.record.recap;
+    if (!recap) { toast("Could not load that run."); return; }
+    STATE.lastScope = recap.scope || "all";
+    renderRecap(recap);
+    const status = $("#recap-status");
+    if (status) status.textContent = `Loaded saved recap from ${(data.record.created_at || "").replace("T", " ").slice(0, 16)}.`;
+    $("#recap-history").hidden = true;
+  } catch (e) {
+    toast(`Load failed: ${e.message}`);
+  }
+}
+
+function toggleRecapHistory() {
+  const panel = $("#recap-history");
+  if (!panel) return;
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) renderRecapHistory();
+}
+
+// ----- Constellation graph page -----
+
+const GRAPH = {
+  nodes: [], edges: [], byId: {},
+  raf: null, dragging: null, hover: null, downAt: null, moved: false,
+  width: 1200, height: 620, dpr: 1,
+};
+
+function stopGraphAnim() {
+  if (GRAPH.raf) { cancelAnimationFrame(GRAPH.raf); GRAPH.raf = null; }
+}
+
+async function loadGraph() {
+  const canvas = $("#graph-canvas");
+  const empty = $("#graph-empty");
+  if (!canvas) return;
+  // If the user opens Graph before the initial API load finished, try once.
+  if (!STATE.apiConnected) await loadMemoriesFromApi();
+  if (!STATE.apiConnected) {
+    empty.hidden = false;
+    empty.textContent = "Graph needs the Pensieve API. Start `pensieve serve` and refresh.";
+    return;
+  }
+  const threshold = parseFloat(($("#graph-threshold") || {}).value || "0.6");
+  try {
+    const data = await fetchJson(`/api/graph?threshold=${threshold}`);
+    const g = data.graph || { nodes: [], edges: [], stats: {} };
+    renderGraphStats(g.stats || {});
+    if (!g.nodes.length) {
+      empty.hidden = false;
+      empty.textContent = "No tasks to plot yet. Pull from To-Do on the Board first.";
+      stopGraphAnim();
+      return;
+    }
+    empty.hidden = true;
+    initGraphLayout(g);
+    startGraph();
+  } catch (e) {
+    empty.hidden = false;
+    empty.textContent = `Graph failed: ${e.message}`;
+  }
+}
+
+function sizeGraphCanvas() {
+  const canvas = $("#graph-canvas");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  GRAPH.width = Math.max(320, Math.floor(rect.width));
+  GRAPH.height = 620;
+  GRAPH.dpr = dpr;
+  canvas.width = GRAPH.width * dpr;
+  canvas.height = GRAPH.height * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function initGraphLayout(g) {
+  sizeGraphCanvas();
+  const cx = GRAPH.width / 2, cy = GRAPH.height / 2;
+  const goals = g.nodes.filter(n => n.type === "goal");
+  const ringR = Math.min(GRAPH.width, GRAPH.height) * 0.32;
+  const placed = {};
+  goals.forEach((n, i) => {
+    const a = (i / Math.max(1, goals.length)) * Math.PI * 2 - Math.PI / 2;
+    n.ax = cx + ringR * Math.cos(a);
+    n.ay = cy + ringR * Math.sin(a);
+    n.x = n.ax; n.y = n.ay; n.vx = 0; n.vy = 0;
+    placed[n.id] = n;
+  });
+  // tasks: start near their first goal (or center), with jitter
+  g.nodes.filter(n => n.type === "task").forEach((n, i) => {
+    const home = (n.goal_ids || []).map(id => placed[id]).find(Boolean);
+    const jx = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const jy = (Math.sin(i * 78.233) * 12345.6789) % 1;
+    n.x = (home ? home.x : cx) + (jx - 0.5) * 120;
+    n.y = (home ? home.y : cy) + (jy - 0.5) * 120;
+    n.vx = 0; n.vy = 0;
+    placed[n.id] = n;
+  });
+  GRAPH.nodes = g.nodes;
+  GRAPH.edges = g.edges;
+  GRAPH.byId = placed;
+}
+
+function tickGraph() {
+  const nodes = GRAPH.nodes, edges = GRAPH.edges;
+  const cx = GRAPH.width / 2, cy = GRAPH.height / 2;
+  const REP = 1400, DAMP = 0.84;
+  // repulsion (O(n^2); fine for the dozens of nodes we have)
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 1) { d2 = 1; dx = (i - j) || 1; }
+      const dist = Math.sqrt(d2);
+      const f = REP / d2;
+      const ux = dx / dist, uy = dy / dist;
+      a.vx += ux * f; a.vy += uy * f;
+      b.vx -= ux * f; b.vy -= uy * f;
+    }
+  }
+  // springs along edges
+  for (const e of edges) {
+    const a = GRAPH.byId[e.source], b = GRAPH.byId[e.target];
+    if (!a || !b) continue;
+    const isAlign = e.kind === "alignment";
+    const target = isAlign ? 95 : 165;
+    const k = isAlign ? 0.018 : 0.006 * (e.weight || 0.5);
+    let dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (dist - target) * k;
+    const ux = dx / dist, uy = dy / dist;
+    a.vx += ux * f; a.vy += uy * f;
+    b.vx -= ux * f; b.vy -= uy * f;
+  }
+  // gravity + goal anchors + integrate
+  for (const n of nodes) {
+    if (n === GRAPH.dragging) { n.vx = 0; n.vy = 0; continue; }
+    n.vx += (cx - n.x) * 0.0016;
+    n.vy += (cy - n.y) * 0.0016;
+    if (n.type === "goal" && n.ax != null) {
+      n.vx += (n.ax - n.x) * 0.06;
+      n.vy += (n.ay - n.y) * 0.06;
+    }
+    n.vx *= DAMP; n.vy *= DAMP;
+    n.x += n.vx; n.y += n.vy;
+    n.x = Math.max(20, Math.min(GRAPH.width - 20, n.x));
+    n.y = Math.max(20, Math.min(GRAPH.height - 20, n.y));
+  }
+}
+
+function nodeRadius(n) {
+  if (n.type === "goal") return 15;
+  return 6 + (n.completed ? 2 : 0);
+}
+
+function drawGraph() {
+  const canvas = $("#graph-canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, GRAPH.width, GRAPH.height);
+  // edges
+  for (const e of GRAPH.edges) {
+    const a = GRAPH.byId[e.source], b = GRAPH.byId[e.target];
+    if (!a || !b) continue;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    if (e.kind === "alignment") {
+      ctx.strokeStyle = "rgba(66,200,245,0.28)";
+      ctx.lineWidth = 1.2;
+    } else {
+      const w = Math.max(0.4, (e.weight || 0.5));
+      ctx.strokeStyle = `rgba(184,120,255,${0.12 + w * 0.35})`;
+      ctx.lineWidth = 0.8 + w;
+    }
+    ctx.stroke();
+  }
+  // nodes
+  for (const n of GRAPH.nodes) {
+    const r = nodeRadius(n);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.color || "#42c8f5";
+    ctx.shadowColor = n.color || "#42c8f5";
+    ctx.shadowBlur = n === GRAPH.hover ? 18 : (n.type === "goal" ? 12 : 6);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    if (n.type === "goal" || n === GRAPH.hover) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(230,243,255,0.85)";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+    // goal labels always; task labels on hover
+    if (n.type === "goal" || n === GRAPH.hover) {
+      ctx.font = n.type === "goal" ? "600 12px 'Rajdhani', sans-serif" : "500 11px 'Rajdhani', sans-serif";
+      ctx.fillStyle = "#e6f3ff";
+      ctx.textAlign = "center";
+      const label = n.label.length > 34 ? n.label.slice(0, 33) + "…" : n.label;
+      ctx.fillText(label, n.x, n.y - r - 6);
+    }
+  }
+}
+
+function graphLoop() {
+  tickGraph();
+  drawGraph();
+  GRAPH.ticksLeft--;
+  if (GRAPH.ticksLeft > 0 || GRAPH.dragging) {
+    GRAPH.raf = requestAnimationFrame(graphLoop);
+  } else {
+    GRAPH.raf = null;  // settled; stop burning frames until reheated
+  }
+}
+
+function startGraph() {
+  stopGraphAnim();
+  GRAPH.ticksLeft = 600;
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) {
+    for (let i = 0; i < 400; i++) tickGraph();
+    drawGraph();
+    return;
+  }
+  GRAPH.raf = requestAnimationFrame(graphLoop);
+}
+
+function reheatGraph(ticks = 180) {
+  GRAPH.ticksLeft = Math.max(GRAPH.ticksLeft || 0, ticks);
+  if (!GRAPH.raf) GRAPH.raf = requestAnimationFrame(graphLoop);
+}
+
+function graphNodeAt(mx, my) {
+  // topmost (last drawn) first
+  for (let i = GRAPH.nodes.length - 1; i >= 0; i--) {
+    const n = GRAPH.nodes[i];
+    const r = nodeRadius(n) + 4;
+    if ((mx - n.x) ** 2 + (my - n.y) ** 2 <= r * r) return n;
+  }
+  return null;
+}
+
+function graphMousePos(evt) {
+  const canvas = $("#graph-canvas");
+  const rect = canvas.getBoundingClientRect();
+  return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+}
+
+function renderGraphStats(stats) {
+  const root = $("#graph-stats");
+  if (!root) return;
+  const col = stats.by_column || {};
+  const tiles = [
+    { label: "Tasks", value: stats.total_tasks || 0 },
+    { label: "Completed", value: stats.completed || 0 },
+    { label: "Goals", value: stats.goal_count || 0 },
+    { label: "Unaligned", value: stats.unaligned || 0 },
+    { label: "Semantic links", value: stats.semantic_edges || 0 },
+    { label: "Memory", value: col.memory || 0 },
+    { label: "Dive", value: col.dive || 0 },
+    { label: "Review", value: col.review || 0 },
+    { label: "Closed", value: col.closed || 0 },
+  ];
+  root.innerHTML = tiles.map(t =>
+    `<div class="stat-tile"><div class="stat-value">${t.value}</div><div class="stat-label">${t.label}</div></div>`
+  ).join("");
+}
+
+function openNodeModal(node) {
+  if (!node || node.type !== "task") return;
+  const m = STATE.memories.find(x =>
+    x.id === `mem_${node.id}` || x.id === node.id || x.source_task_id === node.id);
+  if (m) openModal(m);
+}
+
+function wireGraphInteraction() {
+  const canvas = $("#graph-canvas");
+  const tip = $("#graph-tooltip");
+  if (!canvas) return;
+  canvas.addEventListener("mousedown", e => {
+    const p = graphMousePos(e);
+    GRAPH.dragging = graphNodeAt(p.x, p.y);
+    GRAPH.downAt = p; GRAPH.moved = false;
+    if (GRAPH.dragging) reheatGraph();
+  });
+  window.addEventListener("mouseup", () => {
+    if (GRAPH.dragging && !GRAPH.moved) openNodeModal(GRAPH.dragging);
+    GRAPH.dragging = null;
+  });
+  canvas.addEventListener("mousemove", e => {
+    const p = graphMousePos(e);
+    if (GRAPH.dragging) {
+      GRAPH.dragging.x = p.x; GRAPH.dragging.y = p.y;
+      if (GRAPH.downAt && ((p.x - GRAPH.downAt.x) ** 2 + (p.y - GRAPH.downAt.y) ** 2) > 16) GRAPH.moved = true;
+      return;
+    }
+    const n = graphNodeAt(p.x, p.y);
+    const changed = n !== GRAPH.hover;
+    GRAPH.hover = n;
+    canvas.style.cursor = n ? "pointer" : "grab";
+    if (changed && !GRAPH.raf) drawGraph();  // reflect hover when sim is settled
+    if (n && tip) {
+      tip.style.display = "block";
+      tip.style.left = `${p.x + 14}px`;
+      tip.style.top = `${p.y + 14}px`;
+      const meta = n.type === "goal" ? "Connect goal" :
+        `${n.column || ""}${n.completed ? " / done" : ""}`;
+      tip.innerHTML = `<strong>${escapeHtml(n.label)}</strong><br><span style="color:var(--muted)">${escapeHtml(meta)}</span>`;
+    } else if (tip) {
+      tip.style.display = "none";
+    }
+  });
+  canvas.addEventListener("mouseleave", () => {
+    if (tip) tip.style.display = "none";
+    GRAPH.hover = null;
+    if (!GRAPH.raf) drawGraph();
+  });
+  window.addEventListener("resize", () => {
+    if (STATE.page === "graph" && GRAPH.nodes.length) {
+      sizeGraphCanvas();
+      reheatGraph(60);
+    }
+  });
+}
+
+// ----- Documents page (SOPs + tool docs) -----
+
+const DOCS = { current: null, list: [] };
+
+// Tiny, safe markdown renderer (escapes first, then applies a subset).
+function renderMarkdown(md) {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
+  let html = "";
+  let inUl = false, inOl = false, inCode = false;
+  const closeLists = () => {
+    if (inUl) { html += "</ul>"; inUl = false; }
+    if (inOl) { html += "</ol>"; inOl = false; }
+  };
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  for (const raw of lines) {
+    if (/^```/.test(raw)) {
+      if (inCode) { html += "</code></pre>"; inCode = false; }
+      else { closeLists(); html += "<pre><code>"; inCode = true; }
+      continue;
+    }
+    if (inCode) { html += esc(raw) + "\n"; continue; }
+    const h = raw.match(/^(#{1,3})\s+(.+)$/);
+    if (h) { closeLists(); html += `<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`; continue; }
+    const ul = raw.match(/^\s*[-*]\s+(.+)$/);
+    if (ul) { if (!inUl) { closeLists(); html += "<ul>"; inUl = true; } html += `<li>${inline(ul[1])}</li>`; continue; }
+    const ol = raw.match(/^\s*\d+\.\s+(.+)$/);
+    if (ol) { if (!inOl) { closeLists(); html += "<ol>"; inOl = true; } html += `<li>${inline(ol[1])}</li>`; continue; }
+    if (raw.trim() === "") { closeLists(); continue; }
+    closeLists();
+    html += `<p>${inline(raw)}</p>`;
+  }
+  if (inCode) html += "</code></pre>";
+  closeLists();
+  return html;
+}
+
+async function loadDocs() {
+  const listEl = $("#docs-list");
+  if (!STATE.apiConnected) await loadMemoriesFromApi();
+  if (!STATE.apiConnected) {
+    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs need the Pensieve API.</p>`;
+    return;
+  }
+  try {
+    const data = await fetchJson("/api/docs");
+    DOCS.list = data.docs || [];
+    renderDocsList();
+    if (DOCS.list.length && !DOCS.current) openDoc(DOCS.list[0].id);
+  } catch (e) {
+    if (listEl) listEl.innerHTML = `<p class="docs-empty">Docs failed: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderDocsList() {
+  const listEl = $("#docs-list");
+  if (!listEl) return;
+  if (!DOCS.list.length) {
+    listEl.innerHTML = `<p class="docs-empty">No documents yet.</p>`;
+    return;
+  }
+  listEl.innerHTML = DOCS.list.map(d =>
+    `<button class="docs-list-item${DOCS.current === d.id ? " active" : ""}" data-id="${escapeHtml(d.id)}">${escapeHtml(d.title)}</button>`
+  ).join("");
+  listEl.querySelectorAll(".docs-list-item").forEach(btn => {
+    btn.addEventListener("click", () => openDoc(btn.dataset.id));
+  });
+}
+
+function setDocsMode(editing) {
+  $("#docs-view").hidden = editing;
+  $("#docs-editor").hidden = !editing;
+  $("#docs-edit").hidden = editing || !DOCS.current;
+  $("#docs-save").hidden = !editing;
+  $("#docs-cancel").hidden = !editing;
+  $("#docs-delete").hidden = editing || !DOCS.current;
+}
+
+async function openDoc(id) {
+  try {
+    const data = await fetchJson(`/api/docs/${encodeURIComponent(id)}`);
+    DOCS.current = data.doc.id;
+    $("#docs-current-title").textContent = data.doc.title;
+    $("#docs-view").innerHTML = renderMarkdown(data.doc.content);
+    $("#docs-editor").value = data.doc.content;
+    setDocsMode(false);
+    renderDocsList();
+  } catch (e) {
+    toast(`Open failed: ${e.message}`);
+  }
+}
+
+async function saveDoc() {
+  if (!DOCS.current) return;
+  const content = $("#docs-editor").value;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(DOCS.current)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    await loadDocs();
+    await openDoc(DOCS.current);
+    toast("Document saved");
+  } catch (e) {
+    toast(`Save failed: ${e.message}`);
+  }
+}
+
+async function newDoc() {
+  const title = prompt("New document title:");
+  if (!title || !title.trim()) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    DOCS.current = data.doc.id;
+    await loadDocs();
+    await openDoc(data.doc.id);
+    setDocsMode(true);
+    $("#docs-editor").focus();
+  } catch (e) {
+    toast(`Create failed: ${e.message}`);
+  }
+}
+
+async function deleteDoc() {
+  if (!DOCS.current) return;
+  if (!confirm("Delete this document? This cannot be undone.")) return;
+  const id = DOCS.current;
+  try {
+    const res = await fetch(`${API_BASE}/api/docs/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    DOCS.current = null;
+    $("#docs-current-title").textContent = "Select a document";
+    $("#docs-view").innerHTML = "";
+    setDocsMode(false);
+    await loadDocs();
+    toast("Document deleted");
+  } catch (e) {
+    toast(`Delete failed: ${e.message}`);
+  }
+}
+
+// ----- Masthead popovers (Filter + overflow) + filter badge -----
+
+function initHeaderPopovers() {
+  const pops = [
+    { btn: $("#filter-pop-btn"), panel: $("#filter-pop-panel"), wrap: $("#filter-pop-wrap") },
+    { btn: $("#more-pop-btn"), panel: $("#more-pop-panel"), wrap: $("#more-pop-wrap") },
+  ].filter(p => p.btn && p.panel && p.wrap);
+  if (!pops.length) return;
+
+  const close = p => { p.panel.hidden = true; p.btn.setAttribute("aria-expanded", "false"); };
+  const open = p => {
+    pops.forEach(o => { if (o !== p) close(o); });
+    p.panel.hidden = false;
+    p.btn.setAttribute("aria-expanded", "true");
+  };
+  const closeAll = () => pops.forEach(close);
+
+  pops.forEach(p => {
+    p.btn.addEventListener("click", e => {
+      e.stopPropagation();
+      p.panel.hidden ? open(p) : close(p);
+    });
+  });
+  // Click outside any popover closes them; clicks inside a panel keep it open.
+  document.addEventListener("click", e => {
+    if (!pops.some(p => p.wrap.contains(e.target))) closeAll();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && pops.some(p => !p.panel.hidden)) {
+      closeAll();
+      (pops.find(p => p.btn) || {}).btn?.focus();
+    }
+  });
+}
+
+function updateFilterBadge() {
+  const badge = $("#filter-active-badge");
+  if (!badge) return;
+  let n = 0;
+  if (STATE.filter && STATE.filter.strand) n++;
+  if (STATE.weeklyFilter) n++;
+  badge.textContent = String(n);
+  badge.hidden = n === 0;
+}
+
+// Card density: "comfortable" (default, clamped description) | "compact" (no description).
+function initDensityToggle() {
+  const KEY = "pensieve-density";
+  const btn = $("#density-toggle");
+  let mode = (() => { try { return localStorage.getItem(KEY) === "comfortable" ? "comfortable" : "compact"; } catch (e) { return "compact"; } })();
+  const apply = m => {
+    document.documentElement.setAttribute("data-density", m);
+    if (btn) {
+      const compact = m === "compact";
+      btn.setAttribute("aria-pressed", String(compact));
+      btn.textContent = compact ? "Density: Compact" : "Density: Comfortable";
+    }
+  };
+  apply(mode);
+  if (btn) {
+    btn.addEventListener("click", () => {
+      mode = mode === "compact" ? "comfortable" : "compact";
+      try { localStorage.setItem(KEY, mode); } catch (e) { /* ignore */ }
+      apply(mode);
+    });
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

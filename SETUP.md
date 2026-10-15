@@ -99,6 +99,12 @@ talks to `:8765`. You should see an empty kanban with four columns:
 
 Stop the server with Ctrl+C when you're done.
 
+> 💡 **Optional but recommended:** run `tools\Install-PensieveAutoStart.ps1`
+> once. It drops a Startup-folder shortcut so the backend launches (minimized)
+> at every Windows logon — no more manual `pensieve serve`. See
+> [tools/README.md](tools/README.md) for details. Disable any time with
+> `Uninstall-PensieveAutoStart.ps1`.
+
 ---
 
 ## Importing your Connect goals (the magic step)
@@ -110,9 +116,8 @@ in by uploading your Connect PDF.
 2. Open the dashboard, click **Set Goals** (top-right).
 3. Click **Upload your Connect PDF** → pick the file.
 4. Click **✨ Parse with AI**. After a few seconds you'll see your goals
-   rendered as House cards. The AI assigns each goal a Harry Potter House
-   colour (Gryffindor, Slytherin, Hufflepuff, Ravenclaw, plus four extras for
-   teams with more than four goals).
+   rendered as lane cards. The AI assigns each goal a lane color from an
+   8-slot palette (goals beyond 8 cycle through the palette again).
 5. Review the short names, tweak anything that looks off, click **Save goals**.
 
 That's it. Your goals are saved to `data/connect-goals.json` (local to your
@@ -157,9 +162,9 @@ button — same result, no terminal needed.
 | Edit a card | Click any card → modal → edit title / why / impact / strand / goal alignment → Save. |
 | Regenerate with AI | Click ✨ **Regenerate** in the edit modal — re-runs the enrichment on demand. |
 | Move a card | Drag to another column, or set it in the edit modal. Your placement survives re-syncs. |
-| Filter by goal | Click a House chip in the goal sidebar. |
+| Filter by goal | Click a lane chip in the goal sidebar. |
 | Search | Use the search box (semantic — powered by Chroma). |
-| Switch view | Toggle between **Lifecycle** (Memory → Dive → Review → Closed) and **Houses** (one column per goal). |
+| Switch view | Toggle between **Lifecycle** (Memory → Dive → Review → Closed) and **Lanes** (one column per goal). |
 
 ---
 
@@ -203,8 +208,8 @@ add an opt-in writeback path; until then, your tasks are untouched.
 
 ## Customising
 
-- **Want different House names / colours?** Edit
-  `pensieve/enrichment/goals_importer.py::HOUSE_PALETTE` and mirror it in
+- **Want different lane names / colours?** Edit
+  `pensieve/enrichment/goals_importer.py::LANE_PALETTE` and mirror it in
   `frontend-proto/pensieve.js`. Eight slots; goals beyond eight cycle.
 - **Want different column names?** Edit `frontend-proto/pensieve.js`
   `LIFECYCLE_COLUMNS`, the four valid-column tuples in

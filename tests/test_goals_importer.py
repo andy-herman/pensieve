@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 
 from pensieve.enrichment.goals_importer import (
-    HOUSE_PALETTE,
-    assign_houses_and_ids,
+    LANE_PALETTE,
+    assign_lanes_and_ids,
     extract_goals_from_text,
     import_pdf_to_goals,
 )
@@ -111,10 +111,10 @@ def test_extract_goals_from_text_raises_on_empty_input():
         extract_goals_from_text("   \n\n  ", client=_StubClient({"goals": []}))
 
 
-def test_assign_houses_and_ids_handles_five_goals_with_extended_palette():
+def test_assign_lanes_and_ids_handles_five_goals_with_extended_palette():
     extracted = _five_goal_llm_payload()
 
-    finalized = assign_houses_and_ids(extracted, source_label="test fixture")
+    finalized = assign_lanes_and_ids(extracted, source_label="test fixture")
 
     assert finalized["_meta"]["source"] == "test fixture"
     assert "last_synced" in finalized["_meta"]
@@ -134,35 +134,35 @@ def test_assign_houses_and_ids_handles_five_goals_with_extended_palette():
         "goal-5-internal-goals",
     ]
     assert len(set(ids)) == 5
-    # Houses come from the palette in order: 4 canonical + 1 extended.
-    expected_houses = [p["house"] for p in HOUSE_PALETTE[:5]]
-    assert [g["house"] for g in goals] == expected_houses
+    # Lanes come from the palette in order: 4 primary + 1 extended.
+    expected_lanes = [p["lane"] for p in LANE_PALETTE[:5]]
+    assert [g["lane"] for g in goals] == expected_lanes
     # Palette colors are wired correctly for goal 5 (the new extended one).
-    assert goals[4]["house"] == "internal"
-    assert goals[4]["color_primary"] == HOUSE_PALETTE[4]["color_primary"]
+    assert goals[4]["lane"] == "slate"
+    assert goals[4]["color_primary"] == LANE_PALETTE[4]["color_primary"]
     # Source fields preserved verbatim from the LLM.
     assert goals[0]["summary"] == "Lead DORA program."
     assert goals[0]["keywords_for_alignment"] == ["DORA", "JET", "RFI"]
 
 
-def test_assign_houses_and_ids_cycles_palette_for_more_than_eight_goals():
+def test_assign_lanes_and_ids_cycles_palette_for_more_than_eight_goals():
     extracted = {
         "goals": [{"short_name": f"Goal {i}", "name": f"Goal {i}"} for i in range(10)],
     }
-    finalized = assign_houses_and_ids(extracted)
+    finalized = assign_lanes_and_ids(extracted)
     goals = finalized["goals"]
     assert len(goals) == 10
     # First 8 hit each palette entry exactly once.
-    assert [g["house"] for g in goals[:8]] == [p["house"] for p in HOUSE_PALETTE]
+    assert [g["lane"] for g in goals[:8]] == [p["lane"] for p in LANE_PALETTE]
     # Goals 9, 10 wrap to the first two entries.
-    assert goals[8]["house"] == HOUSE_PALETTE[0]["house"]
-    assert goals[9]["house"] == HOUSE_PALETTE[1]["house"]
+    assert goals[8]["lane"] == LANE_PALETTE[0]["lane"]
+    assert goals[9]["lane"] == LANE_PALETTE[1]["lane"]
     # IDs are still unique even though short_name slug collisions would otherwise happen.
     assert len({g["id"] for g in goals}) == 10
 
 
-def test_assign_houses_and_ids_handles_empty_goals_list():
-    finalized = assign_houses_and_ids({"goals": [], "behaviors": {}, "extraction_notes": "none"})
+def test_assign_lanes_and_ids_handles_empty_goals_list():
+    finalized = assign_lanes_and_ids({"goals": [], "behaviors": {}, "extraction_notes": "none"})
     assert finalized["goals"] == []
     assert finalized["_meta"]["source"].startswith("Imported from Connect PDF on ")
     assert finalized["_meta"]["extraction_notes"] == "none"
@@ -179,4 +179,4 @@ def test_import_pdf_to_goals_end_to_end_with_stub(monkeypatch):
 
     assert out["_meta"]["source"] == "unit-test"
     assert len(out["goals"]) == 5
-    assert out["goals"][4]["house"] == "internal"
+    assert out["goals"][4]["lane"] == "slate"

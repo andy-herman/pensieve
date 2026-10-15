@@ -18,7 +18,24 @@ from pensieve.enrichment import (
 )
 from pensieve.sources.base import RawTask, TaskSource
 from pensieve.sources.sample_file import SampleFileSource
+from pensieve.sources.sink import extract_pensieve_column
 from pensieve.store import ChromaMemoryStore, Memory
+
+_VALID_COLUMNS = frozenset({"memory", "dive", "review", "closed"})
+
+
+def _column_from_task(task: RawTask, prefix: str) -> Optional[str]:
+    """Return the kanban column encoded on the source task, or None.
+
+    Reads the Pensieve column tag the writer placed on the upstream task
+    so a second PC syncing for the first time picks up the mirrored view.
+    Unknown column values are ignored so a corrupted tag does not stamp
+    junk into the kanban.
+    """
+    col = extract_pensieve_column(task.categories or [], prefix=prefix)
+    if col and col in _VALID_COLUMNS:
+        return col
+    return None
 
 
 @dataclass
@@ -43,13 +60,21 @@ def _audit_write(entry: dict) -> None:
 
 def _build_memory(task: RawTask, result) -> Memory:
     # New tasks that arrive already-completed land directly in the Closed column.
-    initial_column = "closed" if task.completed else "memory"
+    settings = get_settings()
+    mirrored = _column_from_task(task, settings.mirror_tag_prefix)
+    if mirrored is not None:
+        initial_column = mirrored
+    elif task.completed:
+        initial_column = "closed"
+    else:
+        initial_column = "memory"
     return Memory(
         id=task.id,
         source=task.source,
         source_task_id=task.id,
         list_name=task.list_name,
         title=task.title,
+        display_title=(result.display_title or None),
         original_notes=task.notes,
         suggested_strand=result.suggested_strand,
         strand_kind=result.strand_kind,
@@ -88,6 +113,8 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     so the kanban reflects the source's completion state.
     """
     existing.title = task.title
+    if result.display_title:
+        existing.display_title = result.display_title
     existing.original_notes = task.notes
     if task.list_name:
         existing.list_name = task.list_name
@@ -108,9 +135,26 @@ def overlay_regeneration(existing: Memory, task: RawTask, result) -> Memory:
     existing.connect_alignment_confidence = result.connect_alignment_confidence
     existing.connect_alignment_note = result.connect_alignment_note
     # PRESERVED on purpose: existing.column, existing.notes_for_user
-    # ...except: auto-promote to "closed" when the source completes the task.
-    # Closed is the only terminal column now; if the user has it in Review, the
-    # source-complete signal trumps that (Review = needs attention, Closed = done).
+    # Mirror tag override (Phase 2 TaskSink writeback). When the source carries
+    # a `pensieve/col:<col>` tag whose value differs from the local column AND
+    # the source was modified after we last enriched this memory, the other PC
+    # is the newer writer; honor its view. This is the "source-wins-on-newer"
+    # conflict policy Andy confirmed on 2026-06-02. Runs BEFORE the completion
+    # promotion below so a hard "task completed at source" signal still wins.
+    settings = get_settings()
+    mirrored = _column_from_task(task, settings.mirror_tag_prefix)
+    if (
+        mirrored is not None
+        and mirrored != existing.column
+        and task.last_modification_time is not None
+        and existing.enriched_at is not None
+        and task.last_modification_time > existing.enriched_at
+    ):
+        existing.column = mirrored
+    # Completion is terminal: if the source completed the task, force closed
+    # regardless of where the user (local or remote) wanted the card to live.
+    # Closed is the only terminal column now; Review = needs attention, Closed
+    # = done. The user can manually drag back if they really want.
     if task.completed and existing.column != "closed":
         existing.column = "closed"
     existing.tokens_used = (existing.tokens_used or 0) + (result.tokens_used or 0)
@@ -175,8 +219,7 @@ def run_sync(
         store.delete_memory(mid)
         stats.deleted += 1
         console.print(
-            f"  [magenta]DELETE[/magenta] {title} "
-            f"[dim](from list '{list_name}', source removed it)[/dim]"
+            f"  [magenta]DELETE[/magenta] {title} [dim](from list '{list_name}', source removed it)[/dim]"
         )
         _audit_write(
             {
@@ -228,17 +271,26 @@ def run_sync(
         stats.skipped_unchanged += 1
 
     # Apply column-only updates immediately (no LLM, no concurrency needed).
+    # Use update_meta (atomic single-call metadata write) instead of
+    # upsert_memory — this is a metadata-only change, no embedding rebuild,
+    # and critically does NOT touch last_tended_at (Garden v1: auto-sync
+    # must never bump the user's tending timestamp).
     for t in column_only_updates:
-        mem = store.get_memory(t.id)
-        if mem is None:
+        ok = store.update_meta(
+            t.id,
+            {
+                "column": "closed",
+                "completed": True,
+                "completed_at": (t.completed_at or datetime.now(timezone.utc)),
+            },
+        )
+        if not ok:
             continue
-        mem.completed = True
-        mem.completed_at = t.completed_at or mem.completed_at
-        mem.column = "closed"
-        store.upsert_memory(mem)
+        mem = store.get_memory(t.id)  # re-read for display only
+        title = mem.title if mem else t.title
         stats.updated_enriched += 1
         console.print(
-            f"  [green]CLOSE [/green] (auto-close) {mem.title} "
+            f"  [green]CLOSE [/green] (auto-close) {title} "
             f"[dim](source marked complete; no re-enrich needed)[/dim]"
         )
         _audit_write(
@@ -304,7 +356,7 @@ def run_sync(
                 _audit_write({"mode": "sync", "task_id": task.id, "error": err, "source": source.name})
                 continue
 
-            store.upsert_memory(mem)
+            store.upsert_memory_preserving_user_fields(mem)
             stats.tokens_used += mem.tokens_used
             if reason == "new":
                 stats.new_enriched += 1
