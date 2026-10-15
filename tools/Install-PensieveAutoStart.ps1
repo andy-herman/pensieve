@@ -94,7 +94,7 @@ Write-Host "     Runs: $launcher (minimized)"
 Write-Host ""
 Write-Host "Starting it now so you don't have to log out and back in..."
 # Invoke the shortcut the same way Explorer does at logon, rather than
-# calling Start-Process directly — the latter has subtle console-inheritance
+# calling Start-Process directly - the latter has subtle console-inheritance
 # issues that can prevent uvicorn from initializing under a minimized
 # window when launched from another PowerShell session.
 Invoke-Item $shortcutPath

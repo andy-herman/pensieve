@@ -2,6 +2,11 @@
 
 Windows helpers for running the local Pensieve backend on your laptop.
 
+> Most people want the desktop app instead: `desktop\Pensieve.exe` starts the
+> backend hidden, opens Pensieve in its own window, and stops the backend when
+> you close it (see [desktop/README.md](../desktop/README.md)). Use these
+> helpers when you want the backend always running in the background.
+
 > Looking for the legacy Phase 0 PowerShell prototype? That's in `scripts/`
 > and is kept for historical reference only. Use the helpers here for
 > day-to-day operation.
@@ -11,7 +16,7 @@ Windows helpers for running the local Pensieve backend on your laptop.
 | Script | Purpose |
 | --- | --- |
 | `Start-Pensieve-Server.ps1` | Starts the FastAPI backend in the foreground using the repo's `.venv`. Reads `PENSIEVE_BACKEND_PORT` from `.env` (defaults to 8765). Skips startup if the port is already responding. |
-| `Install-PensieveAutoStart.ps1` | Drops a shortcut into your Windows Startup folder so `Start-Pensieve-Server.ps1` runs minimized at every logon. No admin needed. Idempotent — re-run anytime. |
+| `Install-PensieveAutoStart.ps1` | Drops a shortcut into your Windows Startup folder so `Start-Pensieve-Server.ps1` runs minimized at every logon. No admin needed. Idempotent - re-run anytime. |
 | `Uninstall-PensieveAutoStart.ps1` | Removes the Startup shortcut. Optional `-StopRunning` flag also kills the currently-running backend. |
 
 ## Recommended one-time setup
@@ -21,7 +26,7 @@ cd "<repo>\tools"
 .\Install-PensieveAutoStart.ps1
 ```
 
-After this, the backend is up every time you log in — no more
+After this, the backend is up every time you log in - no more
 "Pull from To-Do: failed to fetch" caused by a dead server. The console
 window stays minimized in your taskbar (look for "Windows PowerShell"),
 so you can click it any time to see live uvicorn logs.

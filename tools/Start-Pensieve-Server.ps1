@@ -52,7 +52,7 @@ if ($Port -eq 0) {
     if ($Port -eq 0) { $Port = 8765 }
 }
 
-# Raw TCP socket check — no Invoke-WebRequest (which can hang on proxy
+# Raw TCP socket check - no Invoke-WebRequest (which can hang on proxy
 # resolution under non-interactive contexts).
 $alreadyUp = $false
 try {
