@@ -83,6 +83,11 @@ class OutlookCOMSink(TaskSink):
         try:
             self._app = win32com.client.Dispatch("Outlook.Application")
             self._ns = self._app.GetNamespace("MAPI")
+            # Same headless-logon guard as OutlookCOMSource._connect.
+            try:
+                self._ns.Logon("", "", False, False)
+            except Exception:
+                pass
         except Exception as e:
             raise OutlookCOMUnavailable(
                 f"Could not connect to Outlook via COM. Is Outlook desktop running? ({e})"

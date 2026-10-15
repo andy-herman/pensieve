@@ -91,6 +91,15 @@ class OutlookCOMSource(TaskSource):
         try:
             self._app = win32com.client.Dispatch("Outlook.Application")
             self._ns = self._app.GetNamespace("MAPI")
+            # When COM starts classic Outlook headless (e.g. the user runs the
+            # new Outlook day to day), the MAPI session is not logged on yet
+            # and every folder call fails with "Operation aborted". Logging on
+            # to the default profile is a session operation, not a mutation,
+            # and is a no-op when Outlook is already open.
+            try:
+                self._ns.Logon("", "", False, False)
+            except Exception:
+                pass
         except Exception as e:
             raise OutlookCOMUnavailable(
                 f"Could not connect to Outlook via COM. Is Outlook desktop running? ({e})"
