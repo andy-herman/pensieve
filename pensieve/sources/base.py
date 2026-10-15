@@ -33,6 +33,10 @@ class TaskSource(ABC):
     """
 
     name: str = "unknown"
+    # Tasks the last list_tasks() run could not read. A task that failed to
+    # read is missing from the pull without having been deleted, so the sync
+    # skips its deletion sweep whenever this is non-zero.
+    read_errors: int = 0
 
     @abstractmethod
     def list_tasks(self) -> Iterable[RawTask]:

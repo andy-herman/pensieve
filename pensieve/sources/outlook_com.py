@@ -195,6 +195,7 @@ class OutlookCOMSource(TaskSource):
                 source=self.name,
             )
         except Exception:
+            self.read_errors += 1
             return None
 
     def list_tasks(self) -> Iterator[RawTask]:
@@ -202,6 +203,7 @@ class OutlookCOMSource(TaskSource):
         # below so covered_lists() can report exactly what we scanned (even
         # for folders that turned out to be empty).
         covered: set[str] = set()
+        self.read_errors = 0
         for folder_name, folder in self._selected_folders():
             covered.add(folder_name)
             for item in self._iter_items(folder):

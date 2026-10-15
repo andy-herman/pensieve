@@ -210,7 +210,14 @@ def run_sync(
     # would erase memories from lists we didn't even read.
     live_ids = {t.id for t in tasks}
     covered = source.covered_lists()
-    orphans = store.find_orphan_ids(source.name, live_ids, covered_lists=covered)
+    if source.read_errors:
+        # Some tasks failed to read, so they look deleted without being so.
+        console.print(
+            f"[yellow]{source.read_errors} task(s) could not be read; skipping the deletion sweep this run.[/yellow]"
+        )
+        orphans = []
+    else:
+        orphans = store.find_orphan_ids(source.name, live_ids, covered_lists=covered)
     for mid, title, list_name in orphans:
         if dry_run:
             console.print(

@@ -217,6 +217,11 @@ class ChromaMemoryStore:
         further narrowed to those lists — so syncing only "Agentic AI work"
         cannot orphan tasks in "CISO GRC" lists we didn't pull from.
 
+        Closed memories are never orphaned: they are the record of finished
+        work, and sources stop listing completed tasks after a while (Outlook
+        and To Do both skip ones completed more than 30 days ago, and people
+        clear completed tasks), so a closed task's absence is not a deletion.
+
         Returns a list of ``(memory_id, title, list_name)`` tuples for
         deletion + audit logging by the caller.
         """
@@ -235,7 +240,7 @@ class ChromaMemoryStore:
             list_name = meta.get("list_name", "") or ""
             if covered_lists is not None and list_name not in covered_lists:
                 continue
-            if mid in live_ids:
+            if mid in live_ids or meta.get("column") == "closed":
                 continue
             out.append((mid, meta.get("title", "") or "", list_name))
         return out
