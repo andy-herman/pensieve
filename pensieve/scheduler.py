@@ -251,7 +251,9 @@ class AutoSyncScheduler:
         override = (self._settings.auto_sync_source or "").strip()
         if override:
             return override
-        return (self._settings.default_source or "outlook_com").strip()
+        from pensieve.connections import effective_source
+
+        return effective_source(self._settings)
 
     def _loop(self) -> None:
         interval = self._settings.auto_sync_interval_seconds

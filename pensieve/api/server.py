@@ -51,6 +51,12 @@ def _parse_due_date(raw: str) -> datetime:
     return parsed.replace(tzinfo=timezone.utc)
 
 
+def _effective_source(settings: Any) -> str:
+    from pensieve.connections import effective_source
+
+    return effective_source(settings)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     scheduler_holder: dict[str, AutoSyncScheduler] = {}
@@ -316,6 +322,80 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"mirrored": False, "reason": f"sink-error: {e}"}
 
+    # ----- Accounts (first-run "Connect your accounts", see pensieve.connections) -----
+
+    @app.get("/api/connect")
+    def connect_status() -> dict[str, Any]:
+        from pensieve import connections
+
+        return connections.status(settings)
+
+    @app.post("/api/connect/{provider}/start")
+    def connect_start(provider: str) -> dict[str, Any]:
+        """Begin a device-code sign-in; the dashboard polls GET /api/connect."""
+        from pensieve import connections
+
+        starters = {"microsoft": connections.start_microsoft, "github": connections.start_github}
+        if provider not in starters:
+            raise HTTPException(status_code=404, detail=f"Unknown account type: {provider}")
+        try:
+            return starters[provider](settings)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+    @app.post("/api/connect/{provider}/cancel")
+    def connect_cancel(provider: str) -> dict[str, Any]:
+        from pensieve import connections
+
+        connections.cancel_flow(provider)
+        return connections.status(settings)
+
+    @app.post("/api/connect/{provider}/disconnect")
+    def connect_disconnect(provider: str) -> dict[str, Any]:
+        from pensieve import connections
+
+        stoppers = {"microsoft": connections.disconnect_microsoft, "github": connections.disconnect_github}
+        if provider not in stoppers:
+            raise HTTPException(status_code=404, detail=f"Unknown account type: {provider}")
+        try:
+            stoppers[provider](settings)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return connections.status(settings)
+
+    @app.put("/api/connect/source")
+    def connect_source(body: dict[str, Any]) -> dict[str, Any]:
+        """Choose which task source sync reads (personal_graph or outlook_com)."""
+        from pensieve import connections
+
+        source = str(body.get("source") or "").strip()
+        if source not in connections.SOURCES:
+            raise HTTPException(status_code=400, detail=f"Unknown source: {source}")
+        connections.save_config(settings, source=source)
+        return connections.status(settings)
+
+    @app.post("/api/connect/open")
+    def connect_open(body: dict[str, Any]) -> dict[str, Any]:
+        """Open a sign-in page in the default browser (allowlisted hosts only)."""
+        import webbrowser
+        from urllib.parse import urlparse
+
+        url = str(body.get("url") or "")
+        parsed = urlparse(url)
+        allowed = {"microsoft.com", "www.microsoft.com", "login.microsoft.com", "github.com"}
+        if parsed.scheme != "https" or parsed.hostname not in allowed:
+            raise HTTPException(status_code=400, detail="Only Microsoft and GitHub sign-in pages can be opened.")
+        webbrowser.open(url)
+        return {"opened": True}
+
+    @app.post("/api/connect/finish")
+    def connect_finish() -> dict[str, Any]:
+        """Mark first-run setup as seen so the Accounts screen stops opening on load."""
+        from pensieve import connections
+
+        connections.save_config(settings, setup_dismissed=True)
+        return connections.status(settings)
+
     # ----- AI models (in-app model choice, see pensieve.ai_prefs) -----
 
     def _ai_client() -> Any:
@@ -383,7 +463,7 @@ def create_app() -> FastAPI:
             "ok": True,
             "memories": store.count(),
             "chroma_dir": str(settings.chroma_dir),
-            "default_source": settings.default_source,
+            "default_source": _effective_source(settings),
         }
 
     @app.get("/api/memories")
@@ -870,7 +950,9 @@ def create_app() -> FastAPI:
         body = body or {}
         tracker = get_tracker()
 
-        src_name = (body.get("source") or settings.default_source or "outlook_com").strip()
+        from pensieve.connections import effective_source
+
+        src_name = (body.get("source") or effective_source(settings)).strip()
         lists_raw = body.get("lists") or []
         if isinstance(lists_raw, str):
             lists_raw = [lists_raw]

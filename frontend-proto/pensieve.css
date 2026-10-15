@@ -1555,6 +1555,70 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
 
 .goals-modal-card { max-width: 880px; }
 
+/* ---- Accounts (first-run "Connect your accounts") ---- */
+.accounts-modal-card { max-width: 680px; }
+.accounts-emblem { display: block; width: 64px; height: auto; margin: 0 auto var(--sp-2); filter: drop-shadow(0 3px 6px var(--shadow-soft)); }
+html[data-theme="night"] .accounts-emblem { filter: drop-shadow(0 0 10px rgba(170, 200, 255, 0.35)); }
+.accounts-title, .accounts-subtitle { text-align: center; }
+.account-card {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--parchment-1) 45%, transparent);
+}
+.account-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.account-title { margin: 0; font-family: var(--font-display); font-size: 16px; letter-spacing: 0.5px; color: var(--ink); }
+.account-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--parchment-dark);
+  font-family: var(--font-script);
+  font-size: 12px;
+  color: var(--ink-faded);
+}
+.account-badge[data-state="on"] { border-color: var(--moss); color: var(--moss); }
+.account-desc { margin: var(--sp-1) 0 var(--sp-3); font-size: 14px; color: var(--ink-soft); }
+.account-body .primary-button, .account-body .ghost-button { margin-right: var(--sp-2); }
+.account-ok, .account-error, .account-wait, .account-hint { margin: 0 0 var(--sp-2); font-size: 14px; }
+.account-ok { color: var(--ink); }
+.account-error { color: var(--ember-ink, var(--ember)); }
+.account-wait { font-family: var(--font-script); font-style: italic; color: var(--ink-faded); }
+.account-hint { font-size: 12px; color: var(--ink-faded); }
+.device-code-step { margin: 0 0 var(--sp-2); font-size: 13px; color: var(--ink-soft); }
+.device-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.device-code-value {
+  padding: 6px 14px;
+  border: 1px dashed var(--candle-ink);
+  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+  font-family: var(--font-mono, monospace);
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: var(--ink);
+  user-select: all;
+}
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-button:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 2px; }
+.account-source {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+}
+.account-source legend { padding: 0 var(--sp-2); font-family: var(--font-display); font-size: 13px; letter-spacing: 0.5px; color: var(--ink); }
+.account-source label { display: block; margin: var(--sp-1) 0; font-size: 14px; color: var(--ink); cursor: pointer; }
+.account-source input { accent-color: var(--candle-ink); margin-right: 6px; }
+.accounts-actions { justify-content: space-between; }
+
 /* ---- AI models panel ---- */
 .ai-modal-card { max-width: 720px; }
 .ai-account {

@@ -123,7 +123,9 @@ def sync(
 ) -> None:
     """Pull tasks from source, enrich, upsert to Chroma."""
     settings = get_settings()
-    src_name = source or settings.default_source
+    from pensieve.connections import effective_source
+
+    src_name = source or effective_source(settings)
     src = _build_source(src_name, list_names=list_name)
     list_label = ",".join(list_name) if list_name else "(all)"
     console.print(

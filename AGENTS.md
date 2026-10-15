@@ -72,6 +72,12 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
   single-writer constraint. The scheduler silently skips ticks whose
   resolved source is `sample_file` (set `PENSIEVE_AUTO_SYNC_SOURCE=outlook_com`
   to make it pull from Outlook when your default source is sample_file).
+- **Shared installs (this branch) may read personal Microsoft To Do via Graph.**
+  People connect their own personal Microsoft account and GitHub Copilot in the
+  dashboard's Accounts screen (`pensieve/connections.py`, device-code sign-ins,
+  DPAPI-encrypted token cache, read-only `Tasks.Read`). The app registration
+  lives in a personal Entra directory, never Microsoft's corporate tenant; see
+  `desktop/SHARING.md`.
 - **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+)
   requires admin consent for new corp Entra apps accessing `Tasks.*` /
   `Mail.*` / `Calendars.*` scopes; FTE self-service is locked down. See

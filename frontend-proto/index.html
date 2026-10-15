@@ -122,6 +122,7 @@
               <button id="refresh-btn" class="ghost-button cmd-menu-item" role="menuitem" title="Reload board from local Pensieve store">&#x21bb; Refresh</button>
               <button id="open-goals" class="ghost-button cmd-menu-item" role="menuitem" title="Add or edit your Connect Houses">Set goals</button>
               <button id="open-ai-models" class="ghost-button cmd-menu-item" role="menuitem" title="Choose which GitHub Copilot models Pensieve uses">AI models</button>
+              <button id="open-accounts" class="ghost-button cmd-menu-item" role="menuitem" title="Connect Microsoft To Do and GitHub Copilot">Accounts</button>
               <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
             </div>
           </div>
@@ -279,6 +280,47 @@
           <button id="goals-save" class="primary-button">Save goals</button>
         </div>
         <p class="goals-footnote">Saved to <code>data/connect-goals.json</code>. Used by the AI to align tasks to your goals on the next sync.</p>
+      </div>
+    </article>
+  </div>
+
+  <div id="accounts-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="accounts"></div>
+    <article class="modal-card accounts-modal-card" role="dialog" aria-modal="true" aria-labelledby="accounts-title">
+      <button class="modal-close" data-close="accounts" aria-label="Close">x</button>
+      <div class="modal-body">
+        <img class="accounts-emblem" src="assets/emblem.webp" alt="" width="64" height="76" decoding="async" />
+        <h2 id="accounts-title" class="goals-title accounts-title">Connect your accounts</h2>
+        <p class="goals-subtitle accounts-subtitle">Pensieve runs on this PC. Your tasks and sign-ins stay here; nothing is sent anywhere except your own Microsoft and GitHub accounts.</p>
+
+        <section class="account-card" id="account-microsoft" aria-labelledby="acct-ms-title">
+          <div class="account-head">
+            <h3 id="acct-ms-title" class="account-title">Microsoft To Do</h3>
+            <span class="account-badge" id="acct-ms-badge"></span>
+          </div>
+          <p class="account-desc">Reads your To Do lists, the same tasks you see in the new Outlook. Read-only: Pensieve never changes them.</p>
+          <div class="account-body" id="acct-ms-body"></div>
+        </section>
+
+        <section class="account-card" id="account-github" aria-labelledby="acct-gh-title">
+          <div class="account-head">
+            <h3 id="acct-gh-title" class="account-title">GitHub Copilot</h3>
+            <span class="account-badge" id="acct-gh-badge"></span>
+          </div>
+          <p class="account-desc">Powers the AI that summarizes and sorts your tasks, using your own Copilot plan.</p>
+          <div class="account-body" id="acct-gh-body"></div>
+        </section>
+
+        <fieldset class="account-source" id="account-source">
+          <legend>Read tasks from</legend>
+          <label><input type="radio" name="task-source" value="personal_graph" /> Microsoft To Do <span class="account-hint">(new Outlook, outlook.com)</span></label>
+          <label><input type="radio" name="task-source" value="outlook_com" /> Outlook desktop on this PC <span class="account-hint">(classic Outlook)</span></label>
+        </fieldset>
+
+        <div class="goals-actions accounts-actions">
+          <button id="accounts-skip" class="ghost-button">Skip for now</button>
+          <button id="accounts-done" class="primary-button" disabled>Start using Pensieve</button>
+        </div>
       </div>
     </article>
   </div>

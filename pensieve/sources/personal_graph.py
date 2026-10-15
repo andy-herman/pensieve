@@ -5,11 +5,10 @@ To-Do via Graph WITHOUT admin consent — unlike corp accounts, which sit
 behind Secure Future Initiative blockers. This source is the recommended
 path for personal-device installs.
 
-Auth: MSAL device-code flow. On first run a browser opens (or a code is
-printed) for the user to grant `Tasks.Read`. A refresh token is cached
-locally under ``data/personal-graph-token-cache.bin`` and reused on
-subsequent runs — no re-prompt unless cache is deleted or the refresh
-token expires.
+Auth: the user connects their Microsoft account once in the dashboard's
+Accounts screen (MSAL device-code flow, see pensieve.connections). The
+refresh token is cached encrypted with Windows DPAPI and reused silently on
+every sync; if it expires, sync reports that the account needs reconnecting.
 
 The class never calls POST/PATCH/DELETE. Read-only contract is enforced
 by the source surface (mirrors OutlookCOMSource).
@@ -92,61 +91,19 @@ class PersonalGraphSource(TaskSource):
     def _acquire_token(self) -> str:
         if self._token:
             return self._token
+        # Sign-in happens in the app's Accounts screen (pensieve.connections),
+        # which keeps an encrypted MSAL cache. Sync only ever refreshes silently:
+        # a background sync must never block on an interactive prompt.
+        from pensieve.connections import NotConnected, graph_token
+
         try:
-            import msal  # type: ignore[import-not-found]
+            self._token = graph_token(self.settings)
+        except NotConnected as e:
+            raise PersonalGraphUnavailable(str(e)) from e
         except ImportError as e:
             raise PersonalGraphUnavailable(
-                "msal is not installed. Run: pip install msal "
-                "(or pip install -e .[personal] for the full personal-device extras)."
+                "msal and msal-extensions are required. Run: pip install msal msal-extensions"
             ) from e
-
-        client_id = self.settings.personal_graph_client_id
-        if not client_id:
-            raise PersonalGraphUnavailable(
-                "PERSONAL_GRAPH_CLIENT_ID is not set. Register an app at "
-                "https://entra.microsoft.com (Account type: personal MS accounts) "
-                "and put the application (client) id in .env. See "
-                "docs/SETUP-personal-device.md."
-            )
-
-        cache_path = self.settings.personal_graph_token_cache_path
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache = msal.SerializableTokenCache()
-        if cache_path.exists():
-            try:
-                cache.deserialize(cache_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-
-        app = msal.PublicClientApplication(
-            client_id,
-            authority=self.settings.personal_graph_authority,
-            token_cache=cache,
-        )
-
-        scopes = self.settings.personal_graph_scope_list()
-        result = None
-        accounts = app.get_accounts()
-        if accounts:
-            result = app.acquire_token_silent(scopes, account=accounts[0])
-        if not result:
-            flow = app.initiate_device_flow(scopes=scopes)
-            if "user_code" not in flow:
-                raise PersonalGraphUnavailable(
-                    f"Failed to start device flow: {flow.get('error_description', flow)}"
-                )
-            print(flow["message"])  # noqa: T201 (intentional CLI prompt)
-            result = app.acquire_token_by_device_flow(flow)
-
-        if "access_token" not in result:
-            raise PersonalGraphUnavailable(
-                f"Token acquisition failed: {result.get('error_description', result)}"
-            )
-
-        if cache.has_state_changed:
-            cache_path.write_text(cache.serialize(), encoding="utf-8")
-
-        self._token = result["access_token"]
         return self._token
 
     # ----- helpers -----

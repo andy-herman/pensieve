@@ -983,7 +983,7 @@ function _isModalOpen(id) {
 }
 
 function anyModalOpen() {
-  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal"].some(_isModalOpen);
+  return ["card-modal", "goals-modal", "vial-modal", "achievements-modal", "ai-modal", "accounts-modal"].some(_isModalOpen);
 }
 
 async function refreshMemoriesIfSafe() {
@@ -1863,6 +1863,175 @@ async function saveVial(kind) {
   }
 }
 
+// ----- 7a. Accounts ("Connect your accounts") -----
+// First-run screen and More > Accounts. Each person connects their own
+// Microsoft To Do and GitHub Copilot on their own PC (see pensieve/connections.py).
+// Sign-ins use device codes: Pensieve shows a code, the person approves it in
+// their browser, and the screen polls GET /api/connect until it lands.
+const ACCOUNTS = { status: null, timer: null };
+
+async function maybeOpenAccountsOnFirstRun() {
+  try {
+    const st = await fetchJson("/api/connect");
+    if (!st.setup_complete && !st.dismissed) openAccounts(st);
+  } catch (_) { /* older backend or offline: nothing to set up here */ }
+}
+
+async function openAccounts(prefetched) {
+  $("#accounts-modal").hidden = false;
+  if (prefetched) renderAccounts(prefetched);
+  else {
+    $("#acct-ms-body").innerHTML = $("#acct-gh-body").innerHTML = `<p class="account-wait">Checking...</p>`;
+    await refreshAccounts();
+  }
+}
+
+function closeAccounts() {
+  $("#accounts-modal").hidden = true;
+  stopAccountsPolling();
+}
+
+async function refreshAccounts() {
+  try {
+    renderAccounts(await fetchJson("/api/connect"));
+  } catch (e) {
+    $("#acct-ms-body").innerHTML = `<p class="account-error">Could not reach Pensieve (${escapeHtml(e.message)}).</p>`;
+  }
+}
+
+function stopAccountsPolling() {
+  if (ACCOUNTS.timer) clearTimeout(ACCOUNTS.timer);
+  ACCOUNTS.timer = null;
+}
+
+function accountsPending(st) {
+  // Keep polling while a sign-in is waiting for approval, or while the backend
+  // is still confirming the Copilot sign-in in the background.
+  return ["microsoft", "github"].some(k => st[k] && st[k].flow && st[k].flow.state === "pending")
+    || !!(st.github && st.github.verifying);
+}
+
+function deviceCodeBlock(provider, flow) {
+  return `
+    <div class="device-code">
+      <p class="device-code-step">1. Open the sign-in page. 2. Enter this code. 3. Approve Pensieve.</p>
+      <div class="device-code-row">
+        <code class="device-code-value" aria-label="Sign-in code">${escapeHtml(flow.user_code || "")}</code>
+        <button type="button" class="ghost-button" data-acct-copy="${escapeHtml(flow.user_code || "")}">Copy code</button>
+        <button type="button" class="primary-button" data-acct-open="${escapeHtml(flow.verification_uri || "")}">Open sign-in page</button>
+      </div>
+      <p class="account-wait">Waiting for you to approve in the browser... <button type="button" class="link-button" data-acct-cancel="${provider}">Cancel</button></p>
+    </div>`;
+}
+
+function renderAccounts(st) {
+  ACCOUNTS.status = st;
+  const ms = st.microsoft || {};
+  const gh = st.github || {};
+
+  // Microsoft To Do
+  const msBadge = $("#acct-ms-badge");
+  msBadge.textContent = ms.connected ? "Connected" : (ms.configured === false ? "Not set up" : "Not connected");
+  msBadge.dataset.state = ms.connected ? "on" : "off";
+  let msHtml;
+  if (ms.configured === false) {
+    msHtml = `<p class="account-error">This copy of Pensieve has no Microsoft app id yet. Whoever shared it needs to add PERSONAL_GRAPH_CLIENT_ID (see desktop/SHARING.md).</p>`;
+  } else if (ms.flow && ms.flow.state === "pending") {
+    msHtml = deviceCodeBlock("microsoft", ms.flow);
+  } else if (ms.connected) {
+    msHtml = `<p class="account-ok">Signed in as <strong>${escapeHtml(ms.account || "your Microsoft account")}</strong>.</p>
+      <button type="button" class="ghost-button" data-acct-disconnect="microsoft">Disconnect</button>`;
+  } else {
+    msHtml = `${ms.flow && ms.flow.error ? `<p class="account-error">${escapeHtml(ms.flow.error)}</p>` : ""}
+      <button type="button" class="primary-button" data-acct-connect="microsoft">Sign in with Microsoft</button>`;
+  }
+  $("#acct-ms-body").innerHTML = msHtml;
+
+  // GitHub Copilot
+  const ghBadge = $("#acct-gh-badge");
+  ghBadge.textContent = gh.verifying ? "Checking..." : (gh.connected ? "Connected" : "Not connected");
+  ghBadge.dataset.state = gh.connected ? "on" : "off";
+  let ghHtml;
+  if (gh.flow && gh.flow.state === "pending") {
+    ghHtml = deviceCodeBlock("github", gh.flow);
+  } else if (gh.connected) {
+    ghHtml = `<p class="account-ok">Using Copilot as <strong>${escapeHtml(gh.account || "your GitHub account")}</strong>${gh.note ? ` <span class="account-hint">(${escapeHtml(gh.note)})</span>` : ""}.</p>
+      ${gh.managed ? "" : `<button type="button" class="ghost-button" data-acct-disconnect="github">Disconnect</button>`}`;
+  } else {
+    ghHtml = `${gh.flow && gh.flow.error ? `<p class="account-error">${escapeHtml(gh.flow.error)}</p>` : ""}
+      <button type="button" class="primary-button" data-acct-connect="github">Sign in with GitHub</button>
+      <p class="account-hint">Needs a GitHub Copilot plan (Free, Pro, or Business).</p>`;
+  }
+  $("#acct-gh-body").innerHTML = ghHtml;
+
+  // Task source
+  $$('input[name="task-source"]').forEach(r => { r.checked = r.value === st.source; });
+
+  $("#accounts-done").disabled = !st.setup_complete;
+
+  stopAccountsPolling();
+  if (accountsPending(st) && !$("#accounts-modal").hidden) {
+    ACCOUNTS.timer = setTimeout(refreshAccounts, 2000);
+  }
+}
+
+async function accountsPost(path, body = {}, method = "POST") {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `${res.status}`);
+  return data;
+}
+
+async function onAccountsClick(e) {
+  const t = e.target;
+  if (t.dataset.close === "accounts") { closeAccounts(); return; }
+  const connect = t.closest("[data-acct-connect]");
+  const disconnect = t.closest("[data-acct-disconnect]");
+  const cancel = t.closest("[data-acct-cancel]");
+  const open = t.closest("[data-acct-open]");
+  const copy = t.closest("[data-acct-copy]");
+  try {
+    if (connect) {
+      const provider = connect.dataset.acctConnect;
+      connect.disabled = true;
+      connect.textContent = provider === "github" ? "Asking GitHub for a code..." : "Asking Microsoft for a code...";
+      await accountsPost(`/api/connect/${provider}/start`);
+      if (provider === "microsoft" && ACCOUNTS.status && ACCOUNTS.status.source !== "personal_graph") {
+        await accountsPost("/api/connect/source", { source: "personal_graph" }, "PUT");
+      }
+      await refreshAccounts();
+    } else if (disconnect) {
+      renderAccounts(await accountsPost(`/api/connect/${disconnect.dataset.acctDisconnect}/disconnect`));
+    } else if (cancel) {
+      renderAccounts(await accountsPost(`/api/connect/${cancel.dataset.acctCancel}/cancel`));
+    } else if (open) {
+      await accountsPost("/api/connect/open", { url: open.dataset.acctOpen });
+    } else if (copy) {
+      await navigator.clipboard.writeText(copy.dataset.acctCopy);
+      toast("Code copied");
+    }
+  } catch (err) {
+    toast(`Accounts: ${err.message}`);
+    refreshAccounts();
+  }
+}
+
+async function finishAccounts(dismissOnly) {
+  try {
+    await accountsPost("/api/connect/finish");
+  } catch (_) { /* closing is still fine */ }
+  closeAccounts();
+  if (!dismissOnly) {
+    toast("All set. Pulling your tasks now...");
+    fetch(`${API_BASE}/api/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .catch(() => {});
+  }
+}
+
 // ----- 7b. AI models panel -----
 // Picks the GitHub Copilot model for each job (GET/PUT /api/ai). Choices
 // apply on the backend's next AI call; blank selects inherit the default.
@@ -2395,6 +2564,7 @@ function init() {
     renderBoard();
     try { performance.mark("pensieve:board-live"); } catch (_) { /* ignore */ }
     setFooterSource();
+    if (ok) maybeOpenAccountsOnFirstRun();
     if (!ok) {
       toast(`API offline, using seed data. Start with: pensieve serve`);
     }
@@ -2568,6 +2738,20 @@ function init() {
     });
   }
 
+  // Accounts
+  $("#open-accounts").addEventListener("click", () => openAccounts());
+  $("#accounts-modal").addEventListener("click", onAccountsClick);
+  $("#accounts-modal").addEventListener("change", async e => {
+    if (e.target.name !== "task-source") return;
+    try {
+      renderAccounts(await accountsPost("/api/connect/source", { source: e.target.value }, "PUT"));
+    } catch (err) {
+      toast(`Accounts: ${err.message}`);
+    }
+  });
+  $("#accounts-done").addEventListener("click", () => finishAccounts(false));
+  $("#accounts-skip").addEventListener("click", () => finishAccounts(true));
+
   // AI models panel
   $("#open-ai-models").addEventListener("click", openAiModels);
   $("#ai-save").addEventListener("click", saveAiModels);
@@ -2684,6 +2868,7 @@ function init() {
       closeVialModal();
       closeAchievementsModal();
       closeAiModal();
+      closeAccounts();
     }
   });
 }

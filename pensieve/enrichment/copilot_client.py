@@ -62,7 +62,26 @@ def _default_cli_path() -> Optional[str]:
     return None
 
 
+_TOKEN_TTL_S = 1800.0
+_token_cache: dict[str, tuple[str, float]] = {}
+
+
 def _token_for_user(login: str) -> str:
+    cached = _token_cache.get(login)
+    if cached and cached[1] > _now():
+        return cached[0]
+    token = _fetch_token_for_user(login)
+    _token_cache[login] = (token, _now() + _TOKEN_TTL_S)
+    return token
+
+
+def _now() -> float:
+    import time
+
+    return time.monotonic()
+
+
+def _fetch_token_for_user(login: str) -> str:
     try:
         out = subprocess.run(
             ["gh", "auth", "token", "--user", login],
@@ -152,6 +171,23 @@ class _CopilotRuntime:
     def run(self, coro: Any, timeout: float) -> Any:
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout)
 
+    def shutdown(self, timeout: float = 15.0) -> None:
+        """Stop the CLI process and the event loop thread."""
+
+        async def stop() -> None:
+            client, self._client = self._client, None
+            if client is not None:
+                try:
+                    await client.force_stop()
+                except Exception:
+                    pass
+
+        try:
+            self.run(stop(), timeout)
+        except Exception:
+            pass
+        self._loop.call_soon_threadsafe(self._loop.stop)
+
     async def client(self) -> Any:
         if self._client is not None:
             return self._client
@@ -185,10 +221,33 @@ class _CopilotRuntime:
                 self._client = client
         return self._client
 
-    async def models(self) -> list[dict[str, Any]]:
+    async def _reset(self, dead: Any) -> None:
+        """Forget a dead CLI connection so the next call starts a fresh one."""
+        if self._client is not dead:
+            return  # another caller already replaced it
+        self._client = None
+        try:
+            await dead.force_stop()
+        except Exception:
+            pass
+
+    async def _call(self, op: Any) -> Any:
+        """Run ``op(client)``; if the CLI process has died, restart it once and retry."""
         client = await self.client()
+        try:
+            return await op(client)
+        except Exception:
+            try:
+                await asyncio.wait_for(client.ping(), 5.0)
+            except Exception:
+                await self._reset(client)
+                return await op(await self.client())
+            raise  # the CLI is alive, so this is a real error
+
+    async def models(self) -> list[dict[str, Any]]:
+        listed = await self._call(lambda c: c.list_models())
         out = []
-        for m in await client.list_models():
+        for m in listed:
             d = m.to_dict()
             if d.get("id") == "auto":
                 continue
@@ -204,20 +263,22 @@ class _CopilotRuntime:
         return out
 
     async def ask(self, model: str, system: str, prompt: str, timeout: float) -> tuple[str, dict[str, int], str]:
-        client = await self.client()
-        session = await client.create_session(
-            model=model or None,
-            available_tools=[],
-            on_permission_request=_deny_all,
-            system_message={"mode": "replace", "content": system},
-            working_directory=self._workdir,
-            skip_custom_instructions=True,
-            enable_config_discovery=False,
-            enable_skills=False,
-            enable_session_store=False,
-            enable_session_telemetry=False,
-            skip_embedding_retrieval=True,
-        )
+        async def open_session(c: Any) -> tuple[Any, Any]:
+            return c, await c.create_session(
+                model=model or None,
+                available_tools=[],
+                on_permission_request=_deny_all,
+                system_message={"mode": "replace", "content": system},
+                working_directory=self._workdir,
+                skip_custom_instructions=True,
+                enable_config_discovery=False,
+                enable_skills=False,
+                enable_session_store=False,
+                enable_session_telemetry=False,
+                skip_embedding_retrieval=True,
+            )
+
+        client, session = await self._call(open_session)
         usage = {"prompt_tokens": 0, "completion_tokens": 0}
         used_model = {"name": model}
 
@@ -254,12 +315,17 @@ _RUNTIMES: dict[tuple[Optional[str], Optional[str]], _CopilotRuntime] = {}
 _RUNTIMES_LOCK = threading.Lock()
 
 
+def resolve_cli_path(settings: Settings) -> Optional[str]:
+    """Copilot CLI binary: COPILOT_CLI_PATH setting/env, else the global npm install."""
+    return settings.copilot_cli_path or os.environ.get("COPILOT_CLI_PATH") or _default_cli_path()
+
+
 def _runtime_for(settings: Settings) -> _CopilotRuntime:
     if settings.copilot_github_user:
         token: Optional[str] = _token_for_user(settings.copilot_github_user)
     else:
         token = settings.copilot_github_token or None
-    cli_path = settings.copilot_cli_path or os.environ.get("COPILOT_CLI_PATH") or _default_cli_path()
+    cli_path = resolve_cli_path(settings)
     key = (token, cli_path)
     with _RUNTIMES_LOCK:
         rt = _RUNTIMES.get(key)
@@ -267,6 +333,30 @@ def _runtime_for(settings: Settings) -> _CopilotRuntime:
             rt = _CopilotRuntime(token, cli_path)
             _RUNTIMES[key] = rt
         return rt
+
+
+def reset_runtimes() -> None:
+    """Stop every Copilot CLI this process started (e.g. after a new login)."""
+    with _RUNTIMES_LOCK:
+        runtimes = list(_RUNTIMES.values())
+        _RUNTIMES.clear()
+    for rt in runtimes:
+        rt.shutdown()
+
+
+def auth_info(settings: Settings, timeout: float = 90.0) -> dict[str, Any]:
+    """Who Copilot is signed in as: ``{"authenticated", "login", "error"?}``."""
+    try:
+        rt = _runtime_for(settings)
+
+        async def check() -> dict[str, Any]:
+            client = await rt.client()
+            st = await client.get_auth_status()
+            return {"authenticated": bool(st.isAuthenticated), "login": st.login}
+
+        return rt.run(check(), timeout)
+    except Exception as e:  # not signed in, CLI missing, timeout
+        return {"authenticated": False, "login": None, "error": str(e)}
 
 
 class CopilotChatClient:

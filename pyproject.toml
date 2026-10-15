@@ -26,6 +26,9 @@ dependencies = [
     "python-multipart>=0.0.9",
     "python-docx>=1.1.0",
     "github-copilot-sdk>=1.0.17,<2",
+    # Accounts screen: Microsoft To Do sign-in with a DPAPI-encrypted token cache.
+    "msal>=1.28.0",
+    "msal-extensions>=1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -35,8 +38,7 @@ dev = [
     "ruff>=0.3.0",
 ]
 personal = [
-    # Personal-device extras: MSAL for personal-MS-account Graph auth.
-    # Not required for the corp Cortex hub + Outlook COM path.
+    # Kept for older install instructions; MSAL is now a core dependency.
     "msal>=1.28.0",
 ]
 
