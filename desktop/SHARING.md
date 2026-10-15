@@ -34,7 +34,8 @@ tenant (corporate app registrations are locked down, and this repo's rules
 forbid them).
 
 1. Sign in to https://entra.microsoft.com with a **personal** Microsoft
-   account. If you have no directory yet, Entra creates a free one.
+   account. If it says you have no directory, create a free one first (a
+   free Azure account sets one up); never use a work tenant.
 2. **App registrations > New registration**. Name: `Pensieve`. Supported
    account types: **Personal Microsoft accounts only**. Leave Redirect URI
    empty. Register.
@@ -44,27 +45,65 @@ forbid them).
    `Tasks.ReadWrite`**. Personal accounts approve it themselves; no admin
    consent. Pensieve only reads, plus adds a new task when someone confirms
    one in Speak a task; it never edits or deletes their tasks.
-5. Copy the **Application (client) ID** into the shared copy's `.env`:
-   `PERSONAL_GRAPH_CLIENT_ID=<id>`.
+5. Copy the **Application (client) ID** and build the installer with it
+   (below). It is baked into the installed app's `pensieve.env`. Someone who
+   already installed a build without it can instead add
+   `PERSONAL_GRAPH_CLIENT_ID=<id>` to `%LOCALAPPDATA%\Pensieve\pensieve.env`.
+
+## Building the installer
+
+On this PC (Windows ARM64 or x64), from the repo:
+
+```powershell
+.\desktop\installeruild-installer.ps1 -Version 1.0.0 -MicrosoftClientId <application-client-id>
+```
+
+The first run downloads an x64 Python and Inno Setup into
+`..\pensieve-build` and takes a while; later runs reuse them. It bundles the
+backend with PyInstaller, smoke-tests it, and writes
+`..\pensieve-build\output\PensieveSetup-<version>.exe` (about 130 MB). The x64
+build runs natively on x64 PCs and under emulation on ARM64 PCs.
+
+## Sending it
+
+Send the `.exe` through OneDrive, Google Drive, or a USB stick (most mail
+services block executables). Tell your friend:
+
+1. **Windows protected your PC** appears because the installer is not code
+   signed. Click **More info > Run anyway**.
+2. The installer needs no admin rights. It installs for their Windows user
+   only, shows the license and privacy terms, and offers to install the
+   GitHub Copilot CLI with Windows Package Manager (leave it ticked).
+3. Pensieve opens in its own window and shows **Connect your accounts**.
+4. More > About & legal has the privacy notice, AI notice, license and
+   third-party notices.
 
 ## Where things are stored on their PC
 
+Installed copies keep everything under `%LOCALAPPDATA%\Pensieve` (paths
+below are relative to its `data` folder). A copy run from this repo uses the
+repo's `data` folder instead.
+
 | What | Where |
 | --- | --- |
-| Microsoft sign-in (refresh token) | `data/ms-token-cache.bin`, encrypted with Windows DPAPI (only that Windows user can read it) |
+| Microsoft sign-in (refresh token) | `ms-token-cache.bin`, encrypted with Windows DPAPI (only that Windows user can read it) |
 | GitHub Copilot sign-in | Windows Credential Manager, written by the Copilot CLI |
-| Which source to sync, setup seen | `data/connections.json` |
-| Model choices | `data/ai-models.json` |
-| Tasks and memories | `data/chroma/` |
+| Which source to sync, setup seen | `connections.json` |
+| Model choices | `ai-models.json` |
+| Tasks and memories | `chroma/` |
+| Personal overrides | `%LOCALAPPDATA%\Pensieve\pensieve.env` (wins over the installed defaults) |
 
 Disconnect buttons in More > Accounts remove the Microsoft token and sign
-the Copilot CLI out.
+the Copilot CLI out. Uninstalling (Settings > Apps) asks whether to delete
+`%LOCALAPPDATA%\Pensieve` too.
 
-## Not done yet: the installer
+## Security model
 
-Today a copy still needs this repo plus a Python environment and the
-Copilot CLI (`npm install -g @github/copilot`). The plan for a one-click
-installer: bundle Python and the backend (PyInstaller), ship x64 and ARM64
-builds, let the Copilot SDK fetch its own CLI, and replace `.env` with the
-app id baked in at build time. The Harry Potter theme is fine for a friend,
-but strip it before any wider distribution (trademarks).
+The backend listens only on `127.0.0.1`. Each launch of `Pensieve.exe`
+creates a random session key; the backend refuses API calls without it and
+answers only to `127.0.0.1` and `localhost`, so web pages and other Windows
+users on the same PC cannot reach someone's board. The dashboard runs under
+a Content-Security-Policy that only allows the app's own scripts.
+
+The Harry Potter theme is fine for a friend, but strip it before any wider
+distribution (trademarks).
