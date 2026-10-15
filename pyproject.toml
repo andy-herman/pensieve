@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pensieve"
 version = "0.1.0"
-description = "Pensieve - To-Do enrichment and memory store with HUD kanban dashboard"
+description = "Pensieve - a memory layer for Microsoft To Do tasks, with a local kanban dashboard"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Andy Herman" }]

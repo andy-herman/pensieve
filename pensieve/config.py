@@ -104,10 +104,6 @@ class Settings(BaseSettings):
     personal_graph_scopes: str = Field(
         default="Tasks.ReadWrite", alias="PERSONAL_GRAPH_SCOPES"
     )
-    personal_graph_token_cache_name: str = Field(
-        default="personal-graph-token-cache.bin",
-        alias="PERSONAL_GRAPH_TOKEN_CACHE_NAME",
-    )
     personal_graph_skip_completed_older_days: int = Field(
         default=30, alias="PERSONAL_GRAPH_SKIP_COMPLETED_OLDER_DAYS"
     )
@@ -118,12 +114,11 @@ class Settings(BaseSettings):
     enrichment_confidence_threshold: float = Field(
         default=0.6, alias="PENSIEVE_ENRICHMENT_CONFIDENCE_THRESHOLD"
     )
-    default_list_name: str = Field(default="Tasks", alias="PENSIEVE_DEFAULT_LIST_NAME")
 
     # Comma-separated list of source list_name values to INCLUDE when
     # generating Connect recaps. Tasks in other lists (e.g. "home", "UW
     # Lectures") are excluded from recap input. Empty string = no filter
-    # (include every memory). Default = "CISO GRC" (Andy's work list).
+    # (include every memory). Default = "CISO GRC" (the original author's work list).
     recap_list_names: str = Field(default="CISO GRC", alias="PENSIEVE_RECAP_LIST_NAMES")
 
     # --- Chroma ---
@@ -177,7 +172,7 @@ class Settings(BaseSettings):
 
     # --- API ---
     api_cors_origins: str = Field(
-        default="http://localhost:8765,http://127.0.0.1:8765,null",
+        default="http://localhost:8765,http://127.0.0.1:8765",
         alias="PENSIEVE_API_CORS_ORIGINS",
     )
 
@@ -212,14 +207,12 @@ class Settings(BaseSettings):
         return self.data_dir / "achievements.json"
 
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.api_cors_origins.split(",") if o.strip()]
+        # "null" (file:// pages, sandboxed frames) is never trusted, even if an
+        # older .env still lists it.
+        return [o.strip() for o in self.api_cors_origins.split(",") if o.strip() and o.strip() != "null"]
 
     def personal_graph_scope_list(self) -> list[str]:
         return [s.strip() for s in self.personal_graph_scopes.split(",") if s.strip()]
-
-    @property
-    def personal_graph_token_cache_path(self) -> Path:
-        return self.data_dir / self.personal_graph_token_cache_name
 
     def recap_list_names_list(self) -> list[str]:
         return [n.strip() for n in self.recap_list_names.split(",") if n.strip()]
