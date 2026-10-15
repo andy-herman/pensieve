@@ -81,6 +81,7 @@ Step "Generating third-party notices"
 New-Item -ItemType Directory -Force $stage | Out-Null
 $notices = Join-Path $stage "THIRD-PARTY-NOTICES.txt"
 & $venvPy (Join-Path $here "make_notices.py") $notices --python-license (Join-Path $pyHome "tools\LICENSE.txt")
+if ($LASTEXITCODE -ne 0) { throw "make_notices.py failed ($LASTEXITCODE)" }
 Copy-Item $notices (Join-Path $repo "frontend-proto\third-party-notices.txt") -Force  # shown in About and legal
 
 # ---- 4. backend bundle -----------------------------------------------------------------

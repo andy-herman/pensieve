@@ -29,6 +29,7 @@ dependencies = [
     # Accounts screen: Microsoft To Do sign-in with a DPAPI-encrypted token cache.
     "msal>=1.28.0",
     "msal-extensions>=1.2.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +47,7 @@ personal = [
 pensieve = "pensieve.cli:app"
 
 [tool.setuptools]
-packages = ["pensieve", "pensieve.sources", "pensieve.enrichment", "pensieve.store", "pensieve.api"]
+packages = ["pensieve", "pensieve.api", "pensieve.capture", "pensieve.enrichment", "pensieve.sources", "pensieve.store"]
 
 [tool.ruff]
 line-length = 110

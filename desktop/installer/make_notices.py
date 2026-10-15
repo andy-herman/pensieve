@@ -41,7 +41,14 @@ MANUAL = [
 ]
 
 
+# Packages whose metadata omits a license, verified against their repositories.
+KNOWN = {"chroma-hnswlib": "Apache-2.0"}
+
+
 def declared_license(meta: metadata.PackageMetadata) -> str:
+    known = KNOWN.get((meta.get("Name") or "").lower())
+    if known:
+        return known
     expr = meta.get("License-Expression")
     if expr:
         return expr.strip()
@@ -63,7 +70,7 @@ def license_texts(dist: metadata.Distribution) -> list[tuple[str, str]]:
         if not LICENSE_FILE.search(name) or name.endswith((".py", ".pyc")):
             continue
         try:
-            text = f.read_text(encoding="utf-8", errors="replace").strip()
+            text = Path(f.locate()).read_text(encoding="utf-8", errors="replace").strip()
         except (OSError, FileNotFoundError):
             continue
         if text:

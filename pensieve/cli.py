@@ -227,6 +227,7 @@ def serve(
         port=bind_port,
         reload=reload,
         log_level="info",
+        access_log=False,
     )
 
 

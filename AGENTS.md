@@ -88,7 +88,7 @@ full product spec and [`PHASES.md`](./PHASES.md) for the phased build plan.
 - **Shared installs (this branch) may read personal Microsoft To Do via Graph.**
   People connect their own personal Microsoft account and GitHub Copilot in the
   dashboard's Accounts screen (`pensieve/connections.py`, device-code sign-ins,
-  DPAPI-encrypted token cache, read-only `Tasks.Read`). The app registration
+  DPAPI-encrypted token cache, `Tasks.ReadWrite` used to read plus the confirmed-create path of voice capture). The app registration
   lives in a personal Entra directory, never Microsoft's corporate tenant; see
   `desktop/SHARING.md`.
 - **Phase 1 deliberately bypasses Microsoft Graph.** SFI (late 2025+)

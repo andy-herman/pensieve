@@ -94,20 +94,29 @@ namespace PensieveDesktop
                 {
                     // Another launcher already owns the backend; just open a window.
                     Log("another launcher is running; opening a window only");
-                    LaunchEdge(edge, profileDir, baseUrl);
+                    LaunchEdge(edge, profileDir, WithToken(baseUrl, ReadToken()));
                     return 0;
                 }
 
                 Process server = null;
                 if (IsHealthy(baseUrl))
                 {
+                    string existing = ReadToken();
+                    if (!SessionAccepted(baseUrl, existing))
+                    {
+                        Fail("Something else is already using port " + port + " on this PC (perhaps Pensieve for another Windows user).\n\n"
+                            + "Close it and try again, or set PENSIEVE_BACKEND_PORT in %LOCALAPPDATA%\\Pensieve\\pensieve.env.");
+                        return 1;
+                    }
                     Log("backend already running; will leave it running on exit");
-                    LaunchEdge(edge, profileDir, baseUrl);
+                    LaunchEdge(edge, profileDir, WithToken(baseUrl, existing));
                 }
                 else
                 {
-                    server = StartServer(layout, port);
-                    string splash = WriteSplash(layout, baseUrl);
+                    string token = NewToken();
+                    File.WriteAllText(TokenPath(), token);
+                    server = StartServer(layout, port, token);
+                    string splash = WriteSplash(layout, baseUrl, WithToken(baseUrl, token));
                     LaunchEdge(edge, profileDir, new Uri(splash).AbsoluteUri);
                     if (!WaitHealthy(baseUrl, server, TimeSpan.FromSeconds(120)))
                     {
@@ -255,7 +264,7 @@ namespace PensieveDesktop
 
         // ---- Backend --------------------------------------------------------
 
-        static Process StartServer(Layout layout, int port)
+        static Process StartServer(Layout layout, int port, string token)
         {
             string logPath = Path.Combine(logDir, "server.log");
             try
@@ -284,6 +293,7 @@ namespace PensieveDesktop
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
             psi.EnvironmentVariables["PYTHONUTF8"] = "1";
+            psi.EnvironmentVariables["PENSIEVE_SESSION_TOKEN"] = token;
 
             Process p = new Process();
             p.StartInfo = psi;
@@ -346,6 +356,63 @@ namespace PensieveDesktop
             {
                 string body = HttpGet(baseUrl + "api/healthz", 1500);
                 return body.Contains("\"ok\":true") || body.Contains("\"ok\": true");
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // ---- Session token --------------------------------------------------
+        // A fresh random token per backend launch. The backend refuses /api/*
+        // calls without it, so other web pages and other Windows users cannot
+        // drive this user's Pensieve. The window gets it once via /?t=, and the
+        // backend swaps it for an HttpOnly, SameSite=Strict cookie.
+
+        static string TokenPath()
+        {
+            return Path.Combine(appDataDir, "session.token");
+        }
+
+        static string NewToken()
+        {
+            byte[] bytes = new byte[24];
+            using (System.Security.Cryptography.RandomNumberGenerator rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(bytes);
+            }
+            return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+        }
+
+        static string ReadToken()
+        {
+            try { return File.ReadAllText(TokenPath()).Trim(); }
+            catch (Exception) { return null; }
+        }
+
+        static string WithToken(string baseUrl, string token)
+        {
+            return string.IsNullOrEmpty(token) ? baseUrl : baseUrl + "?t=" + token;
+        }
+
+        static bool SessionAccepted(string baseUrl, string token)
+        {
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(baseUrl + "api/session/check");
+                req.Proxy = null;
+                req.Timeout = 3000;
+                if (!string.IsNullOrEmpty(token)) req.Headers["X-Pensieve-Token"] = token;
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                {
+                    return resp.StatusCode == HttpStatusCode.OK;
+                }
+            }
+            catch (WebException ex)
+            {
+                // Older backends without /api/session/check answer 404: treat as ours.
+                HttpWebResponse r = ex.Response as HttpWebResponse;
+                return r != null && r.StatusCode == HttpStatusCode.NotFound;
             }
             catch (Exception)
             {
@@ -449,7 +516,7 @@ namespace PensieveDesktop
             }
         }
 
-        static string WriteSplash(Layout layout, string baseUrl)
+        static string WriteSplash(Layout layout, string baseUrl, string openUrl)
         {
             string path = Path.Combine(appDataDir, "splash.html");
             string icon = layout.IconPath;
@@ -458,6 +525,7 @@ namespace PensieveDesktop
             string fonts = Path.Combine(layout.AssetsDir, "fonts");
             string html = SplashHtml
                 .Replace("@@TARGET@@", baseUrl)
+                .Replace("@@OPEN@@", openUrl)
                 .Replace("@@ICON@@", FileUri(icon))
                 .Replace("@@VIDEO@@", FileUri(video))
                 .Replace("@@POSTER@@", FileUri(poster))
@@ -541,6 +609,7 @@ namespace PensieveDesktop
   <p id=""slow"" hidden>Still gathering memories. The first start after a reboot can take a little longer.</p>
 <script>
   var target = '@@TARGET@@';
+  var openUrl = '@@OPEN@@';
   var shownAt = Date.now();
   var MIN_SHOW_MS = 1400; // long enough to read as a splash, never a flash
   var tries = 0;
@@ -552,7 +621,7 @@ namespace PensieveDesktop
     var wait = Math.max(0, MIN_SHOW_MS - (Date.now() - shownAt));
     setTimeout(function () {
       document.body.classList.add('leaving');
-      setTimeout(function () { location.replace(target); }, 300);
+      setTimeout(function () { location.replace(openUrl); }, 300);
     }, wait);
   }
   function poll() {

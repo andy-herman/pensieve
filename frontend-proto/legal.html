@@ -4,13 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>About and legal - The Pensieve</title>
-  <script>
-    try {
-      var t = localStorage.getItem("pensieve-theme");
-      if (t === "night" || t === "marauder") document.documentElement.setAttribute("data-theme", t);
-    } catch (e) { /* stay on day */ }
-  </script>
+  <script src="theme-init.js"></script>
   <link rel="icon" href="favicon.ico" />
+  <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="pensieve.css" />
   <style>
     .legal { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; position: relative; z-index: 1; }
@@ -70,7 +66,6 @@
         <li><strong>Microsoft (Microsoft Graph).</strong> After you sign in, Pensieve reads your To Do lists and tasks, and adds a task only when you confirm one. Governed by your Microsoft account terms and the Microsoft Privacy Statement.</li>
         <li><strong>GitHub Copilot.</strong> Task titles, notes, list names and your goals are sent to GitHub Copilot to write summaries, drafts and recaps, using your own Copilot plan under GitHub's terms and privacy statement for that plan (Copilot may route requests to model providers GitHub works with). Pensieve runs each request with all tools disabled and deletes its Copilot session afterwards; GitHub's own retention rules still apply. You choose the models in More &gt; AI models.</li>
         <li><strong>Speech.</strong> When you use Speak a task, your voice is processed by the speech recognition service built into Microsoft Edge. Nothing is recorded by Pensieve.</li>
-        <li><strong>Fonts.</strong> The dashboard loads its typefaces from Google Fonts, which receives your IP address with the request.</li>
         <li><strong>Optional vault bridge.</strong> If you turn it on, Pensieve writes a summary of your board into a folder you choose, and agents you run can ask it to add tasks (you approve each one). Any sync service you use copies that folder.</li>
       </ul>
     </section>
@@ -132,14 +127,6 @@ SOFTWARE.</pre>
       <pre id="notices-text">Loading...</pre>
     </section>
   </main>
-  <script>
-    fetch("third-party-notices.txt", { cache: "no-store" })
-      .then(r => (r.ok ? r.text() : Promise.reject(r.status)))
-      .then(t => { document.getElementById("notices-text").textContent = t; })
-      .catch(() => {
-        document.getElementById("notices-text").textContent =
-          "The notices file ships with the installed app (THIRD-PARTY-NOTICES.txt in the install folder).";
-      });
-  </script>
+  <script src="legal.js"></script>
 </body>
 </html>

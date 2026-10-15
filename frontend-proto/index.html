@@ -4,18 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>The Pensieve - Today's Memories</title>
-  <script>
-    /* Apply the saved theme before first paint so night/marauder never flash parchment. */
-    try {
-      var savedTheme = localStorage.getItem("pensieve-theme");
-      if (savedTheme === "night" || savedTheme === "marauder") {
-        document.documentElement.setAttribute("data-theme", savedTheme);
-      }
-    } catch (e) { /* storage blocked: stay on day */ }
-  </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English+SC&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="fonts.css" />
   <link rel="stylesheet" href="pensieve.css" />
 </head>
 <body>
@@ -126,6 +116,7 @@
               <button id="open-ai-models" class="ghost-button cmd-menu-item" role="menuitem" title="Choose which GitHub Copilot models Pensieve uses">AI models</button>
               <button id="open-accounts" class="ghost-button cmd-menu-item" role="menuitem" title="Connect Microsoft To Do and GitHub Copilot">Accounts</button>
               <button id="density-toggle" class="ghost-button cmd-menu-item" role="menuitem" aria-pressed="false" title="Switch card density between Comfortable and Compact">Density: Comfortable</button>
+              <a href="legal.html" class="ghost-button cmd-menu-item" role="menuitem" title="Privacy, AI notice, license and third-party notices">About &amp; legal</a>
             </div>
           </div>
         </div>
@@ -351,13 +342,14 @@
         <img class="accounts-emblem" src="assets/emblem.webp" alt="" width="64" height="76" decoding="async" />
         <h2 id="accounts-title" class="goals-title accounts-title">Connect your accounts</h2>
         <p class="goals-subtitle accounts-subtitle">Pensieve runs on this PC. Your tasks and sign-ins stay here; nothing is sent anywhere except your own Microsoft and GitHub accounts.</p>
+        <p class="accounts-legal">Connecting uses your own accounts under Microsoft's and GitHub's terms. Task details go to GitHub Copilot to write summaries, and AI output can be wrong. <a href="legal.html#privacy">Privacy and AI notice</a></p>
 
         <section class="account-card" id="account-microsoft" aria-labelledby="acct-ms-title">
           <div class="account-head">
             <h3 id="acct-ms-title" class="account-title">Microsoft To Do</h3>
             <span class="account-badge" id="acct-ms-badge"></span>
           </div>
-          <p class="account-desc">Reads your To Do lists, the same tasks you see in the new Outlook. Read-only: Pensieve never changes them.</p>
+          <p class="account-desc">Reads your To Do lists, the same tasks you see in the new Outlook. Pensieve never edits, completes or deletes them; it only adds a task you dictate and confirm.</p>
           <div class="account-body" id="acct-ms-body"></div>
         </section>
 
@@ -424,7 +416,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <footer class="footer">
-    <span>Pensieve Phase 2 prototype</span>
+    <span>Pensieve</span>
     <span class="dot">.</span>
     <span id="memory-count">gathering memories</span>
     <span class="dot">.</span>
@@ -432,7 +424,7 @@
     <span class="dot">.</span>
     <span id="api-source-label">connecting...</span>
     <span class="dot">.</span>
-    <a href="https://github.com/andy-herman/pensieve" target="_blank" rel="noopener">github.com/andy-herman/pensieve</a>
+    <a href="legal.html">About &amp; legal</a>
   </footer>
 
   <script src="pensieve.js"></script>

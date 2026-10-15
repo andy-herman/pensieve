@@ -4,7 +4,7 @@ Each person runs their own Pensieve and connects their own accounts on their
 own machine; nothing is hosted and nobody else ever holds their tokens.
 
 - Microsoft To Do (personal Microsoft account): Microsoft Graph via MSAL's
-  device-code flow, read-only ``Tasks.Read``. The token cache is encrypted
+  device-code flow, ``Tasks.ReadWrite`` (read, plus voice capture's confirmed create). The token cache is encrypted
   with Windows DPAPI (msal-extensions), so only this Windows user can read it.
   Needs the public client id of a Pensieve app registration
   (``PERSONAL_GRAPH_CLIENT_ID``); see desktop/SHARING.md.

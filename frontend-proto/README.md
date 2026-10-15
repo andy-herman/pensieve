@@ -170,6 +170,6 @@ The dashboard intentionally:
 - Has no build step
 - Has no framework dependency
 - Loads zero JavaScript modules from any CDN
-- Loads two webfonts from Google Fonts (Cinzel + IM Fell English); replace those with self-hosted fonts if you want a fully offline build. Until they load, size-adjusted local Georgia faces stand in, so the swap barely shifts the layout
+- Bundles its two typefaces (Cinzel + IM Fell English, SIL OFL 1.1) in `assets/fonts/` via `fonts.css`, so the dashboard works offline and contacts no font service. Until they load, size-adjusted local Georgia faces stand in, so the swap barely shifts the layout
 - Reads only from the local Pensieve API; it never directly talks to Microsoft, Azure, or any third party
 - Never writes to your Outlook tasks directly (any writeback goes through the backend's opt-in TaskSink)

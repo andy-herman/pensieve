@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
@@ -19,6 +20,7 @@ from pensieve import achievements as achievements_mod
 from pensieve import garden
 from pensieve import quest_state as quest_state_mod
 from pensieve import quests as quests_mod
+from pensieve.api import security
 from pensieve.config import REPO_ROOT, get_settings
 from pensieve.enrichment.connect_goals import load_connect_goals
 from pensieve.scheduler import AutoSyncScheduler, start_sync_job
@@ -96,11 +98,14 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list(),
-        allow_origin_regex=r"file://.*|null",
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+    security.install(app)
+    # Outermost: refuse requests addressed to any other host name, so a web
+    # page cannot reach this server through DNS rebinding.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
     store = ChromaMemoryStore(settings)
     vial_store = ChromaVialStore(settings)
@@ -442,7 +447,7 @@ def create_app() -> FastAPI:
 
         try:
             return vb.resolve_request(settings, request_id, "dropped",
-                                      f"{datetime.now().date().isoformat()} dismissed by Andy in Pensieve")
+                                      f"{datetime.now().date().isoformat()} dismissed in Pensieve")
         except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -455,13 +460,20 @@ def create_app() -> FastAPI:
             req = vb.request_by_id(settings, request_id)
         except LookupError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
+        if req.get("status") not in vb.PENDING:
+            # A second click (or a second window) must not create the task twice.
+            raise HTTPException(status_code=409, detail="This request was already handled.")
         merged = {**{k: req.get(k) for k in ("title", "notes", "due_date", "list_name", "importance")}, **(body or {})}
         created = capture_add(merged)
         where = "To Do" if created.get("source") == "personal_graph" else "Outlook"
-        vb.resolve_request(
-            settings, request_id, "executed",
-            f"{datetime.now().date().isoformat()} added by Andy to {created.get('list_name') or 'his list'} in {where} via Pensieve",
-        )
+        try:
+            vb.resolve_request(
+                settings, request_id, "executed",
+                f"{datetime.now().date().isoformat()} added to {created.get('list_name') or 'the default list'} "
+                f"in {where} via Pensieve",
+            )
+        except Exception as e:  # the task exists; say so instead of failing the whole call
+            created["warning"] = f"Task added, but the agent's note could not be updated: {e}"
         created["request"] = request_id
         return created
 
@@ -594,7 +606,6 @@ def create_app() -> FastAPI:
         return {
             "ok": True,
             "memories": store.count(),
-            "chroma_dir": str(settings.chroma_dir),
             "default_source": _effective_source(settings),
         }
 

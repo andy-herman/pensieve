@@ -87,7 +87,7 @@ and self-service — no admin consent involved.
 4. **Redirect URI:** leave blank
 5. Click **Register**
 6. On the new app page → **Authentication** → **Allow public client flows** → **Yes** → Save
-7. **API permissions → Add a permission → Microsoft Graph → Delegated permissions → Tasks.Read** → Add
+7. **API permissions → Add a permission → Microsoft Graph → Delegated permissions → Tasks.ReadWrite** → Add (ReadWrite only so voice capture can add a task you confirm; Pensieve never edits or deletes existing ones)
 8. Copy the **Application (client) ID** — you'll need it in the env file
 
 That's it. Total time: under three minutes.
@@ -139,9 +139,9 @@ and enter the code ABCD-EFGH to authenticate.
 ```
 
 Open that URL in any browser, sign in with your personal MS account,
-paste the code, and approve the `Tasks.Read` request. MSAL caches the
-refresh token under `data/personal-graph-token-cache.bin` — you won't
-have to do this again unless you delete that file.
+paste the code, and approve the `Tasks.ReadWrite` request. MSAL caches the
+refresh token, encrypted with Windows DPAPI, under `data/ms-token-cache.bin`.
+You won't have to do this again unless you delete that file.
 
 Once authenticated, you should see your To-Do lists and task counts
 print. Drop `--dry-run` to actually enrich them.
@@ -202,11 +202,11 @@ Microsoft accounts". Re-register with the personal-account option.
 minute. For initial sync of a big To-Do, run with `--list` to narrow.
 
 **`pensieve sync` re-prompts every time** — your token cache isn't being
-written. Check `data/personal-graph-token-cache.bin` exists and is
+written. Check `data/ms-token-cache.bin` exists and is
 writable; check `PENSIEVE_DATA_DIR` points to a writable location.
 
 **You want to revoke the device-flow token** — delete
-`data/personal-graph-token-cache.bin` and re-run sync.
+`data/ms-token-cache.bin` (or use Disconnect on the Accounts screen) and re-run sync.
 
 ---
 
@@ -215,7 +215,7 @@ writable; check `PENSIEVE_DATA_DIR` points to a writable location.
 ```
 Microsoft To-Do (your personal lists)
         |
-        | HTTPS, Graph /me/todo, Tasks.Read only
+        | HTTPS, Graph /me/todo, Tasks.ReadWrite (reads; creates only tasks you confirm)
         v
 PersonalGraphSource (read-only, never writes back)
         |

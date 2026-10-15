@@ -18,14 +18,16 @@ Where the task goes follows the sync source:
 
 from __future__ import annotations
 
-import contextlib
+import gc
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional, TypeVar
 
 import httpx
 
 from pensieve.config import Settings
+
+T = TypeVar("T")
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 OL_FOLDER_TASKS = 13
@@ -64,14 +66,20 @@ def _check_enabled(settings: Settings) -> str:
 # ----- Outlook COM ---------------------------------------------------------------
 
 
-@contextlib.contextmanager
-def _com_apartment() -> Iterator[None]:
+def _in_com_apartment(fn: Callable[[], T]) -> T:
+    """Run ``fn`` in its own COM apartment.
+
+    The COM objects ``fn`` touches are locals of ``fn``, so they are released
+    when it returns, before CoUninitialize; a reference that outlived the
+    apartment would crash or leak when Python later freed it.
+    """
     import pythoncom  # type: ignore[import-not-found]
 
     pythoncom.CoInitialize()
     try:
-        yield
+        return fn()
     finally:
+        gc.collect()
         pythoncom.CoUninitialize()
 
 
@@ -97,14 +105,16 @@ def _walk(folder: Any) -> Iterator[Any]:
 
 
 def _com_lists() -> tuple[list[str], str]:
-    with _com_apartment():
+    def run() -> tuple[list[str], str]:
         root = _outlook_root()
-        default = root.Name or "Tasks"
-        return [default] + [f.Name for f in _walk(root) if f.Name], default
+        default = str(root.Name or "Tasks")
+        return [default] + [str(f.Name) for f in _walk(root) if f.Name], default
+
+    return _in_com_apartment(run)
 
 
 def _com_add(task: NewTask) -> dict[str, Any]:
-    with _com_apartment():
+    def run() -> dict[str, Any]:
         root = _outlook_root()
         folder = root
         if task.list_name and task.list_name.lower() != (root.Name or "").lower():
@@ -120,7 +130,9 @@ def _com_add(task: NewTask) -> dict[str, Any]:
         if task.importance == "high":
             item.Importance = OL_IMPORTANCE_HIGH
         item.Save()
-        return {"id": str(item.EntryID), "list_name": folder.Name}
+        return {"id": str(item.EntryID), "list_name": str(folder.Name)}
+
+    return _in_com_apartment(run)
 
 
 # ----- Microsoft Graph (personal To Do) -----------------------------------------

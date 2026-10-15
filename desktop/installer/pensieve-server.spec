@@ -11,6 +11,7 @@
 #   onnx_models/      the MiniLM embedding model (no first-run download)
 
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
@@ -25,7 +26,13 @@ datas = [
     (str(MODEL / "onnx"), "onnx_models/all-MiniLM-L6-v2/onnx"),
 ]
 binaries = []
-hiddenimports = collect_submodules("pensieve") + collect_submodules("uvicorn")
+# The build venv does not install pensieve (it is bundled from source), so put the
+# repo on sys.path for collect_submodules: uvicorn loads pensieve.api.server by
+# name, which static analysis cannot follow.
+sys.path.insert(0, str(REPO))
+pensieve_modules = collect_submodules("pensieve")
+assert "pensieve.api.server" in pensieve_modules, "collect_submodules could not see the pensieve package"
+hiddenimports = pensieve_modules + collect_submodules("uvicorn")
 
 # Packages that import submodules or read package data dynamically.
 for pkg in (
