@@ -44,8 +44,12 @@ namespace PensieveDesktop
         [STAThread]
         static int Main(string[] args)
         {
-            appDataDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pensieve");
+            // Same source as the backend (pensieve/config.py reads LOCALAPPDATA),
+            // so both always agree on where the per-user folder is.
+            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            if (string.IsNullOrEmpty(localAppData))
+                localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            appDataDir = Path.Combine(localAppData, "Pensieve");
             logDir = Path.Combine(appDataDir, "logs");
             Directory.CreateDirectory(logDir);
             try
