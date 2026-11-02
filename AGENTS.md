@@ -161,6 +161,7 @@ Pensieve/
 │   ├── config.py          # pydantic-settings .env loading
 │   ├── connections.py     # Accounts screen: Microsoft + Copilot sign-in, source choice
 │   ├── ai_prefs.py        # per-purpose model choice (AI models panel)
+│   ├── copilot_handoff.py # "Work in Copilot" button: gathers full task context and opens a GitHub Copilot app session
 │   ├── bridge.py          # Obsidian vault bridge (Now.md + agent task requests)
 │   ├── sync.py            # orchestrator: sources → enrichment → ChromaDB
 │   ├── sync_state.py      # single-job tracker / atomic gate

@@ -546,11 +546,14 @@ def create_app() -> FastAPI:
     @app.get("/api/ai")
     def ai_state() -> dict[str, Any]:
         """Provider, account, and the saved / effective model per purpose."""
-        from pensieve import ai_prefs
+        from pensieve import ai_prefs, connections
 
         state = ai_prefs.describe(settings)
         state["provider"] = settings.llm_provider
-        state["account"] = settings.copilot_github_user or None
+        account = settings.copilot_github_user or None
+        if not account and settings.llm_provider == "github_copilot":
+            account = connections.github_status(settings).get("account")
+        state["account"] = account
         state["editable"] = settings.llm_provider == "github_copilot"
         return state
 

@@ -329,8 +329,12 @@ def resolve_cli_path(settings: Settings) -> Optional[str]:
 
 
 def _runtime_for(settings: Settings) -> _CopilotRuntime:
+    token: Optional[str] = None
     if settings.copilot_github_user:
-        token: Optional[str] = _token_for_user(settings.copilot_github_user)
+        try:
+            token = _token_for_user(settings.copilot_github_user)
+        except CopilotUnavailable:
+            token = settings.copilot_github_token or None
     else:
         token = settings.copilot_github_token or None
     cli_path = resolve_cli_path(settings)
