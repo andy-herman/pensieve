@@ -1193,6 +1193,65 @@ def create_app() -> FastAPI:
             "memory": _dashboard_dicts([merged])[0],
         }
 
+    @app.post("/api/memories/{memory_id}/copilot")
+    def start_memory_in_copilot(
+        memory_id: str,
+        body: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Gather all context for a Memory and start a live session in the GitHub Copilot app.
+
+        Bumps ``last_tended_at`` and, if the card was in ``memory`` (Backlog),
+        promotes it to ``dive`` (Active work) unless ``move_to_dive`` is false.
+        """
+        from pensieve.cli import _strand_catalog_from_samples
+        from pensieve.copilot_handoff import (
+            CopilotAppUnavailable,
+            launch_memory_in_copilot_app,
+        )
+        from pensieve.enrichment import load_connect_goals
+
+        existing = store.get_memory(memory_id)
+        if existing is None and memory_id.startswith("mem_"):
+            existing = store.get_memory(memory_id[4:])
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Memory {memory_id} not found")
+
+        body = body or {}
+        move_to_dive = bool(body.get("move_to_dive", True))
+
+        all_memories = store.list_memories()
+        connect_goals = load_connect_goals()
+        strand_catalog = _strand_catalog_from_samples(settings) or []
+        vials = vial_store.list_vials_for_memory(existing.id)
+
+        try:
+            launched = launch_memory_in_copilot_app(
+                existing,
+                all_memories=all_memories,
+                goals=connect_goals,
+                strand_catalog=strand_catalog,
+                vials=vials,
+                settings=settings,
+            )
+        except CopilotAppUnavailable as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Could not start Copilot session: {e}") from e
+
+        now = _now_utc()
+        updates: dict[str, Any] = {"last_tended_at": now}
+        if move_to_dive and existing.column == "memory":
+            updates["column"] = "dive"
+        store.update_meta(existing.id, updates)
+        updated = store.get_memory(existing.id) or existing
+        _maybe_complete_quests()
+
+        return {
+            "ok": True,
+            **launched,
+            "memory": _dashboard_dicts([updated])[0],
+        }
+
     @app.post("/api/recap")
     def generate_recap_route(body: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Draft a Microsoft Connect-format recap from enriched memories.

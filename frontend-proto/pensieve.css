@@ -951,6 +951,24 @@ html[data-theme="marauder"] .primary-button:hover { color: var(--on-candle); }
   box-shadow: 0 0 18px rgba(160, 110, 220, 0.6);
 }
 
+/* Work in Copilot: golden-azure handoff button */
+.copilot-btn {
+  background: linear-gradient(140deg, rgba(44, 70, 112, 0.25), rgba(201, 166, 85, 0.22));
+  border-color: color-mix(in srgb, var(--candle) 70%, transparent);
+  color: var(--ink);
+}
+.copilot-btn:hover {
+  background: linear-gradient(140deg, rgba(44, 70, 112, 0.4), rgba(201, 166, 85, 0.36));
+  box-shadow: 0 0 14px var(--glow);
+  transform: translateY(-1px);
+  color: var(--ink);
+}
+.copilot-btn:disabled { opacity: 0.8; cursor: progress; }
+.copilot-btn.is-regenerating {
+  animation: regen-shimmer 1.3s ease-in-out infinite;
+  box-shadow: 0 0 18px var(--glow);
+}
+
 /* ---- Popover / overflow menu shell (Filter + More) ---- */
 
 .cmd-pop { position: relative; display: inline-flex; }
@@ -1465,6 +1483,46 @@ html[data-theme="marauder"] .empty-column::before { filter: sepia(0.85) saturate
   background: transparent;
 }
 .card-vial-badge:hover { color: var(--ink); border-color: var(--parchment-dark); }
+
+.card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 6px;
+}
+.card-footer .card-vial-chevron,
+.card-footer .card-vial-badge {
+  margin-top: 0;
+}
+.card-copilot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--candle) 48%, var(--line-soft));
+  background: color-mix(in srgb, var(--candle) 12%, transparent);
+  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--t-fast) ease, background var(--t-fast) ease, border-color var(--t-fast) ease, transform var(--t-fast) ease;
+}
+.card-copilot-btn:hover {
+  color: var(--ink);
+  border-color: var(--candle);
+  background: color-mix(in srgb, var(--candle) 28%, transparent);
+  transform: translateY(-1px);
+}
+.card-copilot-btn:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}
 
 /* ---- Density: Compact is the default (toggle in the More menu) ----
    The :not([data-density]) selectors make first paint compact before JS

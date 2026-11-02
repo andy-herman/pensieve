@@ -856,6 +856,50 @@ async function regenerateMemory(memoryId) {
   }
 }
 
+async function startInCopilot(memoryId, btnEl, { fromModal = false } = {}) {
+  if (!STATE.apiConnected) {
+    toast(OFFLINE_HINT);
+    return;
+  }
+  const btn = btnEl || $("#edit-copilot");
+  const original = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("is-regenerating");
+    btn.innerHTML = "&#x2726; Summoning Copilot...";
+  }
+  try {
+    if (fromModal && cardModalShows(memoryId)) {
+      const patch = readEditedFields();
+      if (patch.display_title) {
+        await patchMemoryApi(memoryId, "", patch);
+      }
+    }
+    const body = await sendJson("POST", `${memoryPath(memoryId)}/copilot`, {});
+    const fresh = body.memory;
+    if (fresh) {
+      const newId = `mem_${fresh.source_task_id || fresh.id}`;
+      fresh.id = newId;
+      noteLocalMutation();
+      const idx = STATE.memories.findIndex(x => x.id === memoryId);
+      if (idx >= 0) STATE.memories[idx] = { ...STATE.memories[idx], ...fresh };
+      renderStrandFilter();
+      renderBoard();
+      refreshGarden();
+      if (fromModal && cardModalShows(memoryId)) closeModal();
+    }
+    toast(`Started "${body.title || "task"}" in GitHub Copilot`);
+  } catch (e) {
+    toast(`Copilot handoff failed: ${e.message}`);
+  } finally {
+    if (btn && btn.isConnected) {
+      btn.disabled = false;
+      btn.classList.remove("is-regenerating");
+      btn.innerHTML = original;
+    }
+  }
+}
+
 async function pollSyncUntilDone(buttonEl, { intervalMs = 1500, maxMs = 600000 } = {}) {
   const start = Date.now();
   let lastMsg = "";
@@ -1277,7 +1321,10 @@ function cardParts(m) {
     </div>
     <p class="card-why">${escapeHtml(m.why)}</p>
     ${goalsHtml ? `<div class="card-goals">${goalsHtml}</div>` : ""}
-    ${renderVialAffordance(m)}
+    <div class="card-footer">
+      ${renderVialAffordance(m)}
+      <button class="card-copilot-btn" type="button" data-memory-id="${escapeHtml(m.id)}" title="Gather all context for this task and start working in the GitHub Copilot app">&#x2726; Work in Copilot</button>
+    </div>
   `;
   const cls = classes.join(" ");
   return { cls, data, goalColor, html, key: `${cls}|${JSON.stringify(data)}|${goalColor}|${html}` };
@@ -1460,6 +1507,7 @@ function openModal(m) {
         &nbsp;|&nbsp; <code>${escapeHtml(m.id)}</code>
       </span>
       <span class="modal-actions-buttons">
+        <button id="edit-copilot" class="ghost-button copilot-btn" type="button" title="Gather all context for this task and start a live session in the GitHub Copilot app">&#x2726; Work in Copilot</button>
         <button id="edit-regen" class="ghost-button regen-btn" type="button" title="Re-run AI enrichment for this card (why, impact, strand, Connect alignment). Your column and private note are preserved.">&#x2728; Regenerate with AI</button>
         <button id="edit-cancel" class="ghost-button" type="button">Cancel</button>
         <button id="edit-save" class="primary-button" type="button" data-memory-id="${escapeHtml(m.id)}">Save</button>
@@ -1471,6 +1519,7 @@ function openModal(m) {
   $("#edit-save").addEventListener("click", () => saveMemoryEdit(m.id));
   $("#edit-cancel").addEventListener("click", closeModal);
   $("#edit-regen").addEventListener("click", () => regenerateMemory(m.id));
+  $("#edit-copilot").addEventListener("click", () => startInCopilot(m.id, $("#edit-copilot"), { fromModal: true }));
 
   // Focus the display-title field so the user can type right away (after
   // layout settles, so the focus ring renders against the visible modal).
@@ -2329,6 +2378,11 @@ function wireBoardEvents() {
   const board = $("#board");
 
   board.addEventListener("click", e => {
+    const copilotBtn = e.target.closest(".card-copilot-btn");
+    if (copilotBtn) {
+      startInCopilot(copilotBtn.dataset.memoryId, copilotBtn);
+      return;
+    }
     // A card's Vial chevron or badge opens the Vial modal, not the card.
     const vial = e.target.closest(".card-vial-chevron, .card-vial-badge");
     if (vial) {
