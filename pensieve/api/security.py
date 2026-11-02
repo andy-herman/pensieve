@@ -67,7 +67,9 @@ def install(app: FastAPI) -> None:
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
         if request.url.path in ("/", "/index.html") or request.url.path.endswith((".html", ".js", ".css")):
-            response.headers.setdefault("Cache-Control", "no-cache")
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
     @app.get("/api/session/check")
